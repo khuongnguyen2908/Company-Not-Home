@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import './style.css';
 import { GameScene } from './scenes/GameScene';
 import { UI } from './ui/ui';
+import { session } from './session';
 
 new Phaser.Game({
   type: Phaser.AUTO,
@@ -14,3 +15,6 @@ new Phaser.Game({
 });
 
 new UI(document.getElementById('ui')!);
+
+// Công cụ gỡ lỗi: thêm ?debug vào địa chỉ để truy cập trạng thái game từ console
+if (location.search.includes('debug')) (window as any).__session = session;

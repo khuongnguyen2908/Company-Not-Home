@@ -2,12 +2,12 @@
 // nên sau này có thể chạy trên máy chủ phòng (host) khi làm nhiều người chơi.
 
 import {
-  TILE, DESKS, TASK_STATIONS, FIX_STATIONS, HIDE_SPOTS, SPAWNS, BELL, MAP_W, MAP_H,
-  canStand, roomAt, roomName, tileCenter, isFloor, ROOMS, type RoomId, type Station, type TaskKind,
+  TILE, DESKS, STATIONS, TASKS, HIDE_SPOTS, SPAWNS, BELL, MAP_W, MAP_H, station, taskDef,
+  canStand, roomAt, roomName, tileCenter, isFloor, ROOMS, type RoomId, type Station, type MiniKind,
 } from './map';
 import { findPath, type Pt } from './path';
 import {
-  type DeptId, DEPTS, BOT_NAMES, FILLER_LINES, DEFENSE_LINES, IMPOSTOR_ALIBIS, TASK_VERBS, pick, normalize,
+  type DeptId, DEPTS, BOT_NAMES, FILLER_LINES, DEFENSE_LINES, IMPOSTOR_ALIBIS, pick, normalize,
 } from './data';
 
 export type Role = 'crew' | 'impostor';
@@ -23,9 +23,14 @@ export const SAB_CD = 30;
 export const BOSS_TIME = 30;
 export const USE_RANGE = 1.15 * TILE;
 export const REPORT_RANGE = 1.7 * TILE;
-export const MEETING_TIME = 75;
+export const DISCUSS_TIME = 60;
+export const VOTE_TIME = 30;
+export const CHAT_GAP = 2;
 
-export interface TaskSlot { stationId: string; done: boolean }
+export interface TaskSlot { taskId: string; step: number; done: boolean }
+
+/** Trạm hiện tại của một đầu việc (việc dài có nhiều bước) */
+export function slotStation(t: TaskSlot): MiniKind { return taskDef(t.taskId).steps[t.step]; }
 
 interface Brain {
   mode: string;
@@ -46,6 +51,7 @@ interface Brain {
   fixer: boolean;
   hideT: number;
   skipBias: number;
+  cleared: Set<number>; // những người đã thấy chấm công vân tay
 }
 
 export interface Agent {
@@ -66,6 +72,7 @@ export interface Agent {
   killCd: number;
   emergencyLeft: number;
   bossDone: boolean;
+  scanning: boolean; // đang chấm công vân tay (task hiển thị)
   brain: Brain;
 }
 
@@ -90,8 +97,12 @@ export interface Meeting {
   room: RoomId | null;
   t: number;
   duration: number;
+  discussEnd: number; // trước mốc này chỉ được thảo luận, sau đó mới mở bỏ phiếu
   chat: ChatMsg[];
   queue: { at: number; from: number; text: string; effects: Effect[] }[];
+  via: 'body' | 'bell' | 'email';
+  reactions: { from: number; emoji: string; t: number }[];
+  reactQueue: { at: number; from: number; emoji: string }[];
   votes: Map<number, number | 'skip'>;
   voteAt: Map<number, number>;
   result: null | { ejected: number | null; tie: boolean; tally: Map<number | 'skip', number[]> };
@@ -120,9 +131,12 @@ function newBrain(): Brain {
   return {
     mode: 'idle', path: [], goal: null, workT: 0, thinkT: 0, senseT: 0, targetId: null, huntT: 0,
     lastSeen: new Map(), companion: new Map(), sus: new Map(), witnessed: null, seenBody: null,
-    nearBody: [], reactT: 0, fixer: false, hideT: 0, skipBias: 0,
+    nearBody: [], reactT: 0, fixer: false, hideT: 0, skipBias: 0, cleared: new Set(),
   };
 }
+
+// Nội gián giả vờ làm ở đây (không giả vờ chấm công vì đó là việc ai cũng nhìn thấy)
+const FAKE_STATIONS = STATIONS.filter(s => !['fingerprint', 'camera', 'router', 'power'].includes(s.id));
 
 const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
 
@@ -148,7 +162,7 @@ export class World {
     this.rng = mulberry32(opts.seed ?? Math.floor(Math.random() * 1e9));
     this.headless = !!opts.headless;
     const total = opts.bots + 1;
-    const names = [...BOT_NAMES].sort(() => this.rng() - 0.5);
+    const names = BOT_NAMES.filter(n => normalize(n) !== normalize(opts.playerName)).sort(() => this.rng() - 0.5);
     const depts = DEPTS.map(d => d.id).filter(d => d !== opts.playerDept).sort(() => this.rng() - 0.5);
     const deskOrder = DESKS.map((_, i) => i).sort(() => this.rng() - 0.5);
 
@@ -162,7 +176,7 @@ export class World {
         role: 'crew', alive: true, ejected: false,
         x: sp.x, y: sp.y, facing: 1, moving: false, walkT: 0,
         tasks: [], desk: deskOrder[i % DESKS.length], hidden: null,
-        killCd: 12, emergencyLeft: 1, bossDone: false, brain: newBrain(),
+        killCd: 12, emergencyLeft: 1, bossDone: false, scanning: false, brain: newBrain(),
       });
     }
     // Phân vai Nội gián
@@ -175,8 +189,12 @@ export class World {
     for (const id of chosen) this.agents[id].role = 'impostor';
 
     for (const a of this.agents) {
-      const st = [...TASK_STATIONS].sort(() => this.rng() - 0.5).slice(0, 5);
-      a.tasks = st.map(s => ({ stationId: s.id, done: false }));
+      // 1 việc chung + 3 việc ngắn + 1 việc dài
+      const shuffle = <T,>(arr: T[]) => [...arr].sort(() => this.rng() - 0.5);
+      const common = TASKS.filter(t => t.type === 'common');
+      const short = shuffle(TASKS.filter(t => t.type === 'short')).slice(0, 3);
+      const long = shuffle(TASKS.filter(t => t.type === 'long')).slice(0, 1);
+      a.tasks = [...common, ...short, ...long].map(t => ({ taskId: t.id, step: 0, done: false }));
       a.brain.thinkT = this.rng() * 1.5;
     }
   }
@@ -188,7 +206,7 @@ export class World {
     let done = 0, total = 0;
     for (const a of this.agents) {
       if (a.role !== 'crew') continue;
-      for (const t of a.tasks) { total++; if (t.done) done++; }
+      for (const t of a.tasks) { const n = taskDef(t.taskId).steps.length; total += n; done += t.done ? n : t.step; }
     }
     return { done, total };
   }
@@ -212,13 +230,13 @@ export class World {
   }
 
   stationById(id: string): Station | undefined {
-    return TASK_STATIONS.find(s => s.id === id) ?? FIX_STATIONS.find(s => s.id === id);
+    return STATIONS.find(s => s.id === id);
   }
 
   /** Những hành động người chơi đang làm được ở vị trí hiện tại */
   context(a: Agent) {
     const ctx: {
-      use: null | { kind: 'task' | 'fix' | 'bell' | 'desk'; station?: Station; label: string };
+      use: null | { kind: 'task' | 'fix' | 'bell' | 'desk' | 'camera'; station?: Station; label: string };
       report: Body | null;
       kill: Agent | null;
       hide: number | null;
@@ -233,21 +251,25 @@ export class World {
       if (dist(a, c) < USE_RANGE) ctx.use = { kind: 'desk', label: 'Giả vờ gõ phím' };
     }
     if (!ctx.use && this.sabotage && this.sabotage.kind !== 'boss' && (a.alive || a.role === 'crew')) {
-      const st = FIX_STATIONS.find(s => s.id === (this.sabotage!.kind === 'wifi' ? 'router' : 'power'))!;
+      const st = station(this.sabotage!.kind === 'wifi' ? 'router' : 'power');
       const c = tileCenter(st.stand.x, st.stand.y);
       if (a.alive && dist(a, c) < USE_RANGE) ctx.use = { kind: 'fix', station: st, label: 'Sửa' };
     }
     if (!ctx.use) {
       for (const t of a.tasks) {
         if (t.done) continue;
-        const st = this.stationById(t.stationId)!;
+        const st = station(slotStation(t));
         const c = tileCenter(st.stand.x, st.stand.y);
         if (dist(a, c) < USE_RANGE) { ctx.use = { kind: 'task', station: st, label: a.role === 'impostor' ? 'Giả vờ làm' : 'Làm việc' }; break; }
       }
     }
+    if (!ctx.use) {
+      const cam = station('camera');
+      const c = tileCenter(cam.stand.x, cam.stand.y);
+      if (dist(a, c) < USE_RANGE * 1.3) ctx.use = { kind: 'camera', station: cam, label: 'Xem camera' };
+    }
     if (!ctx.use && a.alive) {
-      const b = { x: BELL.x * TILE, y: BELL.y * TILE };
-      if (dist(a, b) < 2.4 * TILE) ctx.use = { kind: 'bell', label: 'Bấm chuông họp' };
+      if (Math.abs(a.x - BELL.x * TILE) < 4.2 * TILE && Math.abs(a.y - BELL.y * TILE) < 3.3 * TILE) ctx.use = { kind: 'bell', label: 'Bấm chuông họp' };
     }
     if (a.alive) {
       for (const b of this.bodies) if (dist(a, b) < REPORT_RANGE) { ctx.report = b; break; }
@@ -270,9 +292,10 @@ export class World {
 
   // ---------- Hành động ----------
   completeTask(a: Agent, stationId: string) {
-    const t = a.tasks.find(t => t.stationId === stationId && !t.done);
+    const t = a.tasks.find(t => !t.done && slotStation(t) === stationId);
     if (!t) return;
-    t.done = true;
+    t.step++;
+    if (t.step >= taskDef(t.taskId).steps.length) t.done = true;
     this.events.push({ type: 'task', agent: a.id, stationId });
     this.checkWin();
   }
@@ -317,7 +340,7 @@ export class World {
     if (this.sabotage?.kind === 'boss') return 'Sếp đang đi tuần, về bàn ngay!';
     if (via === 'email' && this.sabotage?.kind === 'wifi') return 'Mất WiFi, không gửi được email';
     a.emergencyLeft--;
-    this.startMeeting(a.id, null);
+    this.startMeeting(a.id, null, via);
     return null;
   }
 
@@ -334,7 +357,7 @@ export class World {
     }
     // Chọn bot đi sửa
     if (kind !== 'boss') {
-      const st = FIX_STATIONS.find(s => s.id === (kind === 'wifi' ? 'router' : 'power'))!;
+      const st = station(kind === 'wifi' ? 'router' : 'power');
       const c = tileCenter(st.stand.x, st.stand.y);
       const crewBots = this.agents.filter(a => !a.isPlayer && a.alive && a.role === 'crew')
         .sort((p, q) => dist(p, c) - dist(q, c));
@@ -370,10 +393,10 @@ export class World {
     a.x = c.x; a.y = c.y;
   }
 
-  hideMove(a: Agent, dir: 1 | -1) {
+  /** Chuồn sang chỗ trốn cùng cặp */
+  hideMove(a: Agent) {
     if (a.hidden === null) return;
-    const n = (a.hidden + dir + HIDE_SPOTS.length) % HIDE_SPOTS.length;
-    this.hide(a, n);
+    this.hide(a, HIDE_SPOTS[a.hidden].pair);
   }
 
   // ---------- Vòng lặp ----------
@@ -470,6 +493,7 @@ export class World {
       if (o === a || !o.alive || o.hidden !== null) continue;
       if (dist(a, o) <= this.visionOf(a)) {
         b.lastSeen.set(o.id, { room: roomAt(o.x, o.y), t: this.time });
+        if (o.scanning && !b.cleared.has(o.id)) { b.cleared.add(o.id); b.sus.set(o.id, (b.sus.get(o.id) ?? 0) - 45); }
         b.companion.set(o.id, (b.companion.get(o.id) ?? 0) + 0.25);
       }
     }
@@ -498,8 +522,9 @@ export class World {
     // Đang thao tác tại chỗ
     if (b.workT > 0) {
       a.moving = false;
+      a.scanning = a.role === 'crew' && b.goal === 'task:fingerprint';
       b.workT -= dt;
-      if (b.workT <= 0) this.finishWork(a);
+      if (b.workT <= 0) { a.scanning = false; this.finishWork(a); }
       return;
     }
     // Đang trốn (Nội gián bot)
@@ -508,7 +533,7 @@ export class World {
       b.hideT -= dt;
       if (b.hideT <= 0) {
         if (b.mode === 'vent' && this.rng() < 0.7) {
-          this.hide(a, Math.floor(this.rng() * HIDE_SPOTS.length));
+          this.hideMove(a);
           b.mode = 'vent2';
           b.hideT = 0.8;
         } else { this.hide(a, null); b.mode = 'idle'; b.path = []; }
@@ -560,7 +585,7 @@ export class World {
     }
     // 3. Sửa sự cố
     if (a.alive && b.fixer && this.sabotage && this.sabotage.kind !== 'boss') {
-      const st = FIX_STATIONS.find(s => s.id === (this.sabotage!.kind === 'wifi' ? 'router' : 'power'))!;
+      const st = station(this.sabotage!.kind === 'wifi' ? 'router' : 'power');
       const c = tileCenter(st.stand.x, st.stand.y);
       if (dist(a, c) < 8) { b.goal = 'fix'; b.workT = 2 + this.rng() * 1.5; return; }
       if (b.goal !== 'fix' || !b.path.length) this.goTo(a, st.stand, 'fix');
@@ -570,7 +595,7 @@ export class World {
     // 4. Làm task
     if (b.path.length) {
       const arrived = this.followPath(a, dt);
-      if (arrived && b.goal?.startsWith('task:')) b.workT = 6 + this.rng() * 6;
+      if (arrived && b.goal?.startsWith('task:')) b.workT = (b.goal === 'task:fingerprint' ? 3.5 : 4.5 + this.rng() * 4.5);
       else if (arrived) { b.goal = null; b.thinkT = 1 + this.rng() * 3; }
       return;
     }
@@ -578,15 +603,15 @@ export class World {
     b.thinkT -= dt;
     if (b.thinkT > 0) return;
     const next = a.tasks.filter(t => !t.done);
-    if (next.length && this.rng() < 0.35) {
+    if (next.length && this.rng() < 0.2) {
       // dân văn phòng: đi lòng vòng, ghé pantry, lướt điện thoại...
       this.goTo(a, this.randomFloorTile(), 'wander');
       b.thinkT = 2 + this.rng() * 4;
     } else if (next.length) {
       const t = pick(next, this.rng);
-      const st = this.stationById(t.stationId)!;
+      const st = station(slotStation(t));
       const c = tileCenter(st.stand.x, st.stand.y);
-      if (dist(a, c) < 8) { b.goal = 'task:' + st.id; b.workT = 6 + this.rng() * 5; return; }
+      if (dist(a, c) < 8) { b.goal = 'task:' + st.id; b.workT = st.id === 'fingerprint' ? 3.5 : 4.5 + this.rng() * 4.5; return; }
       if (!this.goTo(a, st.stand, 'task:' + st.id)) b.thinkT = 1;
     } else {
       this.goTo(a, this.randomFloorTile(), 'wander');
@@ -675,19 +700,19 @@ export class World {
     }
     a.moving = false;
     if (this.rng() < dt * 1.5) {
-      const st = pick(TASK_STATIONS, this.rng);
+      const st = pick(FAKE_STATIONS, this.rng);
       this.goTo(a, st.stand, 'fake:' + st.id);
     }
   }
 
   // ---------- Họp ----------
-  startMeeting(reporter: number, victim: number | null) {
+  startMeeting(reporter: number, victim: number | null, via: 'bell' | 'email' = 'email') {
     this.phase = 'meeting';
     this.meetingCount++;
     const body = victim !== null ? this.bodies.find(b => b.victim === victim) : null;
     const room = body ? body.room : null;
     const m: Meeting = {
-      reporter, victim, room, t: 0, duration: MEETING_TIME, chat: [], queue: [],
+      reporter, victim, room, t: 0, duration: DISCUSS_TIME + VOTE_TIME, discussEnd: DISCUSS_TIME, chat: [], queue: [], via: victim !== null ? 'body' : via, reactions: [], reactQueue: [],
       votes: new Map(), voteAt: new Map(), result: null,
     };
     this.meeting = m;
@@ -704,14 +729,18 @@ export class World {
     for (const a of this.agents) {
       if (a.isPlayer && !this.headless) continue;
       if (!a.alive) continue;
-      m.voteAt.set(a.id, 26 + this.rng() * 30);
+      m.voteAt.set(a.id, 3 + this.rng() * 22); // tính từ lúc mở bỏ phiếu
     }
   }
 
   private say(m: Meeting, from: number, text: string, effects: Effect[] = [], at?: number) {
     const last = m.queue.length ? m.queue[m.queue.length - 1].at : 1.2;
-    m.queue.push({ at: at ?? last + 1.6 + this.rng() * 2.2, from, text, effects });
+    m.queue.push({ at: at ?? last + 2 + this.rng() * 1.8, from, text, effects });
     m.queue.sort((p, q) => p.at - q.at);
+    // Mỗi tin nhắn cách nhau tối thiểu 2 giây
+    for (let i = 1; i < m.queue.length; i++) {
+      if (m.queue[i].at < m.queue[i - 1].at + CHAT_GAP) m.queue[i].at = m.queue[i - 1].at + CHAT_GAP;
+    }
   }
 
   private planStatements(m: Meeting) {
@@ -753,6 +782,12 @@ export class World {
             continue;
           }
         }
+        const cleared = [...b.cleared].filter(id => A[id].alive && id !== a.id);
+        if (cleared.length && this.rng() < 0.8) {
+          const y = pick(cleared, this.rng);
+          this.say(m, a.id, `Tôi tận mắt thấy ${nm(y)} chấm công vân tay, đèn xanh hẳn hoi. ${nm(y)} là nhân viên thật.`, [{ target: y, delta: -30 }]);
+          continue;
+        }
         const comps = [...b.companion.entries()].filter(([id, v]) => v > 3 && A[id].alive && id !== a.id).sort((p, q) => q[1] - p[1]);
         if (comps.length && this.rng() < 0.75) {
           const [y] = comps[0];
@@ -760,9 +795,9 @@ export class World {
           continue;
         }
         const room = roomName(roomAt(a.x, a.y));
-        const doneTask = a.tasks.find(t => t.done);
+        const doneTask = a.tasks.find(t => t.done || t.step > 0);
         this.say(m, a.id, doneTask
-          ? `Tôi ở ${room}, vừa ${TASK_VERBS[doneTask.stationId]} xong. Không thấy gì lạ.`
+          ? `Tôi ở ${room}, vừa làm xong việc "${taskDef(doneTask.taskId).name.toLowerCase()}". Không thấy gì lạ.`
           : pick(FILLER_LINES, this.rng));
       } else {
         // Nội gián: bịa chứng cứ ngoại phạm hoặc đổ vấy
@@ -782,6 +817,39 @@ export class World {
     for (let i = 0; i < extra; i++) {
       const s = pick(speakers, this.rng);
       this.say(m, s.id, pick(FILLER_LINES, this.rng));
+    }
+  }
+
+  /** Thả emoji trong cuộc họp (hiện trên ô video của người thả) */
+  react(from: number, emoji: string) {
+    const m = this.meeting;
+    if (!m || m.result) return;
+    m.reactions.push({ from, emoji, t: m.t });
+  }
+
+  private botReact(m: Meeting, from: number, emoji: string, delay: number) {
+    if (this.agents[from].isPlayer && !this.headless) return;
+    m.reactQueue.push({ at: m.t + delay, from, emoji });
+  }
+
+  /** Bot phản ứng bằng emoji khi có người buộc tội hoặc bênh vực */
+  private reactToEffects(m: Meeting, from: number, effects: Effect[]) {
+    for (const e of effects) {
+      const target = this.agents[e.target];
+      if (e.delta > 0) {
+        if (target.alive) this.botReact(m, target.id, this.rng() < 0.7 ? '😡' : '👎', 0.4 + this.rng() * 0.8);
+        for (const l of this.agents) {
+          if (!l.alive || l.id === from || l.id === target.id || this.rng() > 0.35) continue;
+          const s = l.brain.sus.get(target.id) ?? 0;
+          this.botReact(m, l.id, s > 20 ? '👍' : s < -10 ? '👎' : '🤔', 0.6 + this.rng() * 1.6);
+        }
+      } else if (e.delta < 0 && target.alive) {
+        this.botReact(m, target.id, '👍', 0.5 + this.rng());
+      }
+    }
+    if (!effects.length && this.rng() < 0.3) {
+      const l = pick(this.agents.filter(a => a.alive && a.id !== from), this.rng);
+      if (l) this.botReact(m, l.id, this.rng() < 0.6 ? '😂' : '❓', 0.5 + this.rng() * 1.5);
     }
   }
 
@@ -811,6 +879,7 @@ export class World {
     if (/(skip|bo qua)/.test(n)) for (const a of this.agents) a.brain.skipBias += 10;
     for (const x of mentioned) {
       this.applyEffects(p.id, [{ target: x.id, delta: vouch ? -10 : 13 }]);
+      this.reactToEffects(m, p.id, [{ target: x.id, delta: vouch ? -10 : 13 }]);
       if (vouch) {
         this.say(m, x.id, `Cảm ơn ${p.name}, cuối cùng cũng có người hiểu tôi.`, [], m.t + 1.5 + this.rng() * 1.5);
       } else if (x.role === 'impostor') {
@@ -821,10 +890,10 @@ export class World {
         counter ? [{ target: p.id, delta: 10 }] : [], m.t + 1.5 + this.rng() * 2);
       } else {
         const comps = [...x.brain.companion.entries()].filter(([id, v]) => v > 2 && this.agents[id].alive && id !== p.id).sort((a, b) => b[1] - a[1]);
-        const doneTask = x.tasks.find(t => t.done);
+        const doneTask = x.tasks.find(t => t.done || t.step > 0);
         let line = pick(DEFENSE_LINES, this.rng);
         if (comps.length) line = `Tôi ở cùng ${this.agents[comps[0][0]].name} suốt, hỏi ${this.agents[comps[0][0]].name} đi!`;
-        else if (doneTask) line = `Tôi đang ${TASK_VERBS[doneTask.stationId]} mà! ${pick(DEFENSE_LINES, this.rng)}`;
+        else if (doneTask) line = `Tôi đang làm "${taskDef(doneTask.taskId).name.toLowerCase()}" mà! ${pick(DEFENSE_LINES, this.rng)}`;
         this.say(m, x.id, line, comps.length ? [{ target: x.id, delta: -6 }] : [], m.t + 1.5 + this.rng() * 2);
       }
     }
@@ -836,7 +905,7 @@ export class World {
 
   vote(voter: Agent, target: number | 'skip') {
     const m = this.meeting;
-    if (!m || m.result || !voter.alive || m.votes.has(voter.id)) return;
+    if (!m || m.result || !voter.alive || m.votes.has(voter.id) || m.t < m.discussEnd) return;
     if (target !== 'skip' && !this.agents[target].alive) return;
     m.votes.set(voter.id, target);
   }
@@ -870,26 +939,42 @@ export class World {
     const m = this.meeting;
     if (!m || m.result) return;
     m.t += dt;
-    while (m.queue.length && m.queue[0].at <= m.t) {
+    const lastT = m.chat.length ? m.chat[m.chat.length - 1].t : -99;
+    if (m.queue.length && m.queue[0].at <= m.t && m.t - lastT >= CHAT_GAP) {
       const q = m.queue.shift()!;
-      if (!this.agents[q.from].alive) continue;
-      m.chat.push({ from: q.from, text: q.text, t: m.t });
-      this.applyEffects(q.from, q.effects);
+      if (this.agents[q.from].alive) {
+        m.chat.push({ from: q.from, text: q.text, t: m.t });
+        this.applyEffects(q.from, q.effects);
+        this.reactToEffects(m, q.from, q.effects);
+      }
+    }
+    m.reactQueue.sort((p, q) => p.at - q.at);
+    while (m.reactQueue.length && m.reactQueue[0].at <= m.t) {
+      const r = m.reactQueue.shift()!;
+      if (this.agents[r.from].alive) m.reactions.push({ from: r.from, emoji: r.emoji, t: m.t });
     }
     for (const [id, at] of m.voteAt) {
-      if (m.t >= at && !m.votes.has(id) && this.agents[id].alive) {
+      if (m.t >= m.discussEnd + at && !m.votes.has(id) && this.agents[id].alive) {
         m.votes.set(id, this.botVote(this.agents[id]));
       }
     }
     const aliveCount = this.agents.filter(a => a.alive).length;
     const allVoted = m.votes.size >= aliveCount;
-    if (m.t >= m.duration || (allVoted && m.t > 8)) this.tally();
+    if (m.t >= m.duration || (allVoted && m.t >= m.discussEnd)) this.tally();
+  }
+
+  /** Người chơi bấm "Sẵn sàng bỏ phiếu": mở bỏ phiếu ngay */
+  skipDiscussion() {
+    const m = this.meeting;
+    if (!m || m.result || m.t >= m.discussEnd) return;
+    m.discussEnd = m.t;
+    m.duration = m.t + VOTE_TIME;
   }
 
   /** Kết thúc phần thảo luận sớm (khi người chơi đã vote và muốn tua nhanh) */
   fastForwardVotes() {
     const m = this.meeting;
-    if (!m || m.result) return;
+    if (!m || m.result || m.t < m.discussEnd) return;
     for (const [id] of m.voteAt) {
       if (!m.votes.has(id) && this.agents[id].alive) m.votes.set(id, this.botVote(this.agents[id]));
     }
@@ -972,4 +1057,4 @@ export class World {
   }
 }
 
-export type { TaskKind };
+export type { MiniKind };

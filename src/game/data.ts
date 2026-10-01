@@ -1,25 +1,26 @@
-export type DeptId = 'it' | 'mkt' | 'acc' | 'hr' | 'sales' | 'design' | 'admin' | 'legal' | 'intern' | 'cs';
+export type DeptId = 'gd' | 'artist' | 'tester' | 'po' | 'pd' | 'hr' | 'director' | 'acc' | 'it' | 'intern';
 
 export interface Dept { id: DeptId; name: string; color: string; desc: string }
 
 export const DEPTS: Dept[] = [
+  { id: 'gd', name: 'GD', color: '#16a6a0', desc: 'Game Designer: hoodie in tay cầm, "cái này cân bằng lại là vui"' },
+  { id: 'artist', name: 'Artist', color: '#e8a400', desc: 'Mũ nồi, bút chì gài tai, áo dính màu vẽ' },
+  { id: 'tester', name: 'Tester', color: '#4fa83d', desc: 'Kính lúp trên tay, áo in con bug, "em repro được rồi anh"' },
+  { id: 'po', name: 'PO', color: '#2e7fd9', desc: 'Product Owner: kẹp giấy đầy sticky note, backlog không bao giờ hết' },
+  { id: 'pd', name: 'PD', color: '#8a4fd8', desc: 'Producer: blazer tím, kính râm cài đầu, deadline là chân lý' },
+  { id: 'hr', name: 'HR', color: '#d94f8a', desc: 'Vest chỉnh tề, nụ cười "chúng ta là một gia đình"' },
+  { id: 'director', name: 'Director', color: '#2b2b38', desc: 'Vest đen cà vạt đỏ, tóc bạc, "anh chỉ góp ý thôi"' },
+  { id: 'acc', name: 'Kế toán', color: '#2f9e6e', desc: 'Kính dày cộp, nhớ từng đồng tạm ứng' },
   { id: 'it', name: 'IT', color: '#5b6b80', desc: 'Áo thun xuyệt tông, tai nghe không bao giờ tháo' },
-  { id: 'mkt', name: 'Marketing', color: '#ff5fa2', desc: 'Đồ trendy, kính râm cài đầu trong nhà' },
-  { id: 'acc', name: 'Kế toán', color: '#4fb86b', desc: 'Kính dày cộp, nhớ từng đồng tạm ứng' },
-  { id: 'hr', name: 'HR', color: '#30418c', desc: 'Vest chỉnh tề, nụ cười "chúng ta là gia đình"' },
-  { id: 'sales', name: 'Sales', color: '#e2412f', desc: 'Cà vạt đỏ, gọi điện bằng giọng sang sảng' },
-  { id: 'design', name: 'Design', color: '#f2b705', desc: 'Mũ nồi, "cái logo này cần to hơn nhưng nhỏ lại"' },
-  { id: 'admin', name: 'Hành chính', color: '#f2832f', desc: 'Cardigan, chùm chìa khóa mở mọi phòng' },
-  { id: 'legal', name: 'Pháp chế', color: '#7d2340', desc: 'Vest đỏ đô, câu nào cũng "theo điều khoản"' },
-  { id: 'intern', name: 'Thực tập sinh', color: '#2e9cf0', desc: 'Mũ lưỡi trai ngược, làm việc không lương sẵn rồi' },
-  { id: 'cs', name: 'CSKH', color: '#8a5cf5', desc: 'Headset dính liền, "dạ em xin phép hỗ trợ ạ"' },
+  { id: 'intern', name: 'Thực tập sinh', color: '#ff6b4a', desc: 'Mũ lưỡi trai ngược, thẻ tên to nhất công ty' },
 ];
 
 export function dept(id: DeptId): Dept {
   return DEPTS.find(d => d.id === id)!;
 }
 
-export const BOT_NAMES = ['Tuấn', 'Linh', 'Hùng', 'Mai', 'Phúc', 'Trang', 'Khoa', 'Ngọc', 'Bảo', 'Vy', 'Đạt', 'Hà', 'Quân', 'Thảo'];
+export const PLAYER_NAMES = ['Cát', 'Minh', 'Lan', 'Anh', 'Hoàng', 'Linh', 'Thắm', 'Pikachu', 'HurryK', 'Khoa', 'Nhi'];
+export const BOT_NAMES = ['Tuấn', 'Hùng', 'Mai', 'Phúc', 'Trang', 'Ngọc', 'Bảo', 'Vy', 'Đạt', 'Hà', 'Quân', 'Thảo', 'Lan', 'Nhi'];
 
 export const FILLER_LINES = [
   'Mình xin phép tắt cam, đang ăn trưa.',

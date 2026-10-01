@@ -7,4 +7,5 @@ export const session = {
   onEvents: (_e: GameEvent[]) => {},
   onFrame: (_dt: number) => {},
   newGameId: 0,
+  mapImage: null as CanvasImageSource | null, // ảnh bản đồ đã nướng sẵn, dùng cho camera an ninh
 };

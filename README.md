@@ -23,14 +23,14 @@ npm run sim        # chạy thử 60 ván toàn bot để kiểm tra luật chơ
 
 ## Điều khiển
 
-WASD hoặc phím mũi tên để đi. E làm việc, R báo cáo ghế trống, Q gài bẫy (Nội gián), F phá hoại, Space trốn, M xem sơ đồ. Trên điện thoại có cần điều khiển ảo ở góc trái.
+WASD hoặc phím mũi tên để đi. E làm việc, R báo cáo ghế trống, Q gài bẫy (Nội gián), F phá hoại, Space trốn, Tab xem sơ đồ. Trên điện thoại có cần điều khiển ảo ở góc trái.
 
 ## Cấu trúc mã nguồn
 
 ```
 src/
 ├── game/        Luật chơi thuần TypeScript, không phụ thuộc Phaser
-│   ├── map.ts   Bản đồ, phòng, đồ đạc, điểm làm việc, chỗ trốn
+│   ├── map.ts   Bản đồ 13 phòng, đồ đạc, trạm làm việc, danh sách task, chỗ trốn theo cặp, camera
 │   ├── path.ts  Tìm đường cho bot
 │   ├── sim.ts   Mô phỏng: di chuyển, AI bot, gài bẫy, phá hoại, họp, vote, điều kiện thắng
 │   └── data.ts  Phòng ban, tên, lời thoại

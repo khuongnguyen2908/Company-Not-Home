@@ -11,16 +11,16 @@ interface Look {
 }
 
 const LOOKS: Record<DeptId | 'guard', Look> = {
-  it: { shirt: '#5b6b80', pants: '#2f3542', skin: '#f2c49b', hair: '#2b2118', hairStyle: 'messy' },
-  mkt: { shirt: '#ff5fa2', pants: '#f4efe6', skin: '#f6d0ae', hair: '#7a3b1f', hairStyle: 'curly' },
+  gd: { shirt: '#16a6a0', pants: '#2f3542', skin: '#f2c49b', hair: '#4a2c1a', hairStyle: 'messy' },
+  artist: { shirt: '#ffd23f', pants: '#3b3a4a', skin: '#f6d0ae', hair: '#5a3420', hairStyle: 'short' },
+  tester: { shirt: '#86d36a', pants: '#3d4a3a', skin: '#efc29a', hair: '#1c1c22', hairStyle: 'spiky' },
+  po: { shirt: '#cfe3ff', pants: '#2c3e66', skin: '#f3c7a1', hair: '#2a1d16', hairStyle: 'pony' },
+  pd: { shirt: '#8a4fd8', pants: '#2f2447', skin: '#f6d0ae', hair: '#7a3b1f', hairStyle: 'curly' },
+  hr: { shirt: '#d94f8a', pants: '#4a2236', skin: '#f3c7a1', hair: '#2e1f17', hairStyle: 'bun' },
+  director: { shirt: '#2b2b38', pants: '#1c1c26', skin: '#eab993', hair: '#a7a7b2', hairStyle: 'slick' },
   acc: { shirt: '#9fdba9', pants: '#4a4a5c', skin: '#efc29a', hair: '#1c1c22', hairStyle: 'side' },
-  hr: { shirt: '#30418c', pants: '#22295a', skin: '#f3c7a1', hair: '#3a2a1e', hairStyle: 'slick' },
-  sales: { shirt: '#ffffff', pants: '#30343f', skin: '#e9b98f', hair: '#1e1a17', hairStyle: 'spiky' },
-  design: { shirt: '#f2b705', pants: '#3b3a4a', skin: '#f6d0ae', hair: '#4b2e1d', hairStyle: 'short' },
-  admin: { shirt: '#f2832f', pants: '#5a4636', skin: '#f3c7a1', hair: '#2e1f17', hairStyle: 'bun' },
-  legal: { shirt: '#7d2340', pants: '#2b1c22', skin: '#eab993', hair: '#8b8b95', hairStyle: 'side' },
+  it: { shirt: '#5b6b80', pants: '#2f3542', skin: '#f2c49b', hair: '#2b2118', hairStyle: 'messy' },
   intern: { shirt: '#2e9cf0', pants: '#355c8c', skin: '#f6d0ae', hair: '#3b2a20', hairStyle: 'short' },
-  cs: { shirt: '#8a5cf5', pants: '#3a2f5c', skin: '#f2c49b', hair: '#1f1712', hairStyle: 'pony' },
   guard: { shirt: '#26283a', pants: '#1a1b28', skin: '#e3b089', hair: '#111', hairStyle: 'short' },
 };
 
@@ -63,33 +63,62 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, d: DeptId | 'guard'
   rr(ctx, 15, 42, 42, 32, 13); fillStroke(ctx, L.shirt);
 
   // Chi tiết áo theo phòng ban
-  if (d === 'hr' || d === 'legal') {
+  if (d === 'gd') {
+    // mũ hoodie sau gáy + dây rút
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(31, 46); ctx.lineTo(30, 56); ctx.moveTo(42, 46); ctx.lineTo(43, 56); ctx.stroke();
+  }
+  if (d === 'hr' || d === 'pd' || d === 'director') {
     ctx.beginPath(); ctx.moveTo(30, 43); ctx.lineTo(37, 58); ctx.lineTo(44, 43); ctx.closePath(); fillStroke(ctx, '#ffffff', 2.5);
-    ctx.beginPath(); ctx.moveTo(35.5, 46); ctx.lineTo(38.5, 46); ctx.lineTo(40, 58); ctx.lineTo(37, 61); ctx.lineTo(34, 58); ctx.closePath();
-    fillStroke(ctx, d === 'hr' ? '#c8323c' : '#e8c547', 1.5);
+    if (d === 'director') {
+      ctx.beginPath(); ctx.moveTo(35.5, 46); ctx.lineTo(38.5, 46); ctx.lineTo(40, 58); ctx.lineTo(37, 61); ctx.lineTo(34, 58); ctx.closePath();
+      fillStroke(ctx, '#d62f3a', 1.5);
+    }
+    if (d === 'hr') { ctx.fillStyle = '#fff6e0'; for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.arc(32 + i * 2.5, 46 + Math.sin(i / 4 * Math.PI) * 4, 1.6, 0, Math.PI * 2); ctx.fill(); } }
   }
-  if (d === 'sales') {
-    ctx.beginPath(); ctx.moveTo(35, 44); ctx.lineTo(39, 44); ctx.lineTo(41, 66); ctx.lineTo(37, 70); ctx.lineTo(33, 66); ctx.closePath();
-    fillStroke(ctx, '#e2412f', 2);
+  if (d === 'artist') {
+    for (const [x, y, r, c] of [[22, 52, 3.5, '#e2412f'], [47, 66, 3, '#2e9cf0'], [25, 68, 2.5, '#ff5fa2'], [50, 48, 2.2, '#16a6a0']] as const) {
+      ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    }
   }
-  if (d === 'admin') {
-    rr(ctx, 30, 43, 12, 30, 4); fillStroke(ctx, '#fff4e0', 2);
+  if (d === 'po') {
+    // hàng nút áo sơ mi
+    ctx.fillStyle = INK; for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(26, 52 + i * 7, 1.3, 0, Math.PI * 2); ctx.fill(); }
   }
   if (d === 'guard') {
     rr(ctx, 41, 50, 9, 10, 2); fillStroke(ctx, '#e8c547', 2);
   }
   // Dây đeo thẻ tên (lanyard)
   if (d !== 'guard') {
-    ctx.strokeStyle = d === 'intern' ? '#ff4d6d' : '#1f6feb';
+    ctx.strokeStyle = d === 'intern' ? '#ff6b4a' : d === 'director' ? '#e8c547' : '#1f6feb';
     ctx.lineWidth = d === 'intern' ? 4 : 2.5;
     ctx.beginPath(); ctx.moveTo(29, 44); ctx.lineTo(36, 56); ctx.lineTo(44, 44); ctx.stroke();
     const bw = d === 'intern' ? 15 : 11, bh = d === 'intern' ? 17 : 13;
     rr(ctx, 36 - bw / 2, 55, bw, bh, 2); fillStroke(ctx, '#ffffff', 2);
     ctx.fillStyle = '#1f6feb'; ctx.fillRect(36 - bw / 2 + 2, 57, bw - 4, 3);
   }
+  // Biểu tượng trên áo
+  if (d === 'gd') {
+    rr(ctx, 18, 60, 14, 9, 4); fillStroke(ctx, '#ffffff', 2);
+    ctx.fillStyle = INK; ctx.fillRect(21, 63.5, 4, 1.6); ctx.fillRect(22.2, 62.3, 1.6, 4);
+    ctx.fillStyle = '#e2412f'; ctx.beginPath(); ctx.arc(28.5, 64.5, 1.6, 0, Math.PI * 2); ctx.fill();
+  }
+  if (d === 'tester') {
+    ctx.beginPath(); ctx.ellipse(24, 63, 5, 6, 0, 0, Math.PI * 2); fillStroke(ctx, '#e2412f', 2);
+    ctx.strokeStyle = INK; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(24, 57); ctx.lineTo(24, 69); ctx.stroke();
+    ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(22, 62, 1.1, 0, Math.PI * 2); ctx.arc(26, 65, 1.1, 0, Math.PI * 2); ctx.fill();
+  }
   // Tay trước
   rr(ctx, 50, 50, 10, 20, 5); fillStroke(ctx, L.shirt);
   ctx.beginPath(); ctx.arc(55, 71, 4.5, 0, Math.PI * 2); fillStroke(ctx, L.skin, 2.5);
+  if (d === 'tester') {
+    ctx.strokeStyle = INK; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(57, 72); ctx.lineTo(62, 64); ctx.stroke();
+    ctx.beginPath(); ctx.arc(64, 58, 6.5, 0, Math.PI * 2); ctx.fillStyle = 'rgba(200,235,255,0.7)'; ctx.fill(); ctx.lineWidth = 3; ctx.stroke();
+  }
+  if (d === 'po') {
+    rr(ctx, 55, 56, 14, 18, 2); fillStroke(ctx, '#c79a62', 2.5);
+    ctx.fillStyle = '#ffe36e'; ctx.fillRect(57, 60, 5, 5); ctx.fillStyle = '#ff9ec4'; ctx.fillRect(63, 61, 5, 5); ctx.fillStyle = '#9fe0ff'; ctx.fillRect(58, 67, 5, 5);
+  }
 
   // Đầu
   ctx.beginPath(); ctx.arc(38, 27, 19, 0, Math.PI * 2); fillStroke(ctx, L.skin);
@@ -149,11 +178,11 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, d: DeptId | 'guard'
     ctx.beginPath(); ctx.ellipse(26, 29, 6, 8, 0, 0, Math.PI * 2); fillStroke(ctx, '#3b3f4a', 3);
     ctx.fillStyle = '#4ee1a0'; ctx.beginPath(); ctx.arc(26, 29, 2, 0, Math.PI * 2); ctx.fill();
   }
-  if (d === 'mkt') {
+  if (d === 'pd') {
     rr(ctx, 33, 6, 11, 6, 3); fillStroke(ctx, '#222', 2.5);
     rr(ctx, 46, 7, 10, 6, 3); fillStroke(ctx, '#222', 2.5);
   }
-  if (d === 'acc' || d === 'legal') {
+  if (d === 'acc' || d === 'director') {
     const r = d === 'acc' ? 7 : 5;
     ctx.strokeStyle = INK; ctx.lineWidth = d === 'acc' ? 3.5 : 2.5;
     ctx.fillStyle = 'rgba(200,230,255,0.35)';
@@ -161,22 +190,24 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, d: DeptId | 'guard'
     ctx.beginPath(); ctx.arc(54, 28, r - 1, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(44 - r, 27); ctx.lineTo(24, 25); ctx.stroke();
   }
-  if (d === 'design') {
-    ctx.save(); ctx.translate(38, 9); ctx.rotate(-0.25);
+  if (d === 'artist') {
+    // bút chì gài tai
+    ctx.save(); ctx.translate(24, 22); ctx.rotate(-0.6);
+    rr(ctx, -2.5, -12, 5, 22, 1.5); fillStroke(ctx, '#f2b705', 2);
+    ctx.fillStyle = '#f6d0ae'; ctx.beginPath(); ctx.moveTo(-2.5, 10); ctx.lineTo(2.5, 10); ctx.lineTo(0, 15); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.restore();
+    ctx.save(); ctx.translate(40, 9); ctx.rotate(-0.25);
     ctx.beginPath(); ctx.ellipse(0, 0, 18, 7, 0, 0, Math.PI * 2); fillStroke(ctx, '#c0392b', 3);
     ctx.beginPath(); ctx.arc(2, -7, 2.5, 0, Math.PI * 2); fillStroke(ctx, '#c0392b', 2);
     ctx.restore();
   }
-  if (d === 'intern') {
-    ctx.beginPath(); ctx.moveTo(19, 22); ctx.quadraticCurveTo(20, 4, 38, 5); ctx.quadraticCurveTo(56, 5, 56, 20); ctx.closePath(); fillStroke(ctx, '#ff4d6d', 3);
-    rr(ctx, 8, 17, 16, 6, 3); fillStroke(ctx, '#ff4d6d', 3);
+  if (d === 'gd') {
+    // mũ hoodie phía sau đầu
+    ctx.beginPath(); ctx.moveTo(18, 40); ctx.quadraticCurveTo(12, 30, 19, 24); ctx.lineTo(23, 38); ctx.closePath(); fillStroke(ctx, '#128a85', 3);
   }
-  if (d === 'cs') {
-    ctx.strokeStyle = '#2b2b33'; ctx.lineWidth = 4;
-    ctx.beginPath(); ctx.arc(37, 26, 21, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
-    ctx.beginPath(); ctx.ellipse(27, 30, 5, 7, 0, 0, Math.PI * 2); fillStroke(ctx, '#2b2b33', 3);
-    ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(29, 35); ctx.quadraticCurveTo(34, 44, 45, 41); ctx.stroke();
-    ctx.fillStyle = '#2b2b33'; ctx.beginPath(); ctx.arc(46, 41, 2.5, 0, Math.PI * 2); ctx.fill();
+  if (d === 'intern') {
+    ctx.beginPath(); ctx.moveTo(19, 22); ctx.quadraticCurveTo(20, 4, 38, 5); ctx.quadraticCurveTo(56, 5, 56, 20); ctx.closePath(); fillStroke(ctx, '#ff6b4a', 3);
+    rr(ctx, 8, 17, 16, 6, 3); fillStroke(ctx, '#ff6b4a', 3);
   }
   if (d === 'guard') {
     ctx.beginPath(); ctx.moveTo(19, 20); ctx.quadraticCurveTo(22, 4, 38, 4); ctx.quadraticCurveTo(54, 4, 56, 20); ctx.closePath(); fillStroke(ctx, '#26283a', 3);
@@ -198,6 +229,20 @@ export function characterCanvas(d: DeptId | 'guard', frame: 0 | 1 | 2, scale = 1
   ctx.scale(scale, scale);
   drawCharacter(ctx, d, frame);
   return c;
+}
+
+let chairCache = '';
+/** Ảnh ghế trống (dataURL) cho màn chuyển cảnh */
+export function chairURL(): string {
+  if (!chairCache) chairCache = chairCanvas().toDataURL();
+  return chairCache;
+}
+
+const imgCache = new Map<string, HTMLCanvasElement>();
+/** Ảnh nhân vật dạng canvas (dùng để vẽ lên camera an ninh) */
+export function avatarImage(d: DeptId | 'guard'): HTMLCanvasElement {
+  if (!imgCache.has(d)) imgCache.set(d, characterCanvas(d, 0, 1));
+  return imgCache.get(d)!;
 }
 
 const avatarCache = new Map<string, string>();

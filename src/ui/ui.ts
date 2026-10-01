@@ -1,17 +1,28 @@
 import { session } from '../session';
 import { World, BOSS_TIME, type Agent, type GameEvent, type SabotageKind } from '../game/sim';
-import { DEPTS, dept, type DeptId } from '../game/data';
-import { ROOMS, TILE, MAP_W, MAP_H, DESKS, TASK_STATIONS, FIX_STATIONS, HIDE_SPOTS, roomAt, roomName, GRID } from '../game/map';
-import { avatarURL } from '../render/chars';
+import { DEPTS, PLAYER_NAMES, dept, type DeptId } from '../game/data';
+import { ROOMS, TILE, MAP_W, MAP_H, DESKS, HIDE_SPOTS, CAMERAS, station, taskDef, roomAt, roomName, GRID, type MiniKind } from '../game/map';
+import { slotStation } from '../game/sim';
+import { avatarURL, avatarImage, chairURL } from '../render/chars';
 import { sfx } from '../audio';
-import { openMini, closeMini, miniOpen, type MiniKind } from './minigames';
+import { openMini, closeMini, miniOpen } from './minigames';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector(sel) as T;
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 
 // ---------- Lưu thành tích (localStorage) ----------
 interface Stats { played: number; wins: number; crewWins: number; impWins: number; streak: number; bestStreak: number; fastestWin: number | null }
+/** Pha màu phòng ban với trắng để làm nền avatar nhỏ (nhân vật vẫn nổi rõ) */
+function tint(hex: string, amount = 0.38): string {
+  const n = parseInt(hex.slice(1), 16);
+  const mix = (c: number) => Math.round(c * amount + 255 * (1 - amount));
+  return `rgb(${mix(n >> 16)}, ${mix((n >> 8) & 255)}, ${mix(n & 255)})`;
+}
+const deptBg = (d: DeptId) => tint(dept(d).color);
+const EMOJIS = ['👍', '👎', '❓', '😂', '😡', '🤔'];
+
 const STATS_KEY = 'noi-gian-van-phong:stats';
+const CHAT_COOLDOWN = 2000;
 const PREFS_KEY = 'noi-gian-van-phong:prefs';
 function loadStats(): Stats {
   const base: Stats = { played: 0, wins: 0, crewWins: 0, impWins: 0, streak: 0, bestStreak: 0, fastestWin: null };
@@ -19,10 +30,17 @@ function loadStats(): Stats {
   return base;
 }
 function saveStats(s: Stats) { try { localStorage.setItem(STATS_KEY, JSON.stringify(s)); } catch { /* bỏ qua */ } }
-interface Prefs { name: string; dept: DeptId; role: 'random' | 'crew' | 'impostor'; bots: number; imps: number; muted: boolean }
+interface Prefs { name: string; dept: DeptId; bots: number; imps: number; muted: boolean; anonVotes: boolean }
 function loadPrefs(): Prefs {
-  const base: Prefs = { name: '', dept: 'it', role: 'random', bots: 7, imps: 1, muted: false };
-  try { const raw = localStorage.getItem(PREFS_KEY); if (raw) return { ...base, ...JSON.parse(raw) }; } catch { /* bỏ qua */ }
+  const base: Prefs = { name: '', dept: 'gd', bots: 7, imps: 1, muted: false, anonVotes: false };
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    if (raw) {
+      const p = { ...base, ...JSON.parse(raw) };
+      if (!DEPTS.some(d => d.id === p.dept)) p.dept = base.dept; // phòng ban cũ không còn
+      return p;
+    }
+  } catch { /* bỏ qua */ }
   return base;
 }
 function savePrefs(p: Prefs) { try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /* bỏ qua */ } }
@@ -45,6 +63,9 @@ export class UI {
   private meetChatCount = 0;
   private selectedVote: number | 'skip' | null = null;
   private resultShown = false;
+  private voteOpened = false;
+  private cutsceneActive = false;
+  private reactCount = 0;
   private fakeT = 0;
   private toastTimer = 0;
   private mapOpen = false;
@@ -77,8 +98,12 @@ export class UI {
         </header>
         <div class="portal-grid">
           <section class="card form">
-            <label class="field"><span>Họ tên hiển thị trên thẻ</span>
-              <input id="f-name" maxlength="12" autocomplete="off" placeholder="Ví dụ: Minh" value="${esc(p.name)}"></label>
+            <div class="field"><label for="f-name">Họ tên hiển thị trên thẻ</label>
+              <div class="name-row">
+                <input id="f-name" maxlength="12" autocomplete="off" placeholder="Nhập tên hoặc bấm xí ngầu" value="${esc(p.name)}">
+                <button class="dice" id="f-dice" type="button" aria-label="Chọn tên ngẫu nhiên" title="Chọn tên ngẫu nhiên">🎲</button>
+              </div>
+              <p class="name-err" id="name-err" hidden>Cần có tên trước khi vào ca.</p></div>
             <div class="field"><span>Phòng ban</span>
               <div class="dept-grid" role="radiogroup" aria-label="Chọn phòng ban">
                 ${DEPTS.map(d => `<button class="dept${d.id === p.dept ? ' on' : ''}" data-d="${d.id}" role="radio" aria-checked="${d.id === p.dept}" style="--dc:${d.color}">
@@ -88,14 +113,13 @@ export class UI {
             </div>
           </section>
           <section class="card settings">
-            <div class="field"><span>Vai của bạn</span>
-              <div class="seg" id="f-role">
-                <button data-v="random">Ngẫu nhiên</button><button data-v="crew">Nhân viên</button><button data-v="impostor">Nội gián</button>
-              </div></div>
+            <p class="role-note">Vai trò (Nhân viên hay Nội gián) do hệ thống bốc ngẫu nhiên khi vào ca. Không ai được chọn, kể cả bạn.</p>
             <div class="field"><span>Số đồng nghiệp (bot): <b id="bots-v">${p.bots}</b></span>
               <input type="range" id="f-bots" min="4" max="9" value="${p.bots}"></div>
             <div class="field"><span>Số Nội gián</span>
               <div class="seg" id="f-imps"><button data-v="1">1</button><button data-v="2">2</button></div></div>
+            <div class="field"><span>Hiển thị phiếu bầu</span>
+              <div class="seg" id="f-anon"><button data-v="0">Công khai ai vote ai</button><button data-v="1">Ẩn danh</button></div></div>
             <button class="primary big" id="start">Chấm công vào ca</button>
             <div class="stats">
               <div><b>${s.played}</b><span>ván đã chơi</span></div>
@@ -109,7 +133,7 @@ export class UI {
             <h3>Cách chơi</h3>
             <p><b>Nhân viên</b> chạy KPI: tới các dấu <span class="bang">!</span> để làm việc. Thấy ghế trống của đồng nghiệp thì báo cáo, rồi họp và vote sa thải kẻ đáng ngờ.</p>
             <p><b>Nội gián</b> gài bẫy cho đồng nghiệp bị đuổi việc, trốn dưới gầm bàn hay trong thang máy VIP, và gây sự cố: rớt mạng, cúp điện, sếp đi tuần.</p>
-            <p class="keys">Di chuyển: WASD hoặc phím mũi tên. E làm việc, R báo cáo, Q gài bẫy, F phá hoại, Space trốn, M sơ đồ. Trên điện thoại có cần điều khiển ảo.</p>
+            <p class="keys">Vai trò được bốc ngẫu nhiên mỗi ván. Di chuyển: WASD hoặc phím mũi tên. E làm việc, R báo cáo, Q gài bẫy, F phá hoại, Space trốn, Tab mở sơ đồ. Trên điện thoại có cần điều khiển ảo.</p>
           </section>
         </div>
       </div>`;
@@ -120,8 +144,8 @@ export class UI {
       set(val);
       box.querySelectorAll<HTMLButtonElement>('button').forEach(b => b.onclick = () => { set(b.dataset.v!); cb(b.dataset.v!); });
     };
-    seg('f-role', p.role, v => p.role = v as Prefs['role']);
     seg('f-imps', String(p.imps), v => p.imps = Number(v));
+    seg('f-anon', p.anonVotes ? '1' : '0', v => p.anonVotes = v === '1');
     el.querySelectorAll<HTMLButtonElement>('.dept').forEach(b => b.onclick = () => {
       p.dept = b.dataset.d as DeptId;
       el.querySelectorAll('.dept').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-checked', String(x === b)); });
@@ -129,9 +153,28 @@ export class UI {
     });
     const range = $('#f-bots', el) as HTMLInputElement;
     range.oninput = () => { p.bots = Number(range.value); $('#bots-v', el).textContent = range.value; };
-    $('#start', el).onclick = () => {
+    const nameIn = $('#f-name', el) as HTMLInputElement;
+    const startBtn = $('#start', el) as HTMLButtonElement;
+    const syncName = () => {
+      const ok = nameIn.value.trim().length > 0;
+      startBtn.disabled = !ok;
+      if (ok) $('#name-err', el).hidden = true;
+    };
+    nameIn.oninput = syncName;
+    syncName();
+    $('#f-dice', el).onclick = () => {
+      sfx.unlock(); sfx.click();
+      const pool = PLAYER_NAMES.filter(n => n !== nameIn.value.trim());
+      nameIn.value = pool[Math.floor(Math.random() * pool.length)];
+      const d = $('#f-dice', el); d.classList.remove('roll'); void d.offsetWidth; d.classList.add('roll');
+      syncName();
+    };
+    nameIn.onkeydown = (e) => { if (e.key === 'Enter') startBtn.click(); };
+    startBtn.onclick = () => {
+      const name = nameIn.value.trim().slice(0, 12);
+      if (!name) { $('#name-err', el).hidden = false; nameIn.focus(); return; }
       sfx.unlock();
-      p.name = ($('#f-name', el) as HTMLInputElement).value.trim().slice(0, 12) || 'Minh';
+      p.name = name;
       savePrefs(p);
       this.startGame();
     };
@@ -141,7 +184,7 @@ export class UI {
     const p = this.prefs;
     this.root.innerHTML = '';
     closeMini();
-    const w = new World({ playerName: p.name, playerDept: p.dept, playerRole: p.role, bots: p.bots, impostors: p.imps });
+    const w = new World({ playerName: p.name, playerDept: p.dept, playerRole: 'random', bots: p.bots, impostors: p.imps });
     session.world = w;
     session.newGameId++;
     session.paused = true;
@@ -161,11 +204,11 @@ export class UI {
         <ul class="task-list"></ul>
       </div>
       <div class="top-right">
-        <button class="icon-btn" id="b-map" aria-label="Sơ đồ (M)">🗺️</button>
         <button class="icon-btn" id="b-email" aria-label="Gửi email khẩn CC All">📧</button>
         <button class="icon-btn" id="b-mute" aria-label="Bật/tắt âm thanh">${this.prefs.muted ? '🔇' : '🔊'}</button>
         <button class="icon-btn" id="b-quit" aria-label="Về sảnh">🚪</button>
       </div>
+      <button class="map-btn" id="b-map" aria-label="Mở sơ đồ (phím Tab)"><span class="ic">🗺️</span><span>Sơ đồ</span><kbd>Tab</kbd></button>
       <div class="sab-banner" hidden></div>
       <div class="room-name"></div>
       <div class="toast" hidden></div>
@@ -177,13 +220,13 @@ export class UI {
         <button class="act" id="a-use"><span class="ic">💼</span><span class="lb">Làm việc</span><kbd>E</kbd></button>
       </div>
       <div class="hide-ctrl" hidden>
-        <button class="act" id="h-prev">◀</button>
         <div class="hide-name"></div>
-        <button class="act" id="h-next">▶</button>
+        <button class="act" id="h-next">Chuồn sang</button>
         <button class="act" id="h-exit">Ra ngoài</button>
       </div>
       <div class="joy" aria-hidden="true"><div class="joy-knob"></div></div>
       <div class="sab-menu" hidden></div>
+      <div class="cam-wrap" hidden><div class="cams card-lite"><div class="mm-head"><b>Camera an ninh</b><button class="x" id="cam-close" aria-label="Đóng">✕</button></div><div class="cam-grid">${CAMERAS.map((c, i) => `<figure><canvas data-i="${i}" width="320" height="200"></canvas><figcaption>${c.name}</figcaption></figure>`).join('')}</div><div class="roster"></div></div></div>
       <div class="minimap-wrap" hidden><div class="minimap card-lite"><div class="mm-head"><b>Sơ đồ tầng 7</b><button class="x" id="mm-close" aria-label="Đóng">✕</button></div><canvas width="460" height="320"></canvas><p class="mm-note"></p></div></div>
       <div class="fake-work" hidden><div>Đang giả vờ làm việc…</div><div class="bar"><i></i></div></div>`;
     this.root.appendChild(hud);
@@ -191,6 +234,7 @@ export class UI {
     this.lastHud = '';
     $('#b-map', hud).onclick = () => this.toggleMap();
     $('#mm-close', hud).onclick = () => this.toggleMap(false);
+    $('#cam-close', hud).onclick = () => this.toggleCams(false);
     $('#b-email', hud).onclick = () => this.email();
     $('#b-mute', hud).onclick = () => {
       this.prefs.muted = !this.prefs.muted; savePrefs(this.prefs); sfx.setMuted(this.prefs.muted);
@@ -202,8 +246,7 @@ export class UI {
     $('#a-kill', hud).onclick = () => this.doKill();
     $('#a-sab', hud).onclick = () => this.toggleSabMenu();
     $('#a-hide', hud).onclick = () => this.doHide();
-    $('#h-prev', hud).onclick = () => { const w = session.world!; w.hideMove(w.player, -1); sfx.whoosh(); };
-    $('#h-next', hud).onclick = () => { const w = session.world!; w.hideMove(w.player, 1); sfx.whoosh(); };
+    $('#h-next', hud).onclick = () => { const w = session.world!; w.hideMove(w.player); sfx.whoosh(); };
     $('#h-exit', hud).onclick = () => { const w = session.world!; w.hide(w.player, null); sfx.whoosh(); };
     this.bindJoystick($('.joy', hud));
   }
@@ -219,9 +262,9 @@ export class UI {
         <p class="reveal-kicker">Quyết định phân công</p>
         <h1>${imp ? 'Bạn là Nội gián' : 'Bạn là Nhân viên'}</h1>
         <p>${imp
-          ? `Gài bẫy cho đồng nghiệp bị đuổi việc mà không ai thấy. Thắng khi số Nội gián bằng số Nhân viên.${mates.length ? ` Đồng bọn: <b>${mates.map(m => esc(m.name)).join(', ')}</b>.` : ''}`
+          ? `Gài bẫy cho đồng nghiệp bị đuổi việc mà không ai thấy. Thắng khi số Nội gián bằng số Nhân viên.${mates.length ? ' Đồng bọn của bạn ở dưới, đừng gài bẫy nhau.' : ' Ván này bạn hành động một mình.'}`
           : `Chạy đủ KPI hoặc tìm ra ${w.aliveImp().length} Nội gián trong số ${w.agents.length - 1} đồng nghiệp.`}</p>
-        <div class="reveal-team">${w.agents.map(a => `<figure class="${imp && a.role === 'impostor' ? 'mate' : ''}"><img src="${avatarURL(a.dept)}" alt=""><figcaption style="--dc:${dept(a.dept).color}">${esc(a.name)}</figcaption></figure>`).join('')}</div>
+        <div class="reveal-team">${(imp ? w.agents.filter(a => a.role === 'impostor') : w.agents).map(a => `<figure class="${imp ? 'mate' : ''}"><img src="${avatarURL(a.dept)}" alt=""><figcaption style="--dc:${dept(a.dept).color}">${esc(a.name)}${a.isPlayer ? ' (bạn)' : ''}</figcaption></figure>`).join('')}</div>
         <button class="primary big" id="go">Bắt đầu ca làm việc</button>
       </div>`;
     this.root.appendChild(el);
@@ -248,14 +291,18 @@ export class UI {
       openMiniDesk(this.root, () => w.bossCheckIn(p));
       return;
     }
+    if (ctx.use.kind === 'camera') { this.toggleCams(true); return; }
     if (ctx.use.kind === 'fix') {
-      openMini(this.root, ctx.use.station!.kind as MiniKind, () => { if (w.sabotage && w.sabotage.kind !== 'boss') w.fixSabotage(p); });
+      openMini(this.root, ctx.use.station!.id as MiniKind, () => { if (w.sabotage && w.sabotage.kind !== 'boss') w.fixSabotage(p); });
       return;
     }
     if (ctx.use.kind === 'task') {
       const st = ctx.use.station!;
       if (p.role === 'impostor') { this.fakeT = 3; return; }
-      openMini(this.root, st.kind as MiniKind, () => w.completeTask(p, st.id));
+      openMini(this.root, st.id as MiniKind, () => w.completeTask(p, st.id), {
+        // Chấm công vân tay: ai đứng gần cũng thấy đèn quét
+        onHold: st.id === 'fingerprint' ? (on) => { p.scanning = on && p.alive; } : undefined,
+      });
     }
   }
   private doReport() {
@@ -298,6 +345,54 @@ export class UI {
       this.toggleSabMenu(false);
     });
   }
+  private camsOpen = false;
+  private toggleCams(force?: boolean) {
+    this.camsOpen = force ?? !this.camsOpen;
+    $('.cam-wrap', this.hudEl).hidden = !this.camsOpen;
+  }
+
+  private drawCams() {
+    const w = session.world!;
+    const wifiDown = w.sabotage?.kind === 'wifi';
+    const mapImg = session.mapImage;
+    this.hudEl.querySelectorAll<HTMLCanvasElement>('.cam-grid canvas').forEach(cv => {
+      const c = CAMERAS[Number(cv.dataset.i)];
+      const ctx = cv.getContext('2d')!;
+      const sx = c.x * TILE, sy = c.y * TILE, sw = c.w * TILE, sh = c.h * TILE;
+      const k = Math.min(cv.width / sw, cv.height / sh);
+      const ox = (cv.width - sw * k) / 2, oy = (cv.height - sh * k) / 2;
+      ctx.fillStyle = '#111'; ctx.fillRect(0, 0, cv.width, cv.height);
+      if (wifiDown) {
+        for (let i = 0; i < 500; i++) { ctx.fillStyle = Math.random() < 0.5 ? '#ddd' : '#333'; ctx.fillRect(Math.random() * cv.width, Math.random() * cv.height, 3, 3); }
+        ctx.fillStyle = '#fff'; ctx.font = '700 16px "Be Vietnam Pro", sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText('Mất tín hiệu', cv.width / 2, cv.height / 2);
+        return;
+      }
+      if (mapImg) ctx.drawImage(mapImg, sx, sy, sw, sh, ox, oy, sw * k, sh * k);
+      const sorted = [...w.agents].filter(a => a.alive && a.hidden === null && a.x >= sx && a.x < sx + sw && a.y >= sy && a.y < sy + sh).sort((p, q) => p.y - q.y);
+      for (const a of sorted) {
+        const img = avatarImage(a.dept);
+        const h = 88 * 0.78 * k * 1.15, wd = 72 * 0.78 * k * 1.15;
+        ctx.drawImage(img, ox + (a.x - sx) * k - wd / 2, oy + (a.y - sy) * k - h * 0.95, wd, h);
+      }
+      for (const b of w.bodies) {
+        if (b.x < sx || b.x >= sx + sw || b.y < sy || b.y >= sy + sh) continue;
+        ctx.fillStyle = '#e8443a'; ctx.beginPath(); ctx.arc(ox + (b.x - sx) * k, oy + (b.y - sy) * k, 5, 0, Math.PI * 2); ctx.fill();
+      }
+      if (Math.floor(performance.now() / 600) % 2) { ctx.fillStyle = '#e8443a'; ctx.beginPath(); ctx.arc(14, 14, 5, 0, Math.PI * 2); ctx.fill(); }
+    });
+    // Sổ ra vào: đếm người theo phòng, không ghi tên
+    const roster = $('.roster', this.hudEl);
+    if (wifiDown) { roster.textContent = 'Sổ ra vào: mất kết nối'; return; }
+    const counts = new Map<string, number>();
+    for (const a of w.agents) {
+      if (!a.alive || a.hidden !== null) continue;
+      const r = roomName(roomAt(a.x, a.y));
+      counts.set(r, (counts.get(r) ?? 0) + 1);
+    }
+    roster.innerHTML = '<b>Sổ ra vào</b> ' + ROOMS.filter(r => r.label).map(r => `<span>${r.name}: ${counts.get(r.name) ?? 0}</span>`).join('');
+  }
+
   private toggleMap(force?: boolean) {
     this.mapOpen = force ?? !this.mapOpen;
     $('.minimap-wrap', this.hudEl).hidden = !this.mapOpen;
@@ -316,9 +411,9 @@ export class UI {
           break;
         }
         case 'meeting':
-          closeMini(); this.toggleSabMenu(false); this.toggleMap(false);
+          closeMini(); this.toggleSabMenu(false); this.toggleMap(false); this.toggleCams(false);
           sfx.stopBossSteps(); sfx.tingBurst();
-          this.showMeeting();
+          this.showMeetingSplash();
           break;
         case 'sabotage':
           sfx.alarm();
@@ -339,13 +434,37 @@ export class UI {
           break;
         case 'gameover':
           sfx.stopBossSteps();
-          if (!this.meetEl) this.showGameOver();
+          // Nếu đang chiếu cảnh bị gài bẫy thì chờ cảnh đó xong mới hiện kết quả
+          if (!this.meetEl && !this.cutsceneActive) setTimeout(() => this.showGameOver(), 1000);
           break;
       }
     }
   }
 
   private showFired(killer: Agent) {
+    const p = session.world!.player;
+    // Đoạn cắt cảnh ngắn: hồ sơ lỗi bay vào mặt, giấy tung tóe, đóng dấu, tối sầm
+    const cut = document.createElement('div');
+    cut.className = 'overlay killcut';
+    cut.innerHTML = `<div class="kc-stage">
+        <img class="kc-killer" src="${avatarURL(killer.dept)}" alt="">
+        <div class="kc-folder"></div>
+        <img class="kc-victim" src="${avatarURL(p.dept)}" alt="">
+        ${Array.from({ length: 8 }, (_, i) => `<i class="kc-paper" style="--a:${i * 45}deg;--d:${80 + (i % 3) * 30}px"></i>`).join('')}
+        <div class="kc-stamp">Đuổi việc</div>
+      </div>`;
+    this.root.appendChild(cut);
+    setTimeout(() => sfx.stamp(), 900);
+    this.cutsceneActive = true;
+    setTimeout(() => {
+      cut.remove();
+      this.cutsceneActive = false;
+      if (session.world?.phase === 'ended') this.showGameOver();
+      else this.showFiredCard(killer);
+    }, 2100);
+  }
+
+  private showFiredCard(killer: Agent) {
     const el = document.createElement('div');
     el.className = 'overlay fired';
     el.innerHTML = `<div class="fired-card"><div class="box">📦</div><h1>Bạn đã bị đuổi việc</h1>
@@ -358,29 +477,58 @@ export class UI {
   }
 
   // ================= PHÒNG HỌP =================
+  /** Màn chuyển cảnh trước khi vào họp (đồng hồ cuộc họp tạm dừng) */
+  private showMeetingSplash() {
+    const w = session.world!;
+    const m = w.meeting!;
+    const rep = w.agents[m.reporter];
+    session.paused = true;
+    const el = document.createElement('div');
+    el.className = 'overlay splash ' + m.via;
+    if (m.via === 'body') {
+      el.innerHTML = `<div class="sp-stage">
+          <h1 class="sp-title">Phát hiện ghế trống!</h1>
+          <div class="sp-scene"><img class="sp-rep point" src="${avatarURL(rep.dept)}" alt=""><img class="sp-chair" src="${chairURL()}" alt=""></div>
+          <p class="sp-sub">${esc(rep.name)} báo cáo ghế của ${esc(w.agents[m.victim!].name)} ở ${roomName(m.room)}</p>
+        </div>`;
+      setTimeout(() => sfx.stamp(), 500);
+    } else {
+      el.innerHTML = `<div class="sp-stage">
+          <h1 class="sp-title">${m.via === 'bell' ? 'Chuông họp khẩn!' : 'Email khẩn!'}</h1>
+          <div class="sp-scene"><img class="sp-rep" src="${avatarURL(rep.dept)}" alt="">
+            <div class="sp-mail"><div class="sp-mail-head"><b>KHẨN</b> · CC All</div><p><b>Từ:</b> ${esc(rep.name)} (${dept(rep.dept).name})</p><p><b>Tiêu đề:</b> Họp gấp ngay bây giờ!!!</p></div></div>
+          <p class="sp-sub">${esc(rep.name)} ${m.via === 'bell' ? 'bấm chuông triệu tập cả công ty' : 'gửi email khẩn tới toàn công ty'}</p>
+        </div>`;
+    }
+    this.root.appendChild(el);
+    setTimeout(() => { el.remove(); session.paused = false; this.showMeeting(); }, 2200);
+  }
+
   private showMeeting() {
     const w = session.world!;
     const m = w.meeting!;
     this.selectedVote = null;
     this.resultShown = false;
+    this.voteOpened = false;
     this.meetChatCount = 0;
     const rep = w.agents[m.reporter];
     const reason = m.victim !== null
       ? `${esc(rep.name)} phát hiện ghế của ${esc(w.agents[m.victim].name)} trống ở ${roomName(m.room)}`
-      : `${esc(rep.name)} gửi email khẩn CC All`;
+      : m.via === 'bell' ? `${esc(rep.name)} bấm chuông họp khẩn` : `${esc(rep.name)} gửi email khẩn CC All`;
     const el = document.createElement('div');
     el.className = 'overlay meet';
     el.innerHTML = `
       <div class="meet-win">
         <div class="meet-top">
           <div class="meet-title"><b>Họp khẩn</b><span>${reason}</span></div>
-          <div class="meet-timer"><span class="rec">●</span> <span id="m-time">--</span></div>
+          <div class="meet-timer"><span class="rec">●</span> <span id="m-phase">Thảo luận</span> <span id="m-time">--</span></div>
         </div>
         <div class="meet-main">
           <div class="tiles"></div>
           <aside class="chat">
             <div class="chat-head">Trò chuyện trong cuộc họp</div>
             <div class="chat-log" aria-live="polite"></div>
+            <div class="emoji-bar" role="group" aria-label="Thả cảm xúc">${EMOJIS.map(e => `<button type="button" class="emo" data-e="${e}" aria-label="Thả ${e}">${e}</button>`).join('')}</div>
             <form class="chat-form"><input id="m-input" maxlength="120" autocomplete="off" placeholder="${w.player.alive ? 'Nhắc tên ai đó để buộc tội hoặc bênh vực…' : 'Hồn ma nói không ai nghe…'}"><button class="primary" type="submit">Gửi</button></form>
           </aside>
         </div>
@@ -388,7 +536,8 @@ export class UI {
           <span class="fake-ctl" title="Mic bị IT khóa">🎙️ Tắt tiếng</span>
           <span class="fake-ctl" title="Camera bị IT khóa">📷 Tắt camera</span>
           <div class="vote-status" id="m-status"></div>
-          <button class="ghost-btn" id="m-skip">Bỏ qua, chưa đủ bằng chứng</button>
+          <button class="ghost-btn" id="m-ready">Sẵn sàng bỏ phiếu</button>
+          <button class="ghost-btn" id="m-skip" disabled>Bỏ qua, chưa đủ bằng chứng</button>
           <button class="primary danger" id="m-vote" disabled>Vote sa thải</button>
         </div>
       </div>`;
@@ -408,21 +557,48 @@ export class UI {
       tiles.appendChild(t);
     }
     $('#m-skip', el).onclick = () => this.castVote('skip');
+    $('#m-ready', el).onclick = () => { w.skipDiscussion(); sfx.click(); };
+    if (!w.player.alive) ($('#m-ready', el) as HTMLButtonElement).disabled = true;
     $('#m-vote', el).onclick = () => { if (this.selectedVote !== null) this.castVote(this.selectedVote); };
     if (!w.player.alive) { ($('#m-skip', el) as HTMLButtonElement).disabled = true; }
+    let chatReadyAt = 0;
+    this.reactCount = 0;
+    const sendBtn = $('.chat-form .primary', el) as HTMLButtonElement;
+    const startCooldown = () => {
+      // Chờ 2 giây giữa hai lần chat hoặc thả emoji
+      chatReadyAt = performance.now() + CHAT_COOLDOWN;
+      sendBtn.disabled = true;
+      el.querySelectorAll<HTMLButtonElement>('.emo').forEach(b => b.disabled = true);
+      let left = CHAT_COOLDOWN / 1000;
+      sendBtn.textContent = `${left}s`;
+      const id = window.setInterval(() => {
+        left--;
+        if (left <= 0 || !this.meetEl) {
+          clearInterval(id); sendBtn.disabled = false; sendBtn.textContent = 'Gửi';
+          el.querySelectorAll<HTMLButtonElement>('.emo').forEach(b => b.disabled = false);
+        } else sendBtn.textContent = `${left}s`;
+      }, 1000);
+    };
+    el.querySelectorAll<HTMLButtonElement>('.emo').forEach(b => b.onclick = () => {
+      if (performance.now() < chatReadyAt || w.meeting?.result) return;
+      w.react(w.player.id, b.dataset.e!);
+      startCooldown();
+    });
     ($('.chat-form', el) as HTMLFormElement).onsubmit = (e) => {
       e.preventDefault();
       const inp = $('#m-input', el) as HTMLInputElement;
       const v = inp.value.trim();
-      if (!v) return;
+      if (!v || performance.now() < chatReadyAt) return;
       w.playerChat(v);
       inp.value = '';
+      startCooldown();
     };
   }
 
   private pickVote(id: number) {
     const w = session.world!;
     if (!w.meeting || w.meeting.votes.has(w.player.id) || w.meeting.result) return;
+    if (w.meeting.t < w.meeting.discussEnd) { this.flashStatus('Đang thảo luận, chưa mở bỏ phiếu.'); return; }
     this.selectedVote = id;
     this.meetEl!.querySelectorAll('.tile').forEach(t => t.classList.toggle('sel', (t as HTMLElement).dataset.id === String(id)));
     const btn = $('#m-vote', this.meetEl!) as HTMLButtonElement;
@@ -430,9 +606,15 @@ export class UI {
     btn.textContent = `Vote sa thải ${w.agents[id].name}`;
   }
 
+  private flashStatus(msg: string) {
+    const st = $('#m-status', this.meetEl!);
+    st.textContent = msg; st.classList.add('warn');
+    setTimeout(() => st.classList.remove('warn'), 1200);
+  }
+
   private castVote(v: number | 'skip') {
     const w = session.world!;
-    if (!w.meeting || w.meeting.result) return;
+    if (!w.meeting || w.meeting.result || w.meeting.t < w.meeting.discussEnd) return;
     w.vote(w.player, v);
     sfx.click();
     ($('#m-vote', this.meetEl!) as HTMLButtonElement).disabled = true;
@@ -447,29 +629,53 @@ export class UI {
     const m = w.meeting;
     const el = this.meetEl!;
     if (!m) return;
-    $('#m-time', el).textContent = m.result ? 'Kết quả' : `${Math.max(0, Math.ceil(m.duration - m.t))}s`;
+    const discussing = m.t < m.discussEnd;
+    $('#m-phase', el).textContent = m.result ? 'Kết quả' : discussing ? 'Thảo luận' : 'Bỏ phiếu';
+    $('#m-time', el).textContent = m.result ? '' : `${Math.max(0, Math.ceil((discussing ? m.discussEnd : m.duration) - m.t))}s`;
+    el.classList.toggle('voting', !discussing && !m.result);
+    const ready = $('#m-ready', el) as HTMLButtonElement;
+    ready.hidden = !discussing;
+    const canVote = !discussing && !m.result && w.player.alive && !m.votes.has(w.player.id);
+    ($('#m-skip', el) as HTMLButtonElement).disabled = !canVote;
+    if (!discussing && !this.voteOpened) { this.voteOpened = true; sfx.ting(); }
     const log = $('.chat-log', el);
     while (this.meetChatCount < m.chat.length) {
       const c = m.chat[this.meetChatCount++];
       const a = w.agents[c.from];
       const row = document.createElement('div');
       row.className = 'msg' + (a.isPlayer ? ' me' : '') + (!a.alive ? ' ghost' : '');
-      row.innerHTML = `<img src="${avatarURL(a.dept)}" alt=""><div><b style="color:${dept(a.dept).color}">${esc(a.name)}</b><p>${esc(c.text)}</p></div>`;
+      row.innerHTML = `<img src="${avatarURL(a.dept)}" alt="" style="background:${deptBg(a.dept)}"><div><b style="color:${dept(a.dept).color}">${esc(a.name)}</b><p>${esc(c.text)}</p></div>`;
       log.appendChild(row);
       log.scrollTop = log.scrollHeight;
       if (!a.isPlayer) sfx.ting();
+    }
+    while (this.reactCount < m.reactions.length) {
+      const r = m.reactions[this.reactCount++];
+      const tile = el.querySelector(`.tile[data-id="${r.from}"]`);
+      if (!tile) continue;
+      const f = document.createElement('span');
+      f.className = 'react-float';
+      f.textContent = r.emoji;
+      f.style.left = `${30 + Math.random() * 40}%`;
+      tile.appendChild(f);
+      setTimeout(() => f.remove(), 2600);
+      sfx.click();
     }
     for (const [voter] of m.votes) {
       const t = el.querySelector(`.tile[data-id="${voter}"] .voted`) as HTMLElement | null;
       if (t) t.hidden = false;
     }
     const aliveN = w.agents.filter(a => a.alive).length;
-    $('#m-status', el).textContent = `${m.votes.size}/${aliveN} người đã vote`;
+    if (!m.result && !$('#m-status', el).classList.contains('warn')) {
+      $('#m-status', el).textContent = discussing ? 'Bỏ phiếu mở sau khi thảo luận' : `${m.votes.size}/${aliveN} người đã vote`;
+    }
     if (m.result && !this.resultShown) {
       this.resultShown = true;
       for (const [target, voters] of m.result.tally) {
         const holder = target === 'skip' ? null : el.querySelector(`.tile[data-id="${target}"] .voters`);
-        const html = voters.map(v => `<img src="${avatarURL(w.agents[v].dept)}" title="${esc(w.agents[v].name)}" alt="">`).join('');
+        const html = this.prefs.anonVotes
+          ? voters.map(() => '<span class="anon-vote" title="Phiếu ẩn danh"></span>').join('')
+          : voters.map(v => `<img src="${avatarURL(w.agents[v].dept)}" title="${esc(w.agents[v].name)}" alt="" style="background:${deptBg(w.agents[v].dept)}">`).join('');
         if (holder) holder.innerHTML = html;
         else $('#m-status', el).innerHTML = `Bỏ qua: <span class="skipvoters">${html || '0'}</span>`;
       }
@@ -552,7 +758,7 @@ export class UI {
     if (this.keys.has('w') || this.keys.has('arrowup')) y -= 1;
     if (this.keys.has('s') || this.keys.has('arrowdown')) y += 1;
     if (this.joy.active) { x = this.joy.x; y = this.joy.y; }
-    if (miniOpen() || this.fakeT > 0) { x = 0; y = 0; }
+    if (miniOpen() || this.fakeT > 0 || this.camsOpen) { x = 0; y = 0; }
     session.input = { x, y };
 
     const w = session.world;
@@ -589,30 +795,38 @@ export class UI {
     hideB.disabled = ctx.hide === null && p.hidden === null;
     const hc = $('.hide-ctrl', this.hudEl);
     hc.hidden = p.hidden === null;
-    if (p.hidden !== null) $('.hide-name', hc).textContent = `Đang trốn: ${HIDE_SPOTS[p.hidden].name}`;
+    if (p.hidden !== null) {
+      $('.hide-name', hc).textContent = `Đang trốn: ${HIDE_SPOTS[p.hidden].name}`;
+      $('#h-next', hc).textContent = `Chuồn sang ${HIDE_SPOTS[HIDE_SPOTS[p.hidden].pair].name}`;
+    }
     $('.actions', this.hudEl).classList.toggle('hidden-mode', p.hidden !== null);
     ($('#b-email', this.hudEl) as HTMLButtonElement).disabled = !p.alive || p.emergencyLeft <= 0;
 
     // Bảng nhiệm vụ: chỉ cập nhật khi đổi
     const k = w.crewTasksDone();
     const sabKey = w.sabotage ? `${w.sabotage.kind}:${Math.ceil(w.sabotage.t)}:${w.aliveCrew().filter(c => c.bossDone).length}` : '';
-    const key = `${k.done}/${k.total}|${p.tasks.map(t => t.done ? 1 : 0).join('')}|${p.alive}|${sabKey}|${p.bossDone}`;
+    const key = `${k.done}/${k.total}|${p.tasks.map(t => t.done ? 'x' : t.step).join('')}|${p.alive}|${sabKey}|${p.bossDone}`;
     if (key !== this.lastHud) {
       this.lastHud = key;
       ($('.kpi-bar i', this.hudEl)).style.width = `${(k.done / Math.max(1, k.total)) * 100}%`;
       const list = $('.task-list', this.hudEl);
       const items: string[] = [];
+      const wifiDown = w.sabotage?.kind === 'wifi';
       if (isImp) items.push(`<li class="imp-note">Gài bẫy đồng nghiệp. Việc dưới đây chỉ để giả vờ.</li>`);
       else if (!p.alive) items.push(`<li class="imp-note">Hồn ma OT: làm nốt việc để cứu KPI.</li>`);
       if (w.sabotage) {
         const s = w.sabotage;
         const txt = s.kind === 'boss' ? `Về bàn gõ phím! (${Math.ceil(s.t)}s) ${p.bossDone || isImp ? '✓' : ''}`
-          : s.kind === 'wifi' ? 'Khởi động lại Router (Phòng Server)' : 'Bật lại cầu dao (Hành lang dưới)';
+          : s.kind === 'wifi' ? 'Khởi động lại router (Phòng Server)' : 'Bật lại cầu dao (Kho điện)';
         items.push(`<li class="sab">${SAB_INFO[s.kind].icon} ${txt}</li>`);
       }
-      for (const t of p.tasks) {
-        const st = TASK_STATIONS.find(s => s.id === t.stationId)!;
-        items.push(`<li class="${t.done ? 'done' : ''}">${roomName(st.room)}: ${st.name}</li>`);
+      if (wifiDown) items.push('<li class="imp-note">Mất kết nối Jira… không tải được danh sách việc.</li>');
+      else for (const t of p.tasks) {
+        const def = taskDef(t.taskId);
+        const st = station(t.done ? def.steps[def.steps.length - 1] : slotStation(t));
+        const steps = def.steps.length > 1 ? ` (${t.done ? def.steps.length : t.step}/${def.steps.length})` : '';
+        const label = def.steps.length > 1 && !t.done ? `${def.name}${steps}: ${st.name.toLowerCase()}` : def.name + steps;
+        items.push(`<li class="${t.done ? 'done' : ''}${def.type === 'common' ? ' common' : ''}">${roomName(st.room)}: ${label}</li>`);
       }
       list.innerHTML = items.join('');
     }
@@ -628,6 +842,7 @@ export class UI {
     } else ban.hidden = true;
     $('.room-name', this.hudEl).textContent = roomName(roomAt(p.x, p.y));
     if (this.mapOpen) this.drawMinimap();
+    if (this.camsOpen) this.drawCams();
   }
 
   private drawMinimap() {
@@ -645,33 +860,23 @@ export class UI {
     ctx.fillStyle = '#1d1a2b'; ctx.font = '700 11px "Be Vietnam Pro", sans-serif'; ctx.textAlign = 'center';
     for (const r of ROOMS) if (r.label) ctx.fillText(r.name, (r.x + r.w / 2) * TILE * sx, (r.y + r.h / 2) * TILE * sy);
     const p = w.player;
-    for (const t of p.tasks) if (!t.done) {
-      const st = TASK_STATIONS.find(s => s.id === t.stationId)!;
+    const wifiDown = w.sabotage?.kind === 'wifi';
+    if (!wifiDown) for (const t of p.tasks) if (!t.done) {
+      const st = station(slotStation(t));
       ctx.fillStyle = '#f2b705'; ctx.beginPath(); ctx.arc((st.stand.x + 0.5) * TILE * sx, (st.stand.y + 0.5) * TILE * sy, 5, 0, Math.PI * 2); ctx.fill();
     }
     if (w.sabotage && w.sabotage.kind !== 'boss') {
-      const st = FIX_STATIONS.find(s => s.id === (w.sabotage!.kind === 'wifi' ? 'router' : 'power'))!;
+      const st = station(w.sabotage!.kind === 'wifi' ? 'router' : 'power');
       ctx.fillStyle = '#e8443a'; ctx.beginPath(); ctx.arc((st.stand.x + 0.5) * TILE * sx, (st.stand.y + 0.5) * TILE * sy, 7, 0, Math.PI * 2); ctx.fill();
     }
     const desk = DESKS[p.desk];
     ctx.strokeStyle = '#1f6feb'; ctx.lineWidth = 2; ctx.strokeRect(desk.x * TILE * sx, desk.y * TILE * sy, 2 * TILE * sx, TILE * sy);
-    const note = $('.mm-note', this.hudEl);
-    const wifiDown = w.sabotage?.kind === 'wifi';
-    if (wifiDown) {
-      for (let i = 0; i < 400; i++) { ctx.fillStyle = Math.random() < 0.5 ? '#fff' : '#000'; ctx.globalAlpha = 0.5; ctx.fillRect(Math.random() * cv.width, Math.random() * cv.height, 3, 3); }
-      ctx.globalAlpha = 1;
-      note.textContent = 'Camera an ninh: mất kết nối';
-    } else {
-      // Camera an ninh chỉ phủ Open Space
-      let n = 0;
-      for (const a of w.agents) {
-        if (!a.alive || a.isPlayer || a.hidden !== null || roomAt(a.x, a.y) !== 'open') continue;
-        n++;
-        ctx.fillStyle = dept(a.dept).color; ctx.strokeStyle = '#1d1a2b'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(a.x * sx, a.y * sy, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      }
-      note.textContent = `Camera an ninh Open Space: ${n} người. Ô vàng là việc của bạn, khung xanh là bàn của bạn.`;
-    }
+    const cam = station('camera');
+    ctx.strokeStyle = '#1d1a2b'; ctx.lineWidth = 2; ctx.fillStyle = '#9aa1c4';
+    ctx.fillRect((cam.stand.x - 0.3) * TILE * sx, (cam.stand.y - 0.3) * TILE * sy, 10, 10);
+    $('.mm-note', this.hudEl).textContent = wifiDown
+      ? 'Mất kết nối: danh sách việc tạm thời không hiển thị.'
+      : 'Chấm vàng là việc của bạn, khung xanh là bàn của bạn, ô xám là camera ở Phòng bảo vệ.';
     ctx.fillStyle = '#fff'; ctx.strokeStyle = '#e8443a'; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.arc(p.x * sx, p.y * sy, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   }
@@ -683,16 +888,16 @@ export class UI {
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       const k = e.key.toLowerCase();
       this.keys.add(k);
-      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
+      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'tab'].includes(k)) e.preventDefault();
       if (!session.world || session.paused) return;
-      if (k === 'escape') { closeMini(); this.toggleSabMenu(false); this.toggleMap(false); }
+      if (k === 'escape') { closeMini(); this.toggleSabMenu(false); this.toggleMap(false); this.toggleCams(false); }
       if (this.meetEl || miniOpen()) return;
       if (k === 'e') this.doUse();
       else if (k === 'r') this.doReport();
       else if (k === 'q') this.doKill();
       else if (k === 'f' && session.world.player.role === 'impostor') this.toggleSabMenu();
       else if (k === ' ') this.doHide();
-      else if (k === 'm') this.toggleMap();
+      else if (k === 'tab' || k === 'm') this.toggleMap();
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
     window.addEventListener('blur', () => this.keys.clear());
