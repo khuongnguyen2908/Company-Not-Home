@@ -1,4 +1,4 @@
-import { MAP_W, MAP_H, TILE, isFloor, tileCenter } from './map';
+import { MAP_W, MAP_H, TILE, isFloor, tileCenter, PORTAL_AT } from './map';
 
 export interface Pt { x: number; y: number }
 
@@ -40,6 +40,13 @@ export function findPath(fromPx: Pt, toTile: Pt): Pt[] | null {
     const cur = queue[qh++];
     if (cur === goal) break;
     const cx = cur % MAP_W, cy = (cur / MAP_W) | 0;
+    // Cổng thang bộ: từ ô cuối làn cầu thang sang tầng kia
+    const portal = PORTAL_AT.get(cur);
+    if (portal) {
+      const ni = portal.to.y * MAP_W + portal.to.x;
+      if (seen[ni] !== stamp) { seen[ni] = stamp; prev[ni] = cur; queue[qt++] = ni; }
+      continue; // đã bước vào cổng thì chỉ có thể sang tầng kia
+    }
     for (const [dx, dy] of DIRS) {
       const nx = cx + dx, ny = cy + dy;
       if (!isFloor(nx, ny)) continue;

@@ -4,9 +4,18 @@ import { sfx } from '../audio';
 import type { MiniKind } from '../game/map';
 export type { MiniKind };
 
-const TITLES: Record<MiniKind, { title: string; hint: string }> = {
+const MT_HINT = 'Siết chặt cả 4 con ốc: mỗi con bấm 3 lần cho tới khi chuyển xanh.';
+export const TITLES: Record<MiniKind, { title: string; hint: string }> = {
+  darts: { title: '🎯 Ném phi tiêu xả stress', hint: 'Tâm ngắm đung đưa liên tục. Bấm "Ném" đúng lúc tâm nằm trong vòng đỏ ở giữa. Cần 3 phi tiêu trúng.' },
+  claw: { title: '🧸 Gắp thú bông tặng sếp', hint: 'Cần gắp chạy qua lại. Bấm "Thả" khi cần gắp nằm ngay trên con gấu vàng.' },
+  fishfeed: { title: '🐠 Cho cá ăn', hint: 'Bấm vào từng con cá để rắc thức ăn, mỗi con ăn đúng 3 hạt. Rắc quá tay là nước đục, phải làm lại.' },
+  mt_lift: { title: '🔧 Bảo trì nóc thang máy', hint: MT_HINT },
+  mt_cab: { title: '🔧 Sửa khóa tủ hồ sơ', hint: MT_HINT },
+  mt_desk: { title: '🔧 Gia cố gầm bàn dài', hint: MT_HINT },
+  mt_floor: { title: '🔧 Thay tấm sàn kỹ thuật', hint: MT_HINT },
+  mt_wc: { title: '🔧 Thông cống buồng vệ sinh', hint: MT_HINT },
   excel: { title: 'Nhập liệu Excel', hint: 'Bấm đúng ô đang sáng. Sai một ô là phải làm lại từ đầu, như ngoài đời.' },
-  wires: { title: 'Nối lại dây cáp server', hint: 'Chọn một đầu dây bên trái rồi nối sang đúng cổng cùng màu bên phải.' },
+  wires: { title: 'Nối lại dây cáp server', hint: 'Cầm đầu dây bên trái, kéo sang đúng cổng cùng màu bên phải rồi thả tay.' },
   fridge: { title: 'Dọn đồ mốc trong tủ lạnh chung', hint: 'Vứt hết đồ đã mốc. Đồ còn tươi là của sếp, đừng đụng vào.' },
   coffee: { title: 'Pha cà phê cho sếp', hint: 'Pha đúng công thức trên tờ giấy note rồi mang lên.' },
   copier: { title: 'Gỡ kẹt máy photocopy', hint: 'Đập liên tục vào máy cho đến khi giấy chạy lại. Ngừng tay là kẹt lại.' },
@@ -61,6 +70,8 @@ export function openMini(root: HTMLElement, kind: MiniKind, onDone: () => void, 
   const timers: number[] = [];
   const cleanups: (() => void)[] = [];
   let finished = false;
+  /** Sai: khung rung nhẹ */
+  const fail = () => { sfx.fail(); const sh = wrap.querySelector('.sheet') as HTMLElement; sh.classList.remove('shake'); void sh.offsetWidth; sh.classList.add('shake'); };
   const done = () => {
     if (finished) return;
     finished = true;
@@ -97,7 +108,7 @@ export function openMini(root: HTMLElement, kind: MiniKind, onDone: () => void, 
     const up = () => {
       if (!holding || finished) return; holding = false;
       if (lv >= 62 && lv <= 80) { sfx.sip(); done(); }
-      else if (lv > 80) { sfx.fail(); msg.textContent = 'Tràn rồi! Đổ đi làm lại.'; lv = 0; }
+      else if (lv > 80) { fail(); msg.textContent = 'Tràn rồi! Đổ đi làm lại.'; lv = 0; }
       else if (lv > 0) { msg.textContent = 'Chưa đủ, giữ thêm chút nữa.'; }
     };
     btn.onpointerup = up; btn.onpointercancel = up;
@@ -105,7 +116,90 @@ export function openMini(root: HTMLElement, kind: MiniKind, onDone: () => void, 
     cleanups.push(() => clearInterval(id));
   };
 
+  /** Bảo trì chỗ trốn (Engineer): siết 4 con ốc, mỗi con bấm 3 lần */
+  const maint = () => {
+    body.innerHTML = `<div class="maint-plate">${[0, 1, 2, 3].map(i => `<button class="screw" data-i="${i}" aria-label="Ốc ${i + 1}"><i></i></button>`).join('')}<div class="maint-label">🔧</div></div>`;
+    const turns = [0, 0, 0, 0];
+    body.querySelectorAll<HTMLButtonElement>('.screw').forEach(b => b.onclick = () => {
+      const i = Number(b.dataset.i);
+      if (turns[i] >= 3) return;
+      turns[i]++;
+      (b.querySelector('i') as HTMLElement).style.transform = `rotate(${turns[i] * 120}deg)`;
+      sfx.click();
+      if (turns[i] >= 3) { b.classList.add('ok'); sfx.ting(); }
+      if (turns.every(t => t >= 3)) done();
+    });
+  };
   const builders: Record<MiniKind, () => void> = {
+    mt_lift: maint, mt_cab: maint, mt_desk: maint, mt_floor: maint, mt_wc: maint,
+    darts() {
+      body.innerHTML = `<div class="darts"><div class="board"><i class="r1"></i><i class="r2"></i><i class="r3"></i><span class="aim"></span></div>
+        <div class="dart-row"><span class="dart-hits">Trúng: 0/3</span><button class="primary" type="button">🎯 Ném</button></div></div>`;
+      const aim = body.querySelector('.aim') as HTMLElement, hitsEl = body.querySelector('.dart-hits') as HTMLElement;
+      const board = body.querySelector('.board') as HTMLElement;
+      let t = 0, hits = 0, ax = 0, ay = 0;
+      const tick = window.setInterval(() => {
+        t += 0.05;
+        ax = Math.sin(t * 2.3) * 70; ay = Math.sin(t * 3.1 + 1) * 70;
+        aim.style.transform = `translate(${ax}px, ${ay}px)`;
+      }, 30);
+      cleanups.push(() => clearInterval(tick));
+      (body.querySelector('button') as HTMLButtonElement).onclick = () => {
+        if (finished) return;
+        const d = Math.hypot(ax, ay);
+        const dot = document.createElement('b'); dot.className = 'hole'; dot.style.transform = `translate(${ax}px, ${ay}px)`; board.appendChild(dot);
+        if (d < 26) { hits++; sfx.ting(); } else fail();
+        hitsEl.textContent = `Trúng: ${hits}/3`;
+        if (hits >= 3) done();
+      };
+    },
+    claw() {
+      body.innerHTML = `<div class="clawbox"><div class="glass"><div class="crane"><span class="line"></span><span class="hook">🦾</span></div>
+        <div class="toys"><span>🐻</span><span>🐰</span><span class="goal">🧸</span><span>🐸</span><span>🦄</span></div></div>
+        <div class="dart-row"><span class="claw-msg">Canh cho chuẩn nhé</span><button class="primary" type="button">⬇️ Thả</button></div></div>`;
+      const crane = body.querySelector('.crane') as HTMLElement, msg = body.querySelector('.claw-msg') as HTMLElement;
+      const glass = body.querySelector('.glass') as HTMLElement, goal = body.querySelector('.goal') as HTMLElement;
+      let t = 0, x = 0, busy = false;
+      const tick = window.setInterval(() => {
+        if (busy) return;
+        t += 0.04; x = (Math.sin(t * 1.7) + 1) / 2;
+        crane.style.left = `${x * 100}%`;
+      }, 30);
+      cleanups.push(() => clearInterval(tick));
+      (body.querySelector('button') as HTMLButtonElement).onclick = () => {
+        if (busy || finished) return;
+        busy = true;
+        const gr = glass.getBoundingClientRect(), tr = goal.getBoundingClientRect(), cr = crane.getBoundingClientRect();
+        const off = Math.abs((cr.left + cr.width / 2) - (tr.left + tr.width / 2));
+        crane.classList.add('drop');
+        const ok = off < gr.width * 0.05;
+        timers.push(window.setTimeout(() => {
+          if (ok) { goal.classList.add('grabbed'); msg.textContent = 'Gắp được rồi! 🎉'; sfx.ting(); timers.push(window.setTimeout(done, 500)); }
+          else { msg.textContent = 'Trượt mất rồi, thử lại!'; fail(); crane.classList.remove('drop'); busy = false; }
+        }, 700));
+      };
+    },
+    fishfeed() {
+      const need = 3;
+      body.innerHTML = `<div class="tank"><div class="water"></div>${[0, 1, 2].map(i => `<button class="fish f${i}" data-i="${i}" type="button">${['🐟', '🐠', '🐡'][i]}<em>0/${need}</em></button>`).join('')}</div><p class="claw-msg tank-msg">Mỗi con đúng ${need} hạt</p>`;
+      const fed = [0, 0, 0];
+      const water = body.querySelector('.water') as HTMLElement, msg = body.querySelector('.tank-msg') as HTMLElement;
+      body.querySelectorAll<HTMLButtonElement>('.fish').forEach(b => b.onclick = () => {
+        if (finished) return;
+        const i = Number(b.dataset.i);
+        fed[i]++;
+        sfx.click();
+        (b.querySelector('em') as HTMLElement).textContent = `${fed[i]}/${need}`;
+        b.classList.toggle('full', fed[i] === need);
+        if (fed[i] > need) {
+          water.classList.add('murky'); msg.textContent = 'Rắc quá tay, nước đục rồi! Thay nước làm lại.'; fail();
+          fed.fill(0);
+          timers.push(window.setTimeout(() => { water.classList.remove('murky'); body.querySelectorAll('.fish').forEach(f => { f.classList.remove('full'); (f.querySelector('em') as HTMLElement).textContent = `0/${need}`; }); msg.textContent = `Mỗi con đúng ${need} hạt`; }, 900));
+          return;
+        }
+        if (fed.every(f => f === need)) { msg.textContent = 'Cả bể no nê!'; done(); }
+      });
+    },
     fingerprint() {
       const box = holdButton('Giữ ngón tay', 3, () => { if (Math.random() < 0.15) sfx.click(); });
       box.insertAdjacentHTML('afterbegin', '<p class="router-msg">Máy chấm công: "Vui lòng đặt lại ngón tay." (lần thứ 4)</p>');
@@ -142,7 +236,7 @@ export function openMini(root: HTMLElement, kind: MiniKind, onDone: () => void, 
         b.onclick = () => {
           if (finished) return;
           if (p === items[next][0]) { sfx.click(); b.remove(); list.insertAdjacentHTML('beforeend', `<li>${t}</li>`); next++; if (next >= items.length) done(); }
-          else { sfx.fail(); b.classList.remove('shake'); void b.offsetWidth; b.classList.add('shake'); toastIn(body, `Chưa tới lượt ${p}!`); }
+          else { fail(); b.classList.remove('shake'); void b.offsetWidth; b.classList.add('shake'); toastIn(body, `Chưa tới lượt ${p}!`); }
         };
         cards.appendChild(b);
       }
@@ -179,7 +273,7 @@ export function openMini(root: HTMLElement, kind: MiniKind, onDone: () => void, 
       btns.forEach((b, i) => b.onclick = () => {
         if (showing || finished) return;
         if (i === seq[pos]) { pos++; sfx.click(); stepEl.textContent = `${pos}/${seq.length} bước`; if (pos >= seq.length) { msg.textContent = 'Game crash! Đã tái hiện được bug.'; done(); } }
-        else { sfx.fail(); stepEl.textContent = 'Sai bước, xem lại từ đầu.'; play(); }
+        else { fail(); stepEl.textContent = 'Sai bước, xem lại từ đầu.'; play(); }
       });
       play();
     },
@@ -208,7 +302,7 @@ export function openMini(root: HTMLElement, kind: MiniKind, onDone: () => void, 
           b.disabled = true; b.textContent = `${b.dataset.t} · ${people[sel][0]}`; b.classList.add('ok');
           const c = body.querySelector(`.cand[data-i="${sel}"]`) as HTMLButtonElement; c.disabled = true; c.classList.remove('sel');
           sel = null; ok++; sfx.click(); if (ok >= people.length) done();
-        } else { sfx.fail(); toastIn(body, 'Ứng viên không rảnh giờ đó.'); }
+        } else { fail(); toastIn(body, 'Ứng viên không rảnh giờ đó.'); }
       });
     },
     balance() {
@@ -228,7 +322,7 @@ export function openMini(root: HTMLElement, kind: MiniKind, onDone: () => void, 
       (body.querySelector('.next-src') as HTMLElement).onclick = () => { cur = (cur + 1) % inputs.length; src.textContent = inputs[cur]; sfx.click(); };
       (body.querySelector('.ok-src') as HTMLElement).onclick = () => {
         if (inputs[cur] === want) { (body.querySelector('.proj-screen') as HTMLElement).classList.add('on'); (body.querySelector('.proj-screen small') as HTMLElement).textContent = 'Slide 1/87: "Tổng kết quý"'; done(); }
-        else { sfx.fail(); toastIn(body, 'Sai cổng, màn hình vẫn xanh lè.'); }
+        else { fail(); toastIn(body, 'Sai cổng, màn hình vẫn xanh lè.'); }
       };
     },
     toilet() {
@@ -254,7 +348,7 @@ export function openMini(root: HTMLElement, kind: MiniKind, onDone: () => void, 
       q('.minus').onclick = () => { st.copies = Math.max(1, st.copies - 1); q('.copies').textContent = String(st.copies); };
       q('.plus').onclick = () => { st.copies = Math.min(9, st.copies + 1); q('.copies').textContent = String(st.copies); };
       q('.go-print').onclick = () => {
-        if (st.sides !== want.sides || st.copies !== want.copies || st.color !== want.color) { sfx.fail(); toastIn(body, 'Sai cài đặt, in lại tốn giấy lắm!'); return; }
+        if (st.sides !== want.sides || st.copies !== want.copies || st.color !== want.color) { fail(); toastIn(body, 'Sai cài đặt, in lại tốn giấy lắm!'); return; }
         (q('.go-print') as HTMLButtonElement).disabled = true;
         let p = 0; const id = window.setInterval(() => { p += 4; (q('.bar i')).style.width = p + '%'; if (p % 20 === 0) sfx.key(); if (p >= 100) { clearInterval(id); done(); } }, 80);
         cleanups.push(() => clearInterval(id));
@@ -267,7 +361,7 @@ export function openMini(root: HTMLElement, kind: MiniKind, onDone: () => void, 
       body.querySelectorAll<HTMLButtonElement>('.paper-doc').forEach(b => b.onclick = () => {
         if (finished) return;
         if (b.dataset.i === '0') { sfx.whoosh(); b.classList.add('ok'); done(); }
-        else { sfx.fail(); b.classList.remove('shake'); void b.offsetWidth; b.classList.add('shake'); toastIn(body, 'Không phải tờ này, đọc kỹ lại.'); }
+        else { fail(); b.classList.remove('shake'); void b.offsetWidth; b.classList.add('shake'); toastIn(body, 'Không phải tờ này, đọc kỹ lại.'); }
       });
     },
     pushbuild() {
@@ -302,7 +396,7 @@ export function openMini(root: HTMLElement, kind: MiniKind, onDone: () => void, 
               got++; (body.querySelector('.xl-progress') as HTMLElement).textContent = `${got}/${need} ô`;
               if (got >= need) done(); else next();
             } else {
-              sfx.fail(); grid.classList.remove('shake'); void grid.offsetWidth; grid.classList.add('shake');
+              fail(); grid.classList.remove('shake'); void grid.offsetWidth; grid.classList.add('shake');
               got = 0; cells.forEach(x => { x.classList.remove('filled'); x.textContent = ''; });
               (body.querySelector('.xl-progress') as HTMLElement).textContent = `Sai ô! Làm lại: 0/${need}`;
             }
@@ -318,36 +412,60 @@ export function openMini(root: HTMLElement, kind: MiniKind, onDone: () => void, 
       next();
     },
     wires() {
+      // Cầm đầu dây bên trái kéo sang đúng cổng cùng màu bên phải
       const colors = [['#e2412f', 'Đỏ'], ['#f2b705', 'Vàng'], ['#2e9cf0', 'Xanh'], ['#ff5fa2', 'Hồng']];
       const right = [...colors.keys()].sort(() => Math.random() - 0.5);
       body.innerHTML = `<div class="wires"><svg class="wire-svg"></svg><div class="wcol l"></div><div class="wcol r"></div></div>`;
       const L = body.querySelector('.wcol.l') as HTMLElement, R = body.querySelector('.wcol.r') as HTMLElement;
       const svg = body.querySelector('svg') as SVGSVGElement;
       const box = body.querySelector('.wires') as HTMLElement;
-      let sel: number | null = null; let connected = 0;
-      const lefts: HTMLElement[] = [], rights: HTMLElement[] = [];
+      let connected = 0;
+      const lefts: HTMLElement[] = [];
+      const curve = (x1: number, y1: number, x2: number, y2: number) => `M${x1} ${y1} C ${(x1 + x2) / 2} ${y1}, ${(x1 + x2) / 2} ${y2}, ${x2} ${y2}`;
+      const anchor = (el: HTMLElement, side: 'r' | 'l') => {
+        const r = el.getBoundingClientRect(), o = box.getBoundingClientRect();
+        return [(side === 'r' ? r.right : r.left) - o.left, r.top + r.height / 2 - o.top];
+      };
       colors.forEach(([c, n], i) => {
-        const b = document.createElement('button'); b.className = 'port'; b.style.setProperty('--c', c); b.setAttribute('aria-label', 'Dây ' + n);
-        b.onclick = () => { if (b.classList.contains('ok')) return; sel = i; lefts.forEach(x => x.classList.remove('sel')); b.classList.add('sel'); sfx.click(); };
+        const b = document.createElement('div'); b.className = 'port grab'; b.style.setProperty('--c', c); b.setAttribute('aria-label', 'Dây ' + n);
+        b.dataset.i = String(i);
         L.appendChild(b); lefts.push(b);
+        b.onpointerdown = (e) => {
+          if (b.classList.contains('ok') || finished) return;
+          e.preventDefault();
+          b.setPointerCapture(e.pointerId);
+          const [x1, y1] = anchor(b, 'r');
+          const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          line.setAttribute('stroke', c); line.classList.add('live');
+          svg.appendChild(line);
+          sfx.click();
+          const move = (ev: PointerEvent) => {
+            const o = box.getBoundingClientRect();
+            line.setAttribute('d', curve(x1, y1, ev.clientX - o.left, ev.clientY - o.top));
+          };
+          move(e);
+          b.onpointermove = move;
+          const end = (ev: PointerEvent) => {
+            b.onpointermove = null; b.onpointerup = null; b.onpointercancel = null;
+            const hit = (document.elementsFromPoint(ev.clientX, ev.clientY).find(el => (el as HTMLElement).classList?.contains('port') && (el as HTMLElement).parentElement === R) as HTMLElement | undefined);
+            if (hit && hit.dataset.i === String(i) && !hit.classList.contains('ok')) {
+              const [x2, y2] = anchor(hit, 'l');
+              line.setAttribute('d', curve(x1, y1, x2, y2)); line.classList.remove('live');
+              b.classList.add('ok'); hit.classList.add('ok');
+              connected++; sfx.click();
+              if (connected >= colors.length) done();
+            } else {
+              line.remove();
+              if (hit) { fail(); hit.classList.remove('shake'); void hit.offsetWidth; hit.classList.add('shake'); }
+            }
+          };
+          b.onpointerup = end; b.onpointercancel = end;
+        };
       });
       right.forEach((ci) => {
-        const b = document.createElement('button'); b.className = 'port'; b.style.setProperty('--c', colors[ci][0]); b.setAttribute('aria-label', 'Cổng ' + colors[ci][1]);
-        b.onclick = () => {
-          if (sel === null || b.classList.contains('ok')) return;
-          if (sel === ci) {
-            const a = lefts[sel].getBoundingClientRect(), z = b.getBoundingClientRect(), o = box.getBoundingClientRect();
-            const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            const x1 = a.right - o.left, y1 = a.top + a.height / 2 - o.top, x2 = z.left - o.left, y2 = z.top + z.height / 2 - o.top;
-            line.setAttribute('d', `M${x1} ${y1} C ${(x1 + x2) / 2} ${y1}, ${(x1 + x2) / 2} ${y2}, ${x2} ${y2}`);
-            line.setAttribute('stroke', colors[ci][0]);
-            svg.appendChild(line);
-            lefts[sel].classList.add('ok'); lefts[sel].classList.remove('sel'); b.classList.add('ok');
-            sel = null; connected++; sfx.click();
-            if (connected >= colors.length) done();
-          } else { sfx.fail(); b.classList.remove('shake'); void b.offsetWidth; b.classList.add('shake'); }
-        };
-        R.appendChild(b); rights.push(b);
+        const b = document.createElement('div'); b.className = 'port'; b.style.setProperty('--c', colors[ci][0]); b.setAttribute('aria-label', 'Cổng ' + colors[ci][1]);
+        b.dataset.i = String(ci);
+        R.appendChild(b);
       });
     },
     fridge() {
@@ -365,7 +483,7 @@ export function openMini(root: HTMLElement, kind: MiniKind, onDone: () => void, 
         b.onclick = () => {
           if (b.classList.contains('gone')) return;
           if (moldy.has(i)) { b.classList.add('gone'); sfx.whoosh(); left--; if (left <= 0) done(); }
-          else { sfx.fail(); b.classList.remove('shake'); void b.offsetWidth; b.classList.add('shake'); toastIn(body, 'Đồ của sếp đấy! Để nguyên.'); }
+          else { fail(); b.classList.remove('shake'); void b.offsetWidth; b.classList.add('shake'); toastIn(body, 'Đồ của sếp đấy! Để nguyên.'); }
         };
         sh.appendChild(b);
       }
@@ -389,7 +507,7 @@ export function openMini(root: HTMLElement, kind: MiniKind, onDone: () => void, 
       (body.querySelector('.reset') as HTMLElement).onclick = () => { have.fill(0); sfx.whoosh(); render(); };
       (body.querySelector('.serve') as HTMLElement).onclick = () => {
         if (have.every((h, i) => h === want[i])) { sfx.sip(); done(); }
-        else { sfx.fail(); toastIn(body, have[0] < want[0] ? 'Sếp chê: nhạt như nước ốc!' : 'Sếp chê: sai công thức rồi em ơi.'); have.fill(0); render(); }
+        else { fail(); toastIn(body, have[0] < want[0] ? 'Sếp chê: nhạt như nước ốc!' : 'Sếp chê: sai công thức rồi em ơi.'); have.fill(0); render(); }
       };
     },
     copier() {
@@ -423,7 +541,7 @@ export function openMini(root: HTMLElement, kind: MiniKind, onDone: () => void, 
       const judge = (approve: boolean) => {
         if (finished) return;
         if (approve === cur.valid) { ok++; sfx.stamp(); }
-        else { ok = 0; sfx.fail(); toastIn(body, cur.valid ? 'Hồ sơ hợp lệ mà! Làm lại.' : 'Duyệt bừa là Kế toán tìm bạn đấy. Làm lại.'); }
+        else { ok = 0; fail(); toastIn(body, cur.valid ? 'Hồ sơ hợp lệ mà! Làm lại.' : 'Duyệt bừa là Kế toán tìm bạn đấy. Làm lại.'); }
         (body.querySelector('.st-progress') as HTMLElement).textContent = `${ok}/${need} hồ sơ`;
         if (ok >= need) done(); else next();
       };
@@ -468,4 +586,193 @@ function toastIn(el: HTMLElement, msg: string) {
   t.textContent = msg;
   el.appendChild(t);
   setTimeout(() => t.remove(), 1600);
+}
+
+/** Máy Face ID của HR: chọn một người rồi giữ tay quét 4 giây (máy phát sáng, ai đứng gần cũng thấy) */
+export function openFaceId(
+  root: HTMLElement,
+  people: { id: number; name: string; url: string; bg: string }[],
+  onHold: (on: boolean) => void,
+  onDone: (target: number) => void,
+) {
+  closeMini();
+  const wrap = document.createElement('div');
+  wrap.className = 'modal';
+  wrap.innerHTML = `
+    <div class="sheet mini mini-faceid" role="dialog" aria-label="Máy Face ID">
+      <div class="sheet-head">
+        <div><h2>Máy Face ID</h2><p class="hint">Chọn một người để xác minh. Kết quả về sau 60 giây chơi, chỉ bạn thấy. Đang quét thì máy phát sáng hồng.</p></div>
+        <button class="x" aria-label="Đóng">✕</button>
+      </div>
+      <div class="mini-body">
+        <div class="fid-people">${people.map(p => `<button class="fid-p" data-id="${p.id}"><img src="${p.url}" alt=""><span>${p.name}</span></button>`).join('')}</div>
+        <div class="fid-scan" hidden></div>
+      </div>
+    </div>`;
+  root.appendChild(wrap);
+  const body = wrap.querySelector('.mini-body') as HTMLElement;
+  let timer = 0, holding = false, t = 0, finished = false;
+  current = { el: wrap, cleanup: () => { clearInterval(timer); onHold(false); } };
+  (wrap.querySelector('.x') as HTMLElement).onclick = () => closeMini();
+  wrap.querySelectorAll<HTMLButtonElement>('.fid-p').forEach(b => b.onclick = () => {
+    const id = Number(b.dataset.id);
+    const who = people.find(p => p.id === id)!;
+    (body.querySelector('.fid-people') as HTMLElement).hidden = true;
+    const scan = body.querySelector('.fid-scan') as HTMLElement;
+    scan.hidden = false;
+    scan.innerHTML = `<p>Đang xác minh hồ sơ của <b>${who.name}</b></p>
+      <div class="router scanner-box hr"><button class="hold" aria-label="Giữ để quét"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" class="track"/><circle cx="50" cy="50" r="44" class="prog"/></svg><span>Giữ để quét</span></button></div>`;
+    const btn = scan.querySelector('.hold') as HTMLElement, prog = scan.querySelector('.prog') as SVGCircleElement;
+    const C = 2 * Math.PI * 44; prog.style.strokeDasharray = `${C}`; prog.style.strokeDashoffset = `${C}`;
+    btn.onpointerdown = (e) => { e.preventDefault(); holding = true; btn.setPointerCapture(e.pointerId); onHold(true); };
+    const up = () => { holding = false; onHold(false); if (!finished) { t = 0; prog.style.strokeDashoffset = `${C}`; } };
+    btn.onpointerup = up; btn.onpointercancel = up;
+    timer = window.setInterval(() => {
+      if (!holding || finished) return;
+      t += 0.05; prog.style.strokeDashoffset = `${C * (1 - t / 4)}`;
+      if (Math.random() < 0.12) sfx.click();
+      if (t >= 4) {
+        finished = true; onHold(false); sfx.taskDone();
+        body.classList.add('mini-done');
+        setTimeout(() => { closeMini(); onDone(id); }, 550);
+      }
+    }, 50);
+  });
+}
+
+/** Quẹt thẻ nhân viên ở cửa từ: kéo thẻ qua đầu đọc với tốc độ vừa phải */
+export function openCardSwipe(root: HTMLElement, onDone: () => void) {
+  closeMini();
+  const wrap = document.createElement('div');
+  wrap.className = 'modal';
+  wrap.innerHTML = `
+    <div class="sheet mini mini-swipe" role="dialog" aria-label="Quẹt thẻ">
+      <div class="sheet-head">
+        <div><h2>Quẹt thẻ mở cửa</h2><p class="hint">Kéo thẻ nhân viên qua đầu đọc từ trái sang phải, không nhanh quá cũng không chậm quá.</p></div>
+        <button class="x" aria-label="Đóng">✕</button>
+      </div>
+      <div class="mini-body">
+        <div class="reader"><div class="reader-led"></div><div class="reader-slot"><div class="card-badge"><b>THẺ NHÂN VIÊN</b><i></i></div></div></div>
+        <p class="swipe-msg">Cửa từ báo lỗi thẻ. Quẹt lại đi.</p>
+      </div>
+    </div>`;
+  root.appendChild(wrap);
+  const body = wrap.querySelector('.mini-body') as HTMLElement;
+  const card = wrap.querySelector('.card-badge') as HTMLElement;
+  const slot = wrap.querySelector('.reader-slot') as HTMLElement;
+  const msg = wrap.querySelector('.swipe-msg') as HTMLElement;
+  const led = wrap.querySelector('.reader-led') as HTMLElement;
+  let startX = 0, t0 = 0, dragging = false, finished = false;
+  current = { el: wrap, cleanup: () => {} };
+  (wrap.querySelector('.x') as HTMLElement).onclick = () => closeMini();
+  const maxX = () => slot.clientWidth - card.offsetWidth;
+  card.onpointerdown = (e) => {
+    if (finished) return;
+    e.preventDefault(); dragging = true; startX = e.clientX; t0 = performance.now();
+    card.setPointerCapture(e.pointerId); card.style.transition = 'none';
+  };
+  card.onpointermove = (e) => {
+    if (!dragging) return;
+    const x = Math.max(0, Math.min(maxX(), e.clientX - startX));
+    card.style.transform = `translateX(${x}px)`;
+  };
+  const end = (e: PointerEvent) => {
+    if (!dragging) return;
+    dragging = false;
+    const x = Math.max(0, Math.min(maxX(), e.clientX - startX));
+    const dt = (performance.now() - t0) / 1000;
+    const reset = () => { card.style.transition = 'transform .25s'; card.style.transform = 'translateX(0)'; };
+    if (x < maxX() * 0.92) { msg.textContent = 'Quẹt chưa hết thẻ.'; reset(); return; }
+    if (dt < 0.35) { msg.textContent = 'Quẹt nhanh quá, máy không đọc kịp.'; sfx.fail(); led.className = 'reader-led bad'; reset(); return; }
+    if (dt > 1.6) { msg.textContent = 'Quẹt chậm quá, thử lại.'; sfx.fail(); led.className = 'reader-led bad'; reset(); return; }
+    finished = true; led.className = 'reader-led ok'; msg.textContent = 'Bíp! Cửa đã mở.'; sfx.ting();
+    body.classList.add('mini-done');
+    setTimeout(() => { closeMini(); onDone(); }, 500);
+  };
+  card.onpointerup = end; card.onpointercancel = end;
+}
+
+/** Máy so màu của Artist: chọn nhóm màu, giữ nút 3 giây để so, nhận kết quả Có / Không có */
+export function openColorCheck(
+  root: HTMLElement,
+  groups: { id: string; name: string; hex: string }[],
+  history: { name: string; hex: string; has: boolean }[],
+  onHold: (on: boolean) => void,
+  onDone: (group: string) => boolean | null,
+) {
+  closeMini();
+  const wrap = document.createElement('div');
+  wrap.className = 'modal';
+  wrap.innerHTML = `
+    <div class="sheet mini mini-color" role="dialog" aria-label="Máy so màu">
+      <div class="sheet-head">
+        <div><h2>🎨 Máy so màu</h2><p class="hint">Chọn một màu. Máy cho biết trên người Nội gián (ở bất kỳ chỗ nào) có màu đó không. Đang so thì máy phát sáng, người đứng gần sẽ thấy.</p></div>
+        <button class="x" aria-label="Đóng">✕</button>
+      </div>
+      <div class="mini-body">
+        <div class="cc-groups">${groups.map(g => `<button class="cc-g" data-id="${g.id}" style="--c:${g.hex}"><i></i><span>${g.name}</span></button>`).join('')}</div>
+        <div class="cc-scan" hidden></div>
+        ${history.length ? `<div class="cc-hist"><b>Đã so trước đây:</b> ${history.map(h => `<span><i style="background:${h.hex}"></i>${h.name}: ${h.has ? 'CÓ' : 'KHÔNG'}</span>`).join('')}</div>` : ''}
+      </div>
+    </div>`;
+  root.appendChild(wrap);
+  const body = wrap.querySelector('.mini-body') as HTMLElement;
+  let timer = 0, holding = false, t = 0, finished = false;
+  current = { el: wrap, cleanup: () => { clearInterval(timer); onHold(false); } };
+  (wrap.querySelector('.x') as HTMLElement).onclick = () => closeMini();
+  wrap.querySelectorAll<HTMLButtonElement>('.cc-g').forEach(b => b.onclick = () => {
+    const g = groups.find(x => x.id === b.dataset.id)!;
+    (body.querySelector('.cc-groups') as HTMLElement).hidden = true;
+    const scan = body.querySelector('.cc-scan') as HTMLElement;
+    scan.hidden = false;
+    scan.innerHTML = `<p>So màu <b style="color:${g.hex};text-shadow:0 0 1px #000">${g.name}</b> với hồ sơ Nội gián</p>
+      <div class="router scanner-box"><button class="hold" aria-label="Giữ để so màu"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" class="track"/><circle cx="50" cy="50" r="44" class="prog" style="stroke:${g.hex}"/></svg><span>Giữ để so</span></button></div>
+      <div class="cc-result" hidden></div>`;
+    const btn = scan.querySelector('.hold') as HTMLElement, prog = scan.querySelector('.prog') as SVGCircleElement;
+    const C = 2 * Math.PI * 44; prog.style.strokeDasharray = `${C}`; prog.style.strokeDashoffset = `${C}`;
+    btn.onpointerdown = (e) => { e.preventDefault(); holding = true; btn.setPointerCapture(e.pointerId); onHold(true); };
+    const up = () => { holding = false; onHold(false); if (!finished) { t = 0; prog.style.strokeDashoffset = `${C}`; } };
+    btn.onpointerup = up; btn.onpointercancel = up;
+    timer = window.setInterval(() => {
+      if (!holding || finished) return;
+      t += 0.05; prog.style.strokeDashoffset = `${C * (1 - t / 3)}`;
+      if (Math.random() < 0.12) sfx.click();
+      if (t >= 3) {
+        finished = true; onHold(false);
+        const has = onDone(g.id);
+        if (has === null) { closeMini(); return; }
+        has ? sfx.fail() : sfx.taskDone();
+        const r = scan.querySelector('.cc-result') as HTMLElement;
+        (scan.querySelector('.router') as HTMLElement).hidden = true;
+        r.hidden = false;
+        r.className = 'cc-result ' + (has ? 'bad' : 'good');
+        r.innerHTML = has ? `<b>CÓ</b><span>Ít nhất một Nội gián có màu ${g.name.toLowerCase()} trên người.</span>` : `<b>KHÔNG CÓ</b><span>Không Nội gián nào có màu ${g.name.toLowerCase()} trên người.</span>`;
+      }
+    }, 50);
+  });
+}
+
+/** Giữ nút trong vài giây (cạy cửa thang, mở cửa thang kẹt...) */
+export function openHold(root: HTMLElement, title: string, hint: string, label: string, seconds: number, onDone: () => void) {
+  closeMini();
+  const wrap = document.createElement('div');
+  wrap.className = 'modal';
+  wrap.innerHTML = `<div class="sheet mini" role="dialog" aria-label="${title}">
+    <div class="sheet-head"><div><h2>${title}</h2><p class="hint">${hint}</p></div><button class="x" aria-label="Đóng">✕</button></div>
+    <div class="mini-body"><div class="router"><button class="hold" aria-label="${label}"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" class="track"/><circle cx="50" cy="50" r="44" class="prog"/></svg><span>${label}</span></button></div></div></div>`;
+  root.appendChild(wrap);
+  const btn = wrap.querySelector('.hold') as HTMLElement, prog = wrap.querySelector('.prog') as SVGCircleElement;
+  const C = 2 * Math.PI * 44; prog.style.strokeDasharray = `${C}`; prog.style.strokeDashoffset = `${C}`;
+  let t = 0, holding = false, done = false;
+  const timer = window.setInterval(() => {
+    if (!holding || done) return;
+    t += 0.05; prog.style.strokeDashoffset = `${C * (1 - t / seconds)}`;
+    if (Math.random() < 0.15) sfx.click();
+    if (t >= seconds) { done = true; sfx.taskDone(); setTimeout(() => { closeMini(); onDone(); }, 250); }
+  }, 50);
+  current = { el: wrap, cleanup: () => clearInterval(timer) };
+  (wrap.querySelector('.x') as HTMLElement).onclick = () => closeMini();
+  btn.onpointerdown = (e) => { e.preventDefault(); holding = true; btn.setPointerCapture(e.pointerId); };
+  const up = () => { holding = false; if (!done) { t = 0; prog.style.strokeDashoffset = `${C}`; } };
+  btn.onpointerup = up; btn.onpointercancel = up;
 }

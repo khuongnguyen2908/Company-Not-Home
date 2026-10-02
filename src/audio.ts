@@ -110,6 +110,114 @@ class Sound {
     if (this.ambient && this.ctx) this.ambient.gain.setTargetAtTime(v, this.ctx.currentTime, 0.3);
   }
 
+  // ---------- Nhạc nền sảnh chờ: điệu nhạc văn phòng vui vẻ, tự sáng tác bằng code ----------
+  private music: GainNode | null = null;
+  private musicTimer: number | null = null;
+  private musicNext = 0;
+  private musicStep = 0;
+  musicOn = true;
+
+  setMusic(on: boolean) {
+    this.musicOn = on;
+    if (this.music && this.ctx) this.music.gain.setTargetAtTime(on ? 0.16 : 0, this.ctx.currentTime, 0.2);
+  }
+
+  private track: 'lobby' | 'title' = 'lobby';
+  startMusic(track: 'lobby' | 'title' = 'lobby') {
+    if (!this.ctx) return;
+    if (this.musicTimer !== null && this.track === track) return;
+    if (this.musicTimer !== null) this.stopMusic();
+    this.track = track;
+    this.music = this.ctx.createGain();
+    this.music.gain.value = 0;
+    this.music.gain.setTargetAtTime(this.musicOn ? 0.16 : 0, this.ctx.currentTime, 0.5);
+    this.music.connect(this.master);
+    this.musicNext = this.ctx.currentTime + 0.1;
+    this.musicStep = 0;
+    this.musicTimer = window.setInterval(() => this.scheduleMusic(), 80);
+  }
+
+  stopMusic() {
+    if (this.musicTimer !== null) { clearInterval(this.musicTimer); this.musicTimer = null; }
+    if (this.music && this.ctx) {
+      const g = this.music; g.gain.setTargetAtTime(0, this.ctx.currentTime, 0.25);
+      setTimeout(() => g.disconnect(), 1200);
+    }
+    this.music = null;
+  }
+
+  private note(freq: number, t: number, dur: number, type: OscillatorType, vol: number) {
+    if (!this.ctx || !this.music) return;
+    const o = this.ctx.createOscillator(); o.type = type; o.frequency.value = freq;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(this.music); o.start(t); o.stop(t + dur + 0.05);
+  }
+
+  private scheduleMusic() {
+    if (!this.ctx || !this.music) return;
+    if (this.track === 'title') { this.scheduleTitle(); return; }
+    const beat = 60 / 116 / 2; // nốt móc đơn, 116 BPM
+    // Vòng hợp âm C – Am – F – G, giai điệu ngũ cung nhí nhảnh
+    const chords = [[261.6, 329.6, 392], [220, 261.6, 329.6], [174.6, 220, 261.6], [196, 246.9, 293.7]];
+    const bass = [130.8, 110, 87.3, 98];
+    const mel = [
+      784, 0, 659, 784, 880, 0, 784, 659,   587, 0, 659, 0, 523, 587, 659, 0,
+      698, 0, 659, 587, 523, 0, 587, 659,   587, 0, 523, 0, 494, 523, 587, 0,
+    ];
+    while (this.musicNext < this.ctx.currentTime + 0.25) {
+      const t = this.musicNext, st = this.musicStep;
+      const bar = Math.floor(st / 8) % 4, inBar = st % 8;
+      if (inBar % 4 === 0) this.note(bass[bar], t, beat * 3, 'triangle', 0.5);
+      if (inBar % 4 === 2) this.note(bass[bar] * 2, t, beat, 'triangle', 0.25);
+      if (inBar === 2 || inBar === 6) for (const f of chords[bar]) this.note(f, t, beat * 1.2, 'square', 0.035);
+      const m = mel[st % mel.length];
+      if (m && Math.floor(st / 32) % 2 === 0) this.note(m, t, beat * 0.9, 'triangle', 0.18);
+      if (m && Math.floor(st / 32) % 2 === 1) this.note(m * 1.5 > 1200 ? m : m, t, beat * 0.9, 'sine', 0.14);
+      // trống nhẹ: kick đầu phách, hi-hat móc
+      if (inBar % 4 === 0) { const o = this.ctx.createOscillator(); const g = this.ctx.createGain(); o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(45, t + 0.12); g.gain.setValueAtTime(0.35, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15); o.connect(g); g.connect(this.music); o.start(t); o.stop(t + 0.2); }
+      if (inBar % 2 === 1) {
+        const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf;
+        const f = this.ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 7000;
+        const g = this.ctx.createGain(); g.gain.setValueAtTime(0.12, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+        src.connect(f); f.connect(g); g.connect(this.music); src.start(t, Math.random(), 0.06);
+      }
+      this.musicNext += beat;
+      this.musicStep++;
+    }
+  }
+
+  /** Nhạc màn hình chính: chậm, mơ màng kiểu "chiều thứ Sáu sắp tan ca" */
+  private scheduleTitle() {
+    if (!this.ctx || !this.music) return;
+    const beat = 60 / 92 / 2;
+    const chords = [[174.6, 220, 261.6, 329.6], [164.8, 196, 246.9, 293.7], [146.8, 174.6, 220, 261.6], [196, 246.9, 293.7, 349.2]]; // Fmaj7 Em7 Dm7 G7
+    const bass = [87.3, 82.4, 73.4, 98];
+    const mel = [
+      659, 0, 0, 587, 523, 0, 587, 0,   494, 0, 0, 523, 587, 0, 0, 0,
+      523, 0, 0, 494, 440, 0, 494, 523, 587, 0, 659, 0, 587, 0, 0, 0,
+    ];
+    while (this.musicNext < this.ctx.currentTime + 0.25) {
+      const t = this.musicNext, st = this.musicStep;
+      const bar = Math.floor(st / 8) % 4, inBar = st % 8;
+      if (inBar === 0) { this.note(bass[bar], t, beat * 6, 'sine', 0.55); for (const f of chords[bar]) this.note(f, t, beat * 7.5, 'triangle', 0.05); }
+      if (inBar === 4) this.note(bass[bar] * 1.5, t, beat * 3, 'sine', 0.3);
+      // tiếng chuông nhỏ rải hợp âm
+      if (inBar % 2 === 1) this.note(chords[bar][(st >> 1) % 4] * 2, t, beat * 1.5, 'sine', 0.06);
+      const m = mel[st % mel.length];
+      if (m && Math.floor(st / 32) % 4 !== 3) this.note(m, t, beat * 1.8, 'triangle', 0.16);
+      if (inBar === 4) {
+        const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf;
+        const f = this.ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1800; f.Q.value = 0.8;
+        const g = this.ctx.createGain(); g.gain.setValueAtTime(0.18, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+        src.connect(f); f.connect(g); g.connect(this.music); src.start(t, Math.random(), 0.14);
+      }
+      if (inBar === 0) { const o = this.ctx.createOscillator(); const g = this.ctx.createGain(); o.frequency.setValueAtTime(90, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.15); g.gain.setValueAtTime(0.3, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2); o.connect(g); g.connect(this.music); o.start(t); o.stop(t + 0.25); }
+      this.musicNext += beat;
+      this.musicStep++;
+    }
+  }
+
   startBossSteps() {
     this.stopBossSteps();
     let i = 0;
