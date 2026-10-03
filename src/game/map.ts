@@ -164,7 +164,7 @@ export const FURNITURE: Furniture[] = [
 
 export type MiniKind =
   | 'fingerprint' | 'delivery' | 'waterplant' | 'excel' | 'backlog' | 'sprite' | 'bug' | 'testbuild'
-  | 'interview' | 'balance' | 'projector' | 'coffee' | 'fridge' | 'getwater' | 'toilet' | 'copier'
+  | 'interview' | 'balance' | 'projector' | 'coffee' | 'fridge' | 'getwater' | 'copier'
   | 'printdoc' | 'minutes' | 'stamp' | 'wires' | 'pushbuild' | 'router' | 'power'
   | 'mt_lift' | 'mt_cab' | 'mt_desk' | 'mt_floor' | 'mt_wc'
   | 'darts' | 'claw' | 'fishfeed'

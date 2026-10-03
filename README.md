@@ -69,7 +69,7 @@ Kiểm tra: `python3 tests/lobby_reentry.py` (về sảnh nhiều lần vẫn đ
 
 ## Phòng thử mini-game
 
-Mở game với `?minigames` ở cuối địa chỉ: danh sách đủ 40 mini-game (việc thường theo tầng, bảo trì, khu giải trí, sân thượng, sửa sự cố, các màn đặc biệt). Mỗi mini-game có nút Chơi thử và Chơi bản Nội gián, tự ghi thời gian chơi, đánh dấu Ổn / Cần sửa kèm ghi chú (lưu trên máy). Nút Sao chép phản hồi / Tải file phản hồi xuất toàn bộ thành văn bản để gửi lại.
+Mở game với `?minigames` ở cuối địa chỉ: danh sách đủ 39 mini-game (việc thường theo tầng, bảo trì, khu giải trí, sân thượng, sửa sự cố, các màn đặc biệt). Mỗi mini-game có nút Chơi thử và Chơi bản Nội gián, tự ghi thời gian chơi, đánh dấu Ổn / Cần sửa kèm ghi chú (lưu trên máy). Nút Sao chép phản hồi / Tải file phản hồi xuất toàn bộ thành văn bản để gửi lại.
 
 ## Sửa nội dung (không cần đụng code)
 

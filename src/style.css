@@ -1033,13 +1033,13 @@ input[type=range] { width: 100%; accent-color: var(--lanyard); }
 .toys { position: absolute; left: 0; right: 0; bottom: 8px; display: flex; justify-content: space-around; font-size: 34px; }
 .toys .goal { filter: drop-shadow(0 0 6px #ffd23f); }
 .toys .grabbed { transform: translateY(-110px); transition: transform .5s; }
-.tank { position: relative; width: 320px; height: 190px; border: 5px solid var(--ink); border-radius: 14px; overflow: hidden; margin: 0 auto; display: flex; align-items: center; justify-content: space-around; }
-.tank .water { position: absolute; inset: 0; background: #7fc4ff; transition: background .4s; }
-.tank .water.murky { background: #8a8a5a; }
-.tank .fish { position: relative; z-index: 1; font-size: 44px; background: none; border: 0; display: flex; flex-direction: column; align-items: center; animation: crowdbob 1.4s ease-in-out infinite; }
-.tank .fish.f1 { animation-delay: -.4s; } .tank .fish.f2 { animation-delay: -.8s; }
-.tank .fish em { font-size: .8rem; font-style: normal; font-weight: 800; background: #fff; border: 2px solid var(--ink); border-radius: 8px; padding: 0 6px; }
-.tank .fish.full em { background: #3fbf6a; color: #fff; }
+.fishtank-mg { position: relative; width: 320px; height: 190px; border: 5px solid var(--ink); border-radius: 14px; overflow: hidden; margin: 0 auto; display: flex; align-items: center; justify-content: space-around; }
+.fishtank-mg .water { position: absolute; inset: 0; background: #7fc4ff; transition: background .4s; }
+.fishtank-mg .water.murky { background: #8a8a5a; }
+.fishtank-mg .fish { position: relative; z-index: 1; font-size: 44px; background: none; border: 0; display: flex; flex-direction: column; align-items: center; animation: crowdbob 1.4s ease-in-out infinite; }
+.fishtank-mg .fish.f1 { animation-delay: -.4s; } .fishtank-mg .fish.f2 { animation-delay: -.8s; }
+.fishtank-mg .fish em { font-size: .8rem; font-style: normal; font-weight: 800; background: #fff; border: 2px solid var(--ink); border-radius: 8px; padding: 0 6px; }
+.fishtank-mg .fish.full em { background: #3fbf6a; color: #fff; }
 .tank-msg { text-align: center; margin-top: 8px; }
 /* Bảng việc nhóm theo tầng */
 .task-list li.floor-h { list-style: none; padding-left: 0; margin: 6px 0 2px; font-weight: 800; font-size: .74rem; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; border-bottom: 1px dashed #d4d0c4; }
@@ -1533,3 +1533,25 @@ button .ui-ico, .menu-item .ui-ico { width: 1.45em; height: 1.45em; }
 .lb-judge .lb-fix.on { background: #e2412f; color: #fff; }
 .lb-note { width: 100%; box-sizing: border-box; border: 2px solid #c9c4b4; border-radius: 8px; padding: 6px 8px; font-family: var(--body); font-size: .85rem; resize: vertical; }
 .lb-tip { margin-top: 18px; }
+.lb-flabel { font-weight: 800; color: var(--muted); align-self: center; margin-right: 4px; font-size: .85rem; }
+.lb-count { margin-left: 8px; }
+.lb-legend { margin: -4px 0 12px; max-width: 980px; }
+.lb-tags { margin: 3px 0 0; display: flex; gap: 4px; flex-wrap: wrap; }
+.lb-diff, .lb-vis { font-size: .68rem; font-weight: 800; border: 2px solid var(--ink); border-radius: 999px; padding: 0 8px; }
+.lb-diff.d-de { background: #c8f0d2; } .lb-diff.d-tb { background: #ffe36e; } .lb-diff.d-kho { background: #ffb3a7; }
+.lb-vis { background: #d6eefc; }
+
+/* ================= ĐỢT A: SỬA LỖI MINI-GAME ================= */
+/* Chữ "Xong" luôn nằm trên cùng (không bị cá, tấm thẻ... đè lên) */
+.mini-done::after { z-index: 60; }
+.mini-body { isolation: isolate; }
+/* Điện thoại: nhấn giữ không bật chọn chữ / menu ảnh / quét chữ */
+.modal .sheet.mini, .modal .sheet.mini * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.modal .sheet.mini img { pointer-events: none; -webkit-user-drag: none; }
+.modal .sheet.mini button { touch-action: manipulation; }
+/* Nối dây: đầu dây bên trái nhấp nháy, có chữ hướng dẫn kéo sang phải */
+.wire-guide { position: absolute; left: 50%; top: 8px; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; color: #ffe36e; font-weight: 800; font-size: .78rem; pointer-events: none; z-index: 2; white-space: nowrap; }
+.wire-guide span { font-size: 1.2rem; animation: wireNudge 1s ease-in-out infinite; }
+@keyframes wireNudge { 50% { transform: translateX(6px); } }
+.wires .wcol.l .port.grab:not(.ok) { animation: wirePulse 1.2s ease-in-out infinite; }
+@keyframes wirePulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 227, 110, .0); } 50% { box-shadow: 0 0 0 6px rgba(255, 227, 110, .55); } }

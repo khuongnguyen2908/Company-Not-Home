@@ -36,13 +36,19 @@ export const TITLES: Record<MiniKind, { title: string; hint: string }> = {
   balance: { title: 'Cân bằng chỉ số game', hint: 'Kéo ba thanh chỉ số vào đúng vùng xanh trên bảng trắng.' },
   projector: { title: 'Bật máy chiếu', hint: 'Bấm nút Nguồn vào cho tới khi màn hình hiện đúng cổng laptop.' },
   getwater: { title: 'Lấy nước tưới cây', hint: 'Giữ vòi nước, thả tay khi nước nằm trong vạch xanh.' },
-  toilet: { title: 'Thay cuộn giấy', hint: 'Kéo hết cuộn cũ ra rồi lắp cuộn mới vào.' },
   printdoc: { title: 'In tài liệu', hint: 'Chọn đúng cài đặt in như trong yêu cầu rồi bấm In.' },
   minutes: { title: 'Lấy biên bản họp', hint: 'Tìm đúng biên bản cuộc họp sáng nay trong chồng giấy.' },
   pushbuild: { title: 'Đẩy bản build', hint: 'Bấm đẩy build rồi chờ thanh tải lên chạy xong. Đi chỗ khác là phải làm lại.' },
 };
 
 let current: { el: HTMLElement; cleanup: () => void } | null = null;
+
+// Nhấn giữ lâu trong mini-game (điện thoại): chặn chọn chữ, menu ảnh và quét chữ
+if (typeof document !== 'undefined') {
+  const inMini = (e: Event) => !!(e.target as HTMLElement | null)?.closest?.('.modal .sheet.mini, .modal .sheet.faceid-sheet');
+  document.addEventListener('contextmenu', (e) => { if (inMini(e)) e.preventDefault(); });
+  document.addEventListener('selectstart', (e) => { if (inMini(e)) e.preventDefault(); });
+}
 
 export function closeMini() {
   if (!current) return;
@@ -104,14 +110,16 @@ export function openMini(root: HTMLElement, kind: MiniKind, onDone: () => void, 
   };
   /** Bình nước: giữ để đổ, thả tay khi mực nước trong vùng xanh */
   const fillGame = (label: string) => {
-    body.innerHTML = `<div class="fillgame"><div class="tank"><div class="zone"></div><div class="water"></div></div><button class="primary big pour">${label}</button><p class="fill-msg"></p></div>`;
+    // Vạch xanh đặt ngẫu nhiên; logic và hình vẽ dùng chung đúng một cặp số (lo..hi) nên tới vạch là xong
+    const lo = 34 + Math.floor(Math.random() * 40), hi = lo + 16;
+    body.innerHTML = `<div class="fillgame"><div class="tank"><div class="zone" style="bottom:${lo}%;height:${hi - lo}%"></div><div class="water"></div></div><button class="primary big pour">${label}</button><p class="fill-msg"></p></div>`;
     const water = body.querySelector('.water') as HTMLElement, btn = body.querySelector('.pour') as HTMLElement, msg = body.querySelector('.fill-msg') as HTMLElement;
     let lv = 0, holding = false;
     btn.onpointerdown = (e) => { e.preventDefault(); holding = true; btn.setPointerCapture(e.pointerId); };
     const up = () => {
       if (!holding || finished) return; holding = false;
-      if (lv >= 62 && lv <= 80) { sfx.sip(); done(); }
-      else if (lv > 80) { fail(); msg.textContent = 'Tràn rồi! Đổ đi làm lại.'; lv = 0; }
+      if (lv >= lo && lv <= hi) { sfx.sip(); done(); }
+      else if (lv > hi) { fail(); msg.textContent = 'Quá vạch rồi! Đổ đi làm lại.'; lv = 0; }
       else if (lv > 0) { msg.textContent = 'Chưa đủ, giữ thêm chút nữa.'; }
     };
     btn.onpointerup = up; btn.onpointercancel = up;
@@ -203,10 +211,11 @@ export function openMini(root: HTMLElement, kind: MiniKind, onDone: () => void, 
         <div class="dart-row"><span class="dart-hits">Trúng: 0/3</span><button class="primary" type="button">🎯 Ném</button></div></div>`;
       const aim = body.querySelector('.aim') as HTMLElement, hitsEl = body.querySelector('.dart-hits') as HTMLElement;
       const board = body.querySelector('.board') as HTMLElement;
-      let t = 0, hits = 0, ax = 0, ay = 0;
+      let t = 0, hits = 0, ax = 0, ay = 0, spd = 1;
       const tick = window.setInterval(() => {
-        t += 0.05;
-        ax = Math.sin(t * 2.3) * 70; ay = Math.sin(t * 3.1 + 1) * 70;
+        t += 0.05 * spd; // tăng tốc mượt, không giật vị trí
+        // quỹ đạo số 8 trơn tru, đi qua hồng tâm 2 lần mỗi vòng; trúng thì nhanh dần
+        ax = Math.sin(t * 1.4) * 72; ay = Math.sin(t * 2.8) * 38;
         aim.style.transform = `translate(${ax}px, ${ay}px)`;
       }, 30);
       cleanups.push(() => clearInterval(tick));
@@ -214,7 +223,7 @@ export function openMini(root: HTMLElement, kind: MiniKind, onDone: () => void, 
         if (finished) return;
         const d = Math.hypot(ax, ay);
         const dot = document.createElement('b'); dot.className = 'hole'; dot.style.transform = `translate(${ax}px, ${ay}px)`; board.appendChild(dot);
-        if (d < 26) { hits++; sfx.ting(); } else fail();
+        if (d < 26) { hits++; spd *= 1.18; sfx.ting(); } else fail();
         hitsEl.textContent = `Trúng: ${hits}/3`;
         if (hits >= 3) done();
       };
@@ -247,7 +256,7 @@ export function openMini(root: HTMLElement, kind: MiniKind, onDone: () => void, 
     },
     fishfeed() {
       const need = 3;
-      body.innerHTML = `<div class="tank"><div class="water"></div>${[0, 1, 2].map(i => `<button class="fish f${i}" data-i="${i}" type="button">${['🐟', '🐠', '🐡'][i]}<em>0/${need}</em></button>`).join('')}</div><p class="claw-msg tank-msg">Mỗi con đúng ${need} hạt</p>`;
+      body.innerHTML = `<div class="fishtank-mg"><div class="water"></div>${[0, 1, 2].map(i => `<button class="fish f${i}" data-i="${i}" type="button">${['🐟', '🐠', '🐡'][i]}<em>0/${need}</em></button>`).join('')}</div><p class="claw-msg tank-msg">Mỗi con đúng ${need} hạt</p>`;
       const fed = [0, 0, 0];
       const water = body.querySelector('.water') as HTMLElement, msg = body.querySelector('.tank-msg') as HTMLElement;
       body.querySelectorAll<HTMLButtonElement>('.fish').forEach(b => b.onclick = () => {
@@ -391,17 +400,6 @@ export function openMini(root: HTMLElement, kind: MiniKind, onDone: () => void, 
         else { fail(); toastIn(body, 'Sai cổng, màn hình vẫn xanh lè.'); }
       };
     },
-    toilet() {
-      let pulls = 0, stage = 0;
-      body.innerHTML = `<div class="tp"><button class="roll" aria-label="Kéo giấy"><span class="sheet-tp"></span></button><p class="tp-msg">Kéo hết cuộn cũ ra (bấm liên tục).</p></div>`;
-      const roll = body.querySelector('.roll') as HTMLElement, msg = body.querySelector('.tp-msg') as HTMLElement;
-      roll.onclick = () => {
-        if (finished) return;
-        sfx.whoosh();
-        if (stage === 0) { pulls++; roll.style.setProperty('--len', `${pulls * 9}px`); if (pulls >= 7) { stage = 1; roll.classList.add('empty'); msg.textContent = 'Lõi rỗng rồi. Bấm để lắp cuộn mới.'; } }
-        else { roll.classList.remove('empty'); roll.classList.add('new'); done(); }
-      };
-    },
     printdoc() {
       const want = { sides: Math.random() < 0.5 ? '2 mặt' : '1 mặt', copies: 1 + Math.floor(Math.random() * 4), color: Math.random() < 0.5 ? 'Màu' : 'Trắng đen' };
       const st = { sides: '1 mặt', copies: 1, color: 'Trắng đen' };
@@ -481,7 +479,7 @@ export function openMini(root: HTMLElement, kind: MiniKind, onDone: () => void, 
       // Cầm đầu dây bên trái kéo sang đúng cổng cùng màu bên phải
       const colors = [['#e2412f', 'Đỏ'], ['#f2b705', 'Vàng'], ['#2e9cf0', 'Xanh'], ['#ff5fa2', 'Hồng']];
       const right = [...colors.keys()].sort(() => Math.random() - 0.5);
-      body.innerHTML = `<div class="wires"><svg class="wire-svg"></svg><div class="wcol l"></div><div class="wcol r"></div></div>`;
+      body.innerHTML = `<div class="wires"><svg class="wire-svg"></svg><div class="wcol l"></div><div class="wire-guide" aria-hidden="true"><b>Kéo từ đây</b><span>➜</span><b>cắm vào cổng cùng màu</b></div><div class="wcol r"></div></div>`;
       const L = body.querySelector('.wcol.l') as HTMLElement, R = body.querySelector('.wcol.r') as HTMLElement;
       const svg = body.querySelector('svg') as SVGSVGElement;
       const box = body.querySelector('.wires') as HTMLElement;

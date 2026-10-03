@@ -17,6 +17,25 @@ const load = (): Store => { try { return JSON.parse(localStorage.getItem(KEY) ||
 const save = (s: Store) => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* bỏ qua */ } };
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
+/**
+ * Độ khó (đánh giá theo cách chơi):
+ * - Dễ: một thao tác đơn giản hoặc giữ nút, gần như không thể làm sai.
+ * - Trung bình: phải đọc hiểu, đếm, kéo thả hoặc canh thời điểm; làm sai thì làm lại phần đó.
+ * - Khó: cần phản xạ, độ chính xác hoặc trí nhớ; sai một bước là mất hết tiến độ.
+ */
+type Diff = 'de' | 'tb' | 'kho';
+const DIFF: Record<string, Diff> = {
+  fingerprint: 'de', router: 'de', power: 'de', delivery: 'de', copier: 'de', pushbuild: 'de', projector: 'de', backlog: 'de', solar: 'de', acpanel: 'de',
+  mt_lift: 'de', mt_cab: 'de', mt_desk: 'de', mt_floor: 'de', mt_wc: 'de',
+  sp_colorcheck: 'de', sp_faceid: 'de', sp_pry: 'de', sp_rescue: 'de', sp_desk: 'de',
+  getwater: 'tb', waterplant: 'tb', fishfeed: 'tb', antenna: 'tb', wires: 'tb', coffee: 'tb', fridge: 'tb', stamp: 'tb', interview: 'tb', printdoc: 'tb',
+  minutes: 'tb', balance: 'tb', testbuild: 'tb', claw: 'tb',
+  excel: 'kho', sprite: 'kho', bug: 'kho', darts: 'kho', sp_swipe: 'kho',
+};
+const DIFF_LABEL: Record<Diff, string> = { de: 'Dễ', tb: 'Trung bình', kho: 'Khó' };
+/** Việc người khác nhìn thấy được khi bạn đang làm (chứng minh trong sạch, như "việc có hình ảnh" của Among Us) */
+const VISIBLE = new Set(['fingerprint', 'sp_faceid', 'sp_colorcheck']);
+
 interface Item { id: string; title: string; hint: string; group: string; where: string; icon: string; fake: boolean; run: (root: HTMLElement, done: () => void, fake: boolean) => void }
 
 function stationInfo(kind: string) {
@@ -60,6 +79,7 @@ export function openMinigameLab(root: HTMLElement) {
   const store = load();
   const fb = (id: string): Fb => (store[id] ??= { status: 'none', note: '', times: [] });
   let filter: 'all' | 'none' | 'fix' | 'ok' = 'all';
+  let dfilter: 'all' | Diff | 'vis' = 'all';
   root.innerHTML = `<div class="ct lab">
     <header class="ct-head">
       <div><h1>${iconSvg('gamepad')} Phòng thử mini-game</h1><p class="ct-sub">Bấm "Chơi thử" để mở từng mini-game như trong game thật. Thời gian từ lúc mở tới lúc xong được tự ghi lại. Đánh dấu Ổn hoặc Cần sửa, ghi chú, rồi sao chép phản hồi gửi lại.</p></div>
@@ -70,7 +90,9 @@ export function openMinigameLab(root: HTMLElement) {
       </div>
     </header>
     <div class="ct-status lb-status"></div>
-    <div class="lb-filters">${[['all', 'Tất cả'], ['none', 'Chưa xem'], ['fix', 'Cần sửa'], ['ok', 'Ổn']].map(([v, l]) => `<button data-f="${v}" class="${v === 'all' ? 'on' : ''}">${l}</button>`).join('')}</div>
+    <div class="lb-filters"><span class="lb-flabel">Đánh giá</span>${[['all', 'Tất cả'], ['none', 'Chưa xem'], ['fix', 'Cần sửa'], ['ok', 'Ổn']].map(([v, l]) => `<button data-f="${v}" class="${v === 'all' ? 'on' : ''}">${l}</button>`).join('')}</div>
+    <div class="lb-filters lb-dfilters"><span class="lb-flabel">Độ khó</span>${[['all', 'Tất cả'], ['de', 'Dễ'], ['tb', 'Trung bình'], ['kho', 'Khó'], ['vis', 'Người khác thấy được']].map(([v, l]) => `<button data-d="${v}" class="${v === 'all' ? 'on' : ''}">${l}</button>`).join('')}<span class="lb-flabel lb-count"></span></div>
+    <p class="ct-sub lb-legend"><b>Dễ:</b> một thao tác hoặc giữ nút, gần như không thể sai. <b>Trung bình:</b> phải đọc, đếm, kéo thả hoặc canh thời điểm. <b>Khó:</b> cần phản xạ, độ chính xác hoặc trí nhớ, sai một bước là làm lại từ đầu. Không có mini-game nào cần nhiều người cùng làm.</p>
     <div class="lb-list"></div>
     <p class="ct-sub lb-tip">Mẹo: mở link này trên điện thoại (thêm ?minigames vào cuối địa chỉ game) để thử cảm giác chạm thật.</p>
   </div>`;
@@ -84,7 +106,7 @@ export function openMinigameLab(root: HTMLElement) {
     const f = fb(it.id);
     const t = f.times.length ? `Lần chơi gần nhất: ${f.times[f.times.length - 1].toFixed(1)} giây${f.times.length > 1 ? ` · trung bình ${(f.times.reduce((a, b) => a + b, 0) / f.times.length).toFixed(1)} giây (${f.times.length} lần)` : ''}` : 'Chưa chơi lần nào';
     return `<article class="lb-card st-${f.status}" data-id="${it.id}">
-      <div class="lb-top"><span class="lb-ic">${iconSvg(it.icon)}</span><div><h3>${esc(it.title)}</h3><p class="lb-where">${esc(it.where)}</p></div></div>
+      <div class="lb-top"><span class="lb-ic">${iconSvg(it.icon)}</span><div><h3>${esc(it.title)}</h3><p class="lb-tags"><span class="lb-diff d-${DIFF[it.id] ?? 'tb'}">${DIFF_LABEL[DIFF[it.id] ?? 'tb']}</span>${VISIBLE.has(it.id) ? '<span class="lb-vis">Người khác thấy được</span>' : ''}</p><p class="lb-where">${esc(it.where)}</p></div></div>
       <p class="lb-hint">${esc(it.hint)}</p>
       <div class="lb-play"><button class="ct-btn primary lb-run">▶ Chơi thử</button>${it.fake ? '<button class="ct-btn lb-fake">Chơi bản Nội gián</button>' : ''}<small class="lb-time">${t}</small></div>
       <div class="lb-judge"><button class="lb-ok${f.status === 'ok' ? ' on' : ''}">✅ Ổn</button><button class="lb-fix${f.status === 'fix' ? ' on' : ''}">🔧 Cần sửa</button></div>
@@ -93,7 +115,8 @@ export function openMinigameLab(root: HTMLElement) {
   };
   const render = () => {
     const groups = [...new Set(items.map(i => i.group))];
-    const list = items.filter(i => filter === 'all' || fb(i.id).status === filter);
+    const list = items.filter(i => (filter === 'all' || fb(i.id).status === filter) && (dfilter === 'all' || (dfilter === 'vis' ? VISIBLE.has(i.id) : DIFF[i.id] === dfilter)));
+    const cnt = root.querySelector('.lb-count'); if (cnt) cnt.textContent = `${list.length} mini-game`;
     $('.lb-list').innerHTML = groups.map(g => {
       const its = list.filter(i => i.group === g);
       return its.length ? `<section class="lb-group"><h2>${esc(g)} <small>${its.length}</small></h2><div class="lb-grid">${its.map(card).join('')}</div></section>` : '';
@@ -108,7 +131,9 @@ export function openMinigameLab(root: HTMLElement) {
           fb(it.id).times.push(Math.round(sec * 10) / 10);
           if (fb(it.id).times.length > 10) fb(it.id).times.shift();
           save(store);
-          window.setTimeout(() => { closeMini(); render(); status(); }, 900);
+          // chỉ đóng đúng khung vừa xong (nếu đã mở mini-game khác thì để yên)
+          const finishedSheet = document.querySelector('.modal .sheet');
+          window.setTimeout(() => { if (finishedSheet?.isConnected) closeMini(); render(); status(); }, 900);
         }, fake);
       };
       (el.querySelector('.lb-run') as HTMLButtonElement).onclick = () => play(false);
@@ -128,15 +153,20 @@ export function openMinigameLab(root: HTMLElement) {
         const f = fb(it.id);
         const st = f.status === 'ok' ? 'Ổn' : f.status === 'fix' ? 'CẦN SỬA' : 'Chưa xem';
         const tm = f.times.length ? ` · ${f.times.length} lần chơi, trung bình ${(f.times.reduce((a, b) => a + b, 0) / f.times.length).toFixed(1)} giây` : '';
-        lines.push(`- **${it.title}** (${it.id}): ${st}${tm}${f.note.trim() ? `\n  - Ghi chú: ${f.note.trim().replace(/\n/g, ' ')}` : ''}`);
+        lines.push(`- **${it.title}** (${it.id}, ${DIFF_LABEL[DIFF[it.id] ?? 'tb']}): ${st}${tm}${f.note.trim() ? `\n  - Ghi chú: ${f.note.trim().replace(/\n/g, ' ')}` : ''}`);
       }
       lines.push('');
     }
     return lines.join('\n');
   };
-  root.querySelectorAll<HTMLButtonElement>('.lb-filters button').forEach(b => b.onclick = () => {
+  root.querySelectorAll<HTMLButtonElement>('.lb-filters button[data-f]').forEach(b => b.onclick = () => {
     filter = b.dataset.f as typeof filter;
-    root.querySelectorAll('.lb-filters button').forEach(x => x.classList.toggle('on', x === b));
+    root.querySelectorAll('.lb-filters button[data-f]').forEach(x => x.classList.toggle('on', x === b));
+    render();
+  });
+  root.querySelectorAll<HTMLButtonElement>('.lb-filters button[data-d]').forEach(b => b.onclick = () => {
+    dfilter = b.dataset.d as typeof dfilter;
+    root.querySelectorAll('.lb-filters button[data-d]').forEach(x => x.classList.toggle('on', x === b));
     render();
   });
   $('#lb-copy').onclick = async () => {

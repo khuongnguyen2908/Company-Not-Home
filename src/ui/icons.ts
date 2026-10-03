@@ -117,7 +117,7 @@ export const ICON_ART: Record<string, string> = {
 const STATION_ICON: Record<string, string> = {
   fingerprint: 'fingerprint', delivery: 'box', waterplant: 'water', excel: 'computer', backlog: 'chart', sprite: 'palette',
   bug: 'bug', testbuild: 'computer', interview: 'calendar', balance: 'chart', projector: 'projector', coffee: 'coffee',
-  fridge: 'fridge', getwater: 'water', toilet: 'work', copier: 'printer', printdoc: 'printer', minutes: 'clipboard',
+  fridge: 'fridge', getwater: 'water', copier: 'printer', printdoc: 'printer', minutes: 'clipboard',
   stamp: 'stamp', wires: 'cable', pushbuild: 'computer', router: 'router', power: 'breaker',
   mt_lift: 'wrench', mt_cab: 'wrench', mt_desk: 'wrench', mt_floor: 'wrench', mt_wc: 'wrench',
   darts: 'dart', claw: 'claw', fishfeed: 'fish', solar: 'solar', antenna: 'antenna', acpanel: 'acfan', camera: 'camera', faceid: 'idcard', colorcheck: 'palette',
