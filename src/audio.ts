@@ -78,6 +78,15 @@ class Sound {
   modem() { for (let i = 0; i < 8; i++) this.tone(900 + Math.random() * 1400, 0.08, 'square', 0.05, i * 0.07); }
   sip() { this.noise(0.5, 'bandpass', 900, 4, 0.15, 0, 500); }
   whoosh() { this.noise(0.35, 'bandpass', 400, 1.5, 0.35, 0, 2400); }
+  /** Sảnh chờ */
+  meow() { this.tone(700, 0.12, 'triangle', 0.16, 0, 1100); this.tone(1100, 0.32, 'triangle', 0.16, 0.11, 620); }
+  honk() { this.tone(392, 0.14, 'square', 0.07); this.tone(392, 0.2, 'square', 0.07, 0.2); }
+  tapGlass() { this.tone(2400, 0.06, 'sine', 0.14); this.tone(2600, 0.06, 'sine', 0.12, 0.12); }
+  splash() { this.noise(0.35, 'bandpass', 1200, 0.8, 0.22, 0, 500); }
+  pop() { this.tone(600, 0.08, 'sine', 0.18, 0, 1200); }
+  /** nắp lối trốn bật/đóng */
+  clank() { this.noise(0.06, 'bandpass', 900, 4, 0.35); this.tone(220, 0.12, 'square', 0.06, 0.03, 160); }
+  busBrake() { this.noise(0.5, 'highpass', 3200, 1, 0.12, 0, 1800); }
   sigh() { this.noise(1.1, 'bandpass', 700, 2.5, 0.12, 0, 260); }
   cough() { this.noise(0.12, 'bandpass', 500, 2, 0.35); this.noise(0.15, 'bandpass', 420, 2, 0.3, 0.2); }
   footstep() { this.tone(70, 0.1, 'sine', 0.6, 0, 45); this.noise(0.05, 'highpass', 2000, 1, 0.3); }

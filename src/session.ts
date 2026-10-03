@@ -17,6 +17,12 @@ export const session = {
     me: { name: '', look: null as Look | null, empId: '' },
     bots: [] as { name: string; look: Look; empId: string }[],
     near: null as null | 'wardrobe' | 'board' | 'elevator',
+    /** Món đồ đang đứng gần (biển lớn hoặc tương tác nhỏ) để nút chính đổi icon/chữ */
+    nearInfo: null as null | { key: string; icon: string; label: string; big: boolean },
     version: 0, // tăng mỗi khi danh sách người trong sảnh thay đổi
+    /** Thông tin hiện trên màn hình phòng và bảng Nhân viên của tháng */
+    info: { title: 'Phòng offline', people: 1, max: 1, imps: 1, roles: 0, wins: 0, played: 0, streak: 0 },
+    /** Tin chat trong sảnh (sảnh báo lên giao diện để ghi vào khung chat) */
+    onChat: null as null | ((m: { name: string; empId: string; text: string; me: boolean }) => void),
   },
 };

@@ -9,7 +9,7 @@ import {
 import { findPath, type Pt } from './path';
 import { fmt } from '../content/text';
 import { type Look, randomLook, lookColor, colors2, itemDef, bodyDef, SLOTS } from './look';
-import { CAMERAS } from './map';
+import { CAMERAS, levelName, FLOORS, STAIRWELL, SPAWN_POINTS } from './map';
 import {
   type RoleDept, SPECIAL_ROLES, NEUTRAL_ROLES, COLOR_GROUPS, colorGroupOf, STICKERS, BOT_NAMES, FILLER_LINES, DEFENSE_LINES, IMPOSTOR_ALIBIS, pick, normalize,
 } from './data';
@@ -20,7 +20,7 @@ export type Winner = Role | 'gd' | 'climber';
 export type SabotageKind = 'wifi' | 'power' | 'boss';
 
 export const SPEED = 205;
-export const VISION = 3.04 * TILE;     // tầm nhìn Nhân viên ở mức 1x (đã chốt: 0.8 của mức cũ)
+export const VISION = 3.8 * TILE;      // tầm nhìn Nhân viên ở mức 1x (bản đồ nhiều tầng rộng hơn nên trả về 3,8 ô)
 export const VISION_IMP = VISION * 1.5; // Nội gián nhìn xa gấp rưỡi, như Among Us
 export const VISION_DARK = 1.2 * TILE;
 export const DOOR_TIME = 10;            // cửa khóa trong bao lâu
@@ -52,8 +52,8 @@ export const BOSS_TIME = 45; // tòa nhiều tầng: cần thêm thời gian đ�
  * Chọn bằng cách chạy 150 ván bot cho từng cỡ, nhắm tỉ lệ Nội gián thắng khoảng 40–52%.
  */
 export function killCooldownFor(players: number, imps: number): number {
-  if (imps <= 1) return ({ 5: 55, 6: 36, 7: 28, 8: 20, 9: 16 } as Record<number, number>)[players] ?? (players < 5 ? 60 : 12);
-  return ({ 7: 120, 8: 82, 9: 62 } as Record<number, number>)[players] ?? (players < 7 ? 120 : 50);
+  if (imps <= 1) return ({ 5: 51, 6: 33, 7: 22, 8: 18, 9: 12 } as Record<number, number>)[players] ?? (players < 5 ? 55 : 9);
+  return ({ 7: 118, 8: 74, 9: 57 } as Record<number, number>)[players] ?? (players < 7 ? 118 : 43);
 }
 export const USE_RANGE = 1.15 * TILE;
 export const REPORT_RANGE = 1.7 * TILE;
@@ -156,6 +156,7 @@ export interface Agent {
   knownDead: number[];      // Animator: những người mình đã biết là nghỉ việc (thấy ghế hoặc vào họp)
   portalCd: number;         // vừa đi qua cổng thang bộ / thang máy
   lastPortal: number;       // thời điểm đi qua cổng (để Tester không đánh dấu nhầm là chui ống)
+  ghostLv: number;          // hồn ma: tầng đang ở (giữ hồn ma trong phạm vi tầng)
   itCamT: number; // còn bao lâu đang xem camera bằng laptop
   itCd: number;
   brain: Brain;
@@ -172,6 +173,7 @@ export interface Body { victim: number; x: number; y: number; room: RoomId | nul
 
 export type GameEvent =
   | { type: 'kill'; killer: number; victim: number; x: number; y: number }
+  | { type: 'vent'; spot: number }   // có người chui vào hoặc chui ra một lối trốn (nắp bật lên)
   | { type: 'meeting'; reporter: number; victim: number | null }
   | { type: 'sabotage'; kind: SabotageKind; by: number }
   | { type: 'sabotage_end'; kind: SabotageKind; by: number | null }
@@ -194,7 +196,15 @@ export type GameEvent =
   | { type: 'lift_pry'; agent: number }
   | { type: 'lift_rescue'; agent: number };
 
-export interface ChatMsg { from: number; text: string; t: number; system?: boolean; to?: number; anon?: boolean }
+/** Phạm vi hồn ma được bay trong một tầng (điểm ảnh) */
+export function ghostRegion(lv: number): { x0: number; y0: number; x1: number; y1: number } {
+  if (lv === 0) return { x0: CABIN.x * TILE + 12, y0: CABIN.y * TILE + 12, x1: (CABIN.x + CABIN.w) * TILE - 12, y1: (CABIN.y + CABIN.h) * TILE - 12 };
+  if (lv === STAIRS_LEVEL) return { x0: STAIRWELL.x * TILE, y0: STAIRWELL.y * TILE, x1: (STAIRWELL.x + STAIRWELL.w) * TILE, y1: (STAIRWELL.y + STAIRWELL.h) * TILE };
+  const F = FLOORS[Math.max(1, Math.min(4, lv)) - 1];
+  return { x0: (F.ox + 1) * TILE, y0: (F.oy + 1) * TILE, x1: (F.ox + F.w - 1) * TILE, y1: (F.oy + F.h - 1) * TILE };
+}
+
+export interface ChatMsg { from: number; text: string; t: number; system?: boolean; to?: number; anon?: boolean; alert?: boolean }
 
 interface Effect { target: number; delta: number }
 
@@ -247,6 +257,7 @@ export interface WorldOptions {
   impostors: number;
   seed?: number;
   headless?: boolean; // dùng khi chạy thử tự động: người chơi cũng do bot điều khiển
+  spawnChoice?: boolean; // chọn nơi xuất hiện sau họp (mặc định bật)
 }
 
 function mulberry32(a: number) {
@@ -303,6 +314,7 @@ export class World {
   constructor(opts: WorldOptions) {
     this.rng = mulberry32(opts.seed ?? Math.floor(Math.random() * 1e9));
     this.headless = !!opts.headless;
+    if (opts.spawnChoice !== undefined) this.spawnChoice = opts.spawnChoice;
     this.visionMul = opts.vision ?? 1;
     this.liftCapacity = opts.liftCapacity ?? 4;
     this.liftPry = opts.liftPry ?? true;
@@ -334,7 +346,7 @@ export class World {
         hrScanning: false, hrUsed: false, hrPending: null, hrResult: null, directorRevealed: false, itCamT: 0, itCd: 15,
         poUsed: false, poRevealed: false, prodLast: null, devBackup: null, devUsed: false, artistNext: 1, artistScanning: false, artistResults: [],
         adminBattery: 10, adminCd: 0, adminViewing: false, engHideT: 0, engCd: 0, mediaCd: 0, deathRoom: null, stickerMsg: null,
-        killedBy: null, animUsed: false, testTarget: null, testLog: [], testUsed: false, testLast: null, anonUsed: false, knownDead: [], portalCd: 0, lastPortal: -99,
+        killedBy: null, animUsed: false, testTarget: null, testLog: [], testUsed: false, testLast: null, anonUsed: false, knownDead: [], portalCd: 0, lastPortal: -99, ghostLv: 2,
         brain: newBrain(),
       });
     }
@@ -576,6 +588,7 @@ export class World {
       return false;
     }
     victim.alive = false;
+    { const lv = levelAt(victim.x, victim.y); victim.ghostLv = lv >= 0 ? lv : 2; }
     victim.brain.path = [];
     victim.deathRoom = roomAt(victim.x, victim.y);
     victim.killedBy = killer.id;
@@ -675,9 +688,12 @@ export class World {
     const eng = a.role === 'crew' && a.dept === 'engineer';
     if (spot === null) {
       if (eng && a.hidden !== null) { a.engCd = ENG_CD; a.engHideT = 0; }
+      if (a.hidden !== null) this.events.push({ type: 'vent', spot: a.hidden });
       a.hidden = null; return;
     }
     if (eng && a.hidden === null && this.engineerBlocked(a)) return;
+    // Nắp chỉ bật khi chui vào từ bên ngoài; đang ở trong mà chuồn sang chỗ khác thì im lặng
+    if (a.hidden === null) this.events.push({ type: 'vent', spot });
     if (eng && a.hidden === null) a.engHideT = 0;
     a.hidden = spot;
     if (eng && this.agents.some(o => o !== a && o.role === 'impostor' && o.hidden === spot)) this.events.push({ type: 'eng_sense', agent: a.id, spot });
@@ -963,6 +979,7 @@ export class World {
   private portalTick(a: Agent, dt: number) {
     a.portalCd = Math.max(0, a.portalCd - dt);
     if (a.portalCd > 0 || a.hidden !== null) return;
+    if (!a.alive) return; // hồn ma bay qua cửa thang bộ và thang máy như qua tường; đổi tầng chỉ bằng nút riêng
     const tx = Math.floor(a.x / TILE), ty = Math.floor(a.y / TILE), idx = ty * MAP_W + tx;
     const portal = PORTAL_AT.get(idx);
     if (portal) { this.teleport(a, portal.to.x + 0.5, portal.to.y + 0.5); return; }
@@ -1081,6 +1098,7 @@ export class World {
     t.alive = true; t.killedBy = null; t.hidden = null;
     t.x = a.x; t.y = a.y; t.brain.path = []; t.brain.goal = null;
     a.alive = false; a.hidden = null; a.killedBy = a.id; a.deathRoom = roomAt(a.x, a.y);
+    { const lv = levelAt(a.x, a.y); a.ghostLv = lv >= 0 ? lv : 2; }
     this.bodies.push({ victim: a.id, x: a.x, y: a.y, room: roomAt(a.x, a.y), t: this.time });
     this.events.push({ type: 'revive', animator: a.id, target: t.id });
     this.checkWin();
@@ -1303,8 +1321,12 @@ export class World {
     const dx = (ix / len) * sp * Math.min(1, len), dy = (iy / len) * sp * Math.min(1, len);
     if (dx !== 0) a.facing = dx > 0 ? 1 : -1;
     if (!a.alive) {
-      a.x = Math.max(TILE, Math.min((MAP_W - 1) * TILE, a.x + dx));
-      a.y = Math.max(TILE, Math.min((MAP_H - 1) * TILE, a.y + dy));
+      // Hồn ma xuyên tường nhưng chỉ trong phạm vi tầng đang ở; đổi tầng bằng nút riêng (ghostFloor)
+      const lv = levelAt(a.x, a.y);
+      if (lv >= 0) a.ghostLv = lv;
+      const r = ghostRegion(a.ghostLv);
+      a.x = Math.max(r.x0, Math.min(r.x1, a.x + dx));
+      a.y = Math.max(r.y0, Math.min(r.y1, a.y + dy));
     } else {
       if (canStand(a.x + dx, a.y)) a.x += dx;
       if (canStand(a.x, a.y + dy)) a.y += dy;
@@ -1313,11 +1335,35 @@ export class World {
     a.walkT += dt;
   }
 
+  /** Hồn ma đổi tầng: dir 1 lên, -1 xuống. Hiện ở vị trí tương ứng trên tầng mới. Trả về lỗi (nếu có) */
+  ghostFloor(a: Agent, dir: 1 | -1): string | null {
+    if (a.alive) return 'Chỉ hồn ma mới bay đổi tầng được';
+    const cur = levelAt(a.x, a.y);
+    let base = cur >= 1 && cur <= 4 ? cur : cur === 0 ? Math.round(this.lift.pos) : cur === STAIRS_LEVEL ? Math.max(1, Math.min(4, 4 - Math.floor((a.y / TILE - STAIRWELL.y) / 8))) : a.ghostLv;
+    if (base < 1 || base > 4) base = 2;
+    const target = base + dir;
+    if (target < 1 || target > 4) return dir > 0 ? 'Đã ở tầng cao nhất' : 'Đã ở tầng thấp nhất';
+    const F0 = FLOORS[base - 1], F1 = FLOORS[target - 1];
+    const inFloor = cur === base;
+    const relX = inFloor ? a.x - F0.ox * TILE : (F0.w / 2) * TILE, relY = inFloor ? a.y - F0.oy * TILE : 11.5 * TILE;
+    const r = ghostRegion(target);
+    const nx = Math.max(r.x0, Math.min(r.x1, F1.ox * TILE + relX)), ny = Math.max(r.y0, Math.min(r.y1, F1.oy * TILE + relY));
+    this.teleport(a, nx / TILE, ny / TILE);
+    a.ghostLv = target;
+    return null;
+  }
+
   private followPath(a: Agent, dt: number): boolean {
     const b = a.brain;
     if (b.lift && this.liftStep(a, dt)) return false;
     if (!b.path.length) { a.moving = false; return true; }
     const target = b.path[0];
+    // Hồn ma: điểm kế tiếp ở tầng khác thì hiện luôn ở đó (không bay ngang qua tầng khác)
+    if (!a.alive && levelAt(target.x, target.y) !== levelAt(a.x, a.y) && levelAt(target.x, target.y) >= 0) {
+      this.teleport(a, target.x / TILE, target.y / TILE);
+      b.path.shift();
+      return true;
+    }
     // Điểm kế tiếp ở tầng khác: đang đứng ở cổng, chờ dịch chuyển
     if (a.alive && levelAt(target.x, target.y) !== levelAt(a.x, a.y)) { a.moving = false; return false; }
     // Cửa vừa bị khóa chắn đường: bỏ lộ trình, lần sau tìm đường khác
@@ -1385,8 +1431,18 @@ export class World {
     // Đổi tầng: đôi khi đi thang máy thay vì thang bộ
     const fromLv = levelAt(a.x, a.y), toLv = levelAt(tile.x * TILE + 24, tile.y * TILE + 24);
     if (fromLv !== toLv && a.alive) this.liftStats.crossTrips++;
-    // Hồn ma: bay thẳng tới nơi nếu không có đường (xuyên tường, kể cả vào buồng thang)
-    if (!a.alive && (toLv === 0 || fromLv === 0)) { a.brain.path = [tileCenter(tile.x, tile.y)]; a.brain.goal = goal; a.brain.lift = null; return true; }
+    // Hồn ma: việc ở tầng khác thì hiện thẳng ở tầng đó (không đi cầu thang), rồi bay tới việc
+    if (!a.alive && fromLv !== toLv) {
+      if (toLv >= 1 && toLv <= 4 && fromLv >= 1 && fromLv <= 4) {
+        const F0 = FLOORS[fromLv - 1], F1 = FLOORS[toLv - 1], r = ghostRegion(toLv);
+        const nx = Math.max(r.x0, Math.min(r.x1, F1.ox * TILE + (a.x - F0.ox * TILE))), ny = Math.max(r.y0, Math.min(r.y1, F1.oy * TILE + (a.y - F0.oy * TILE)));
+        this.teleport(a, nx / TILE, ny / TILE);
+      } else {
+        const c = tileCenter(tile.x, tile.y); this.teleport(a, c.x / TILE, c.y / TILE);
+      }
+      a.ghostLv = toLv;
+      a.brain.path = [tileCenter(tile.x, tile.y)]; a.brain.goal = goal; a.brain.lift = null; return true;
+    }
     // Việc ở trong buồng thang máy: phải gọi thang rồi vào buồng
     if (a.alive && toLv === 0 && fromLv !== 0) {
       if (this.lift.stuck) return false;
@@ -1932,6 +1988,15 @@ export class World {
     this.lift = { pos: 2, dir: 0, target: null, open: true, doorT: LIFT_DOOR_TIME, requests: new Set(), stuck: false, stuckT: 0, rescueFloor: null };
     for (const a of this.agents) { if (a.adminViewing) this.adminClose(a); a.stickerMsg = null; a.brain.lift = null; }
     const mm = this.meeting!;
+    // Dòng đầu tiên trong khung chat: lý do cuộc họp (tô đỏ)
+    {
+      const r = this.agents[reporter];
+      const where = room ? `${roomName(room)}, ${levelName(ROOMS.find(x => x.id === room)?.level ?? 0)}` : '';
+      const text = mm.via === 'body' ? fmt('chat.reason.body', { reporter: `${r.name} #${r.empId}`, victim: this.agents[victim!].name, room: where })
+        : mm.via === 'po' ? fmt('chat.reason.po', { reporter: `${r.name} #${r.empId}` })
+        : fmt('chat.reason.bell', { reporter: `${r.name} #${r.empId}` });
+      mm.chat.push({ from: reporter, text, t: 0, system: true, alert: true });
+    }
     // Vào phòng họp thì ai cũng thấy ai đã nghỉ việc
     for (const a of this.agents) if (a.dept === 'animator') for (const o of this.agents) if (!o.alive && !a.knownDead.includes(o.id)) a.knownDead.push(o.id);
     for (const a of this.agents) {
@@ -2392,10 +2457,62 @@ export class World {
         a.x = sp.x; a.y = sp.y;
       }
     }
+    // Chọn nơi xuất hiện (kiểu Airship): mỗi người 3 lựa chọn ngẫu nhiên riêng, không ai biết người khác chọn gì
+    this.spawnOffer = null;
+    if (this.spawnChoice) {
+      this.spawnUsed = new Map();
+      for (const a of this.agents) {
+        if (!a.alive) continue;
+        // Phòng họp luôn có (lựa chọn đầu tiên), cộng 2 điểm ngẫu nhiên trong các điểm còn lại
+        const meet = SPAWN_POINTS.findIndex(sp => sp.id === 'meeting');
+        const others = [...SPAWN_POINTS.keys()].filter(i => i !== meet).sort(() => this.rng() - 0.5).slice(0, 2);
+        const offers = [meet, ...others];
+        if (a.isPlayer && !this.headless) { this.spawnOffer = offers; continue; } // người chơi chọn trên màn hình
+        this.placeAtSpawn(a, this.botSpawnPick(a, offers));
+      }
+    }
     this.emergencyCd = 15;
     this.sabCd = Math.max(this.sabCd, 15);
     this.phase = 'play';
     this.checkWin();
+  }
+
+  /** Lựa chọn nơi xuất hiện đang chờ người chơi (chỉ số trong SPAWN_POINTS), null nếu không có */
+  spawnOffer: number[] | null = null;
+  /** Bật/tắt luật chọn nơi xuất hiện (để so sánh cân bằng) */
+  spawnChoice = true;
+  private spawnUsed = new Map<number, number>();
+  /** Người chơi chọn nơi xuất hiện (i: vị trí trong 3 lựa chọn; -1 = hết giờ, ở lại Phòng họp) */
+  chooseSpawn(i: number) {
+    const offer = this.spawnOffer;
+    if (!offer) return;
+    this.spawnOffer = null;
+    const pick = offer[i >= 0 && i < offer.length ? i : 0];
+    this.placeAtSpawn(this.player, pick);
+  }
+  /** Bot chọn điểm cùng tầng với việc kế tiếp; không có thì chọn ngẫu nhiên */
+  private botSpawnPick(a: Agent, offers: number[]): number {
+    const next = a.tasks.find(t => !t.done);
+    if (next) {
+      const st = station(slotStation(next));
+      const lv = levelAt((st.stand.x + 0.5) * TILE, (st.stand.y + 0.5) * TILE);
+      const same = offers.filter(o => SPAWN_POINTS[o].level === lv);
+      if (same.length) return same[Math.floor(this.rng() * same.length)];
+    }
+    return offers[Math.floor(this.rng() * offers.length)];
+  }
+  /** Đặt người vào điểm xuất hiện, rải ra các ô quanh điểm để không chồng lên nhau */
+  private placeAtSpawn(a: Agent, idx: number) {
+    const sp = SPAWN_POINTS[idx];
+    const n = this.spawnUsed.get(idx) ?? 0;
+    this.spawnUsed.set(idx, n + 1);
+    const ring: [number, number][] = [[0, 0], [1, 0], [-1, 0], [0, 1], [1, 1], [-1, 1], [0, -1], [2, 0], [-2, 0], [2, 1]];
+    for (let k = 0; k < ring.length; k++) {
+      const [dx, dy] = ring[(n + k) % ring.length];
+      const c = tileCenter(sp.x + dx, sp.y + dy);
+      if (canStand(c.x, c.y)) { this.teleport(a, (c.x) / TILE, (c.y) / TILE); return; }
+    }
+    const c = tileCenter(sp.x, sp.y); this.teleport(a, c.x / TILE, c.y / TILE);
   }
 
   private endGame(winner: Winner, reason: string) {

@@ -121,7 +121,8 @@ export type FurnitureKind =
   | 'router' | 'panel' | 'sink' | 'pantrytable' | 'sofa' | 'plant' | 'watercooler'
   | 'counter' | 'scanner' | 'boxes' | 'bigplant' | 'easel' | 'kanban' | 'projector' | 'printer'
   | 'monitors' | 'shelf' | 'paper' | 'whiteboard' | 'hrdesk' | 'tap' | 'faceid' | 'colorcheck'
-  | 'dartboard' | 'claw' | 'fishtank' | 'gardenbed' | 'acunit' | 'watertank' | 'liftpanel';
+  | 'dartboard' | 'claw' | 'fishtank' | 'gardenbed' | 'acunit' | 'watertank' | 'liftpanel'
+  | 'solar' | 'antenna';
 
 export interface Furniture extends Rect { kind: FurnitureKind; blocking: boolean }
 
@@ -156,6 +157,7 @@ export const FURNITURE: Furniture[] = [
   // Sân thượng
   F(4, 'gardenbed', 2, 2, 4, 2), F(4, 'gardenbed', 9, 2, 4, 2), F(4, 'gardenbed', 2, 8, 4, 2), F(4, 'gardenbed', 9, 8, 4, 2), F(4, 'bigplant', 14, 12),
   F(4, 'acunit', 25, 2, 2, 2), F(4, 'acunit', 29, 2, 2, 2), F(4, 'acunit', 33, 2, 2, 2), F(4, 'watertank', 27, 8, 4, 3),
+  F(4, 'solar', 17, 1, 4, 2), F(4, 'antenna', 14, 1),
   // Buồng thang máy
   F(0, 'liftpanel', CABIN_PANEL.x, CABIN_PANEL.y),
 ];
@@ -165,7 +167,8 @@ export type MiniKind =
   | 'interview' | 'balance' | 'projector' | 'coffee' | 'fridge' | 'getwater' | 'toilet' | 'copier'
   | 'printdoc' | 'minutes' | 'stamp' | 'wires' | 'pushbuild' | 'router' | 'power'
   | 'mt_lift' | 'mt_cab' | 'mt_desk' | 'mt_floor' | 'mt_wc'
-  | 'darts' | 'claw' | 'fishfeed';
+  | 'darts' | 'claw' | 'fishfeed'
+  | 'solar' | 'antenna' | 'acpanel';
 
 export interface Station {
   id: MiniKind | 'camera' | 'faceid' | 'colorcheck';
@@ -187,7 +190,7 @@ export const STATIONS: Station[] = [
   S(1, 'camera', 'Xem camera an ninh', 'security', 28, 2, 29, 1),
   S(1, 'power', 'Bật lại cầu dao', 'power', 34, 15, 34.5, 14),
   S(1, 'mt_cab', 'Sửa khóa tủ đồ', 'reception', 3, 7, 2.5, 7.5),
-  S(1, 'darts', 'Ném phi tiêu', 'fun', 5, 16, 5.5, 14.2),
+  S(1, 'darts', 'Ném phi tiêu', 'fun', 6, 16, 5.5, 14.2), // đứng lệch phải, không đứng sau bể cá
   S(1, 'claw', 'Gắp thú bông', 'fun', 11, 16, 10, 14),
   S(1, 'fishfeed', 'Cho cá ăn', 'fun', 4, 18, 4.5, 17),
   // Tầng 2
@@ -200,7 +203,7 @@ export const STATIONS: Station[] = [
   S(2, 'getwater', 'Lấy nước tưới cây', 'pantry', 10, 15, 10.5, 14),
   S(2, 'copier', 'Gỡ kẹt photocopy', 'print', 25, 15, 26, 14),
   S(2, 'printdoc', 'In tài liệu', 'print', 31, 15, 32, 14),
-  S(2, 'minutes', 'Lấy biên bản họp', 'print', 33, 19, 34, 20),
+  S(2, 'minutes', 'Lấy biên bản họp', 'print', 35, 20, 34, 20), // đứng cạnh tủ, không đứng sau tủ
   S(2, 'mt_desk', 'Gia cố gầm bàn họp', 'meeting', 33, 8, 34.5, 7.5),
   S(2, 'mt_wc', 'Sửa ống gió', 'print', 35, 19, 35.5, 19.5),
   // Tầng 3
@@ -209,7 +212,7 @@ export const STATIONS: Station[] = [
   S(3, 'faceid', 'Máy Face ID', 'hr', 14, 5, 13.5, 5),
   S(3, 'wires', 'Nối lại dây cáp', 'server', 30, 4, 30, 2.5),
   S(3, 'router', 'Khởi động lại router', 'server', 35, 4, 36.5, 4),
-  S(3, 'pushbuild', 'Đẩy bản build', 'server', 33, 6, 34, 7),
+  S(3, 'pushbuild', 'Đẩy bản build', 'server', 33, 8, 34, 7), // đứng trước màn hình
   S(3, 'mt_floor', 'Sửa ống cáp', 'server', 35, 8, 35.5, 6.5),
   S(3, 'bug', 'Tái hiện bug', 'qa', 3, 16, 4, 15),
   S(3, 'testbuild', 'Test bản build', 'qa', 8, 16, 9, 15),
@@ -217,6 +220,9 @@ export const STATIONS: Station[] = [
   S(3, 'colorcheck', 'Máy so màu', 'art', 34, 15, 35.5, 15),
   // Sân thượng
   S(4, 'waterplant', 'Tưới cây', 'roof_garden', 4, 4, 4, 3),
+  S(4, 'solar', 'Lau tấm pin', 'roof_terrace', 18, 3, 18.5, 2),
+  S(4, 'antenna', 'Chỉnh ăng-ten', 'roof_garden', 14, 2, 14.5, 1.2),
+  S(4, 'acpanel', 'Kiểm tra cục nóng', 'roof_ac', 26, 4, 25.5, 3),
   // Trong buồng thang máy
   S(0, 'mt_lift', 'Bảo trì nóc thang máy', 'cabin', CABIN.x + 3, CABIN.y + 1, CABIN.x + 3.5, CABIN.y + 1.5),
 ];
@@ -240,6 +246,9 @@ export const TASKS: TaskDef[] = [
   { id: 'phitieu', name: 'Ném phi tiêu xả stress', type: 'short', steps: ['darts'] },
   { id: 'gapthu', name: 'Gắp thú bông tặng sếp', type: 'short', steps: ['claw'] },
   { id: 'choca', name: 'Cho cá ăn', type: 'short', steps: ['fishfeed'] },
+  { id: 'laupin', name: 'Lau tấm pin mặt trời', type: 'short', steps: ['solar'] },
+  { id: 'angten', name: 'Chỉnh ăng-ten', type: 'short', steps: ['antenna'] },
+  { id: 'cucnong', name: 'Kiểm tra cục nóng điều hòa', type: 'short', steps: ['acpanel'] },
   { id: 'wires', name: 'Nối lại dây cáp', type: 'short', steps: ['wires'] },
   { id: 'trinhky', name: 'Trình ký', type: 'long', steps: ['printdoc', 'stamp'] },
   { id: 'build', name: 'Ra bản build', type: 'long', steps: ['pushbuild', 'testbuild'] },
@@ -279,6 +288,16 @@ export const HIDE_SPOTS: { id: string; name: string; x: number; y: number; pair:
 ];
 
 // Chỗ đứng quanh bàn họp (đầu ván và sau mỗi cuộc họp)
+/** Điểm xuất hiện lại sau họp (kiểu Airship): mỗi người được chọn 3 trong 6 điểm */
+export interface SpawnPoint { id: string; room: RoomId; level: number; x: number; y: number; icon: string }
+export const SPAWN_POINTS: SpawnPoint[] = [
+  { id: 'reception', room: 'reception', level: 1, x: 10, y: 5, icon: 'idcard' },
+  { id: 'meeting', room: 'meeting', level: 2, x: 66, y: 7, icon: 'bell' },
+  { id: 'pantry', room: 'pantry', level: 2, x: 49, y: 16, icon: 'coffee' },
+  { id: 'hall3', room: 'hall3', level: 3, x: 19, y: 35, icon: 'stairs' },
+  { id: 'art', room: 'art', level: 3, x: 30, y: 41, icon: 'palette' },
+  { id: 'roof', room: 'roof_garden', level: 4, x: 48, y: 31, icon: 'plant' },
+];
 export const SPAWNS: { x: number; y: number }[] = [
   ...[24, 25, 26, 27, 28, 29, 30, 31].map(x => ({ x: fl(2).ox + x, y: fl(2).oy + 2 })),
   ...[24, 25, 26, 27, 28, 29, 30, 31].map(x => ({ x: fl(2).ox + x, y: fl(2).oy + 7 })),

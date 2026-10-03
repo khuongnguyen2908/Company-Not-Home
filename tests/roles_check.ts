@@ -1,3 +1,4 @@
+import { SPAWN_POINTS, levelAt as __lv, canStand as __cs, HIDE_SPOTS as HIDE_SPOTS_T, PORTALS as PORTALS_T } from '../src/game/map';
 // Kiểm tra nhanh luật của các vai mới
 import { World, slotStation } from '../src/game/sim';
 import { randomLook } from '../src/game/look';
@@ -159,4 +160,67 @@ const mk3 = (seed = 11) => new World({ playerName: 'T', playerLook: randomLook()
   w.liftCall(1); ok(!w.lift.requests.has(1), 'mất điện: gọi thang không được');
   w.fixSabotage(null); (w as any).liftTick(0.1);
   ok(!w.lift.stuck && w.liftOpenAt(2), 'có điện lại: cửa mở thả người ra');
+}
+
+// ---- Hồn ma: giữ trong tầng, đổi tầng bằng nút ----
+{
+  const w = mk(); w.time = 30;
+  const p = w.player; p.alive = false; p.x = (40 + 2) * 48; p.y = 10 * 48; // tầng 2, sát mép trái
+  for (let i = 0; i < 120; i++) w.moveBy(p, -1, 0, 1 / 30);
+  ok(__lv(p.x, p.y) === 2, 'hồn ma bay sang trái không lọt sang tầng 1');
+  ok(w.ghostFloor(p, 1) === null && __lv(p.x, p.y) === 3, 'hồn ma bấm Lên tầng: từ tầng 2 lên tầng 3');
+  ok(w.ghostFloor(p, 1) === null && __lv(p.x, p.y) === 4, 'hồn ma lên tiếp sân thượng');
+  ok(w.ghostFloor(p, 1) !== null, 'sân thượng là tầng cao nhất, không lên được nữa');
+  const alive = w.agents.find(a => a.alive && !a.isPlayer)!;
+  ok(w.ghostFloor(alive, 1) !== null, 'người sống không dùng được nút bay đổi tầng');
+}
+// ---- Chọn nơi xuất hiện sau họp ----
+{
+  // người chơi thật (không phải chạy thử tự động) mới được hỏi chọn
+  const w = new World({ playerName: 'T', playerLook: randomLook(), roles: {}, maxSpecial: 0, playerRole: 'crew', bots: 7, impostors: 1, seed: 42 }); w.time = 30;
+  w.startMeeting(w.agents[1].id, null, 'bell');
+  w.meeting!.result = { ejected: null, tie: false } as any;
+  w.finishMeeting();
+  ok(Array.isArray(w.spawnOffer) && w.spawnOffer!.length === 3 && new Set(w.spawnOffer).size === 3, 'người chơi nhận đúng 3 lựa chọn khác nhau');
+  const offer = w.spawnOffer!;
+  w.chooseSpawn(1);
+  ok(w.spawnOffer === null && __lv(w.player.x, w.player.y) === SPAWN_POINTS[offer[1]].level, 'chọn lựa chọn thứ 2 thì xuất hiện đúng tầng đó');
+  const spots = w.agents.filter(a => a.alive).map(a => `${Math.round(a.x)},${Math.round(a.y)}`);
+  ok(new Set(spots).size === spots.length, 'không ai bị đặt chồng lên nhau');
+  ok(w.agents.filter(a => a.alive).every(a => __cs(a.x, a.y)), 'ai cũng đứng trên sàn hợp lệ');
+}
+// ---- Nắp lối trốn bật khi có người chui ----
+{
+  const w = mk(); w.time = 30;
+  const imp = w.agents.find(a => a.role === 'impostor')!;
+  w.drainEvents();
+  w.hide(imp, 1); const ev1 = w.drainEvents().filter(e => e.type === 'vent');
+  w.hide(imp, null); const ev2 = w.drainEvents().filter(e => e.type === 'vent');
+  ok(ev1.length === 1 && ev2.length === 1, 'chui vào và chui ra mỗi lần bật nắp một lần');
+}
+
+// ---- Bổ sung: nắp im khi chuyển chỗ, hồn ma không đi cửa thang, Phòng họp luôn có ----
+{
+  const w = mk(); w.time = 30;
+  const imp = w.agents.find(a => a.role === 'impostor')!;
+  w.drainEvents();
+  const pairSpot = HIDE_SPOTS_T.findIndex(h => h.pair >= 0);
+  w.hide(imp, pairSpot); w.drainEvents();
+  w.hideMove(imp);
+  ok(imp.hidden !== pairSpot && w.drainEvents().filter(e => e.type === 'vent').length === 0, 'đang trong ống chuồn sang chỗ bên kia: không bật nắp');
+}
+{
+  const w = mk(); w.time = 30;
+  const g = w.agents.find(a => !a.isPlayer)!; g.alive = false;
+  const door = PORTALS_T.find(pt => pt.fromLevel === 2)!;
+  g.x = (door.from.x + 0.5) * 48; g.y = (door.from.y + 0.5) * 48; g.portalCd = 0;
+  (w as any).portalTick(g, 1 / 30);
+  ok(__lv(g.x, g.y) === 2, 'hồn ma đứng trên cửa thang bộ không bị chuyển vào giếng thang');
+}
+{
+  const w = new World({ playerName: 'T', playerLook: randomLook(), roles: {}, maxSpecial: 0, playerRole: 'crew', bots: 7, impostors: 1, seed: 43 }); w.time = 30;
+  w.startMeeting(w.agents[1].id, null, 'bell'); w.meeting!.result = { ejected: null, tie: false } as any; w.finishMeeting();
+  ok(SPAWN_POINTS[w.spawnOffer![0]].id === 'meeting', 'Phòng họp luôn là lựa chọn đầu tiên');
+  w.chooseSpawn(-1);
+  ok(__lv(w.player.x, w.player.y) === 2 && w.spawnOffer === null, 'hết giờ không chọn: ở lại Phòng họp (tầng 2)');
 }

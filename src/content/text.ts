@@ -39,6 +39,10 @@ export const TEXT: Record<string, string> = {
   'bot.counterAccuse': '{defense} Mà sao {name} hăng hái đổ lỗi thế, có tật giật mình à?',
   'bot.withBuddy': 'Tôi ở cùng {buddy} suốt, hỏi {buddy} đi!',
   'bot.doingTask': 'Tôi đang làm "{task}" mà! {defense}',
+  // ----- Lý do cuộc họp (dòng đỏ đầu khung chat) -----
+  'chat.reason.body': 'Lý do họp: {reporter} báo cáo ghế trống của {victim} ở {room}.',
+  'chat.reason.po': 'Lý do họp: Product Owner {reporter} triệu tập họp gấp từ xa.',
+  'chat.reason.bell': 'Lý do họp: {reporter} bấm chuông họp khẩn.',
   // ----- Màn hình lớn -----
   'ui.splash.body.title': 'Phát hiện ghế trống!',
   'ui.splash.body.sub': '{reporter} báo cáo ghế của {victim} ở {room}',
@@ -66,6 +70,7 @@ export const TEXT: Record<string, string> = {
   'ui.reveal.envelope': 'Quyết định phân công · Mật',
   'ui.reveal.imp': 'Bạn là Nội gián',
   'ui.reveal.ready': '✅ Sẵn sàng',
+  'ui.reveal.cancel': 'Hủy sẵn sàng',
   // ----- Sự cố -----
   'ui.sab.power': 'Cúp điện! Tầm nhìn giảm, thang máy kẹt, camera và máy Face ID ngừng chạy. Bật lại cầu dao ở Kho điện, Tầng 1.',
   'ui.sab.wifi': 'Rớt mạng! Khởi động lại router ở Phòng Server, Tầng 3.',

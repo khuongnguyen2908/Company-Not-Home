@@ -27,6 +27,24 @@ npm run sim        # chạy thử 60 ván toàn bot để kiểm tra luật chơ
 2. **Sảnh tầng G:** đi lại tự do cùng đồng nghiệp bot. **Máy thay đồ** (góc phải) để đổi ngoại hình, **bảng thông báo** (góc trái) để chỉnh luật ván, đi vào **thang máy** hoặc bấm nút để bắt đầu ca.
 3. **Văn phòng tầng 7:** ván chơi. Hết ván hoặc rời ca thì quay về sảnh tầng G.
 
+## Đồ đạc (góc nhìn 3/4)
+
+Mọi đồ đạc ở văn phòng và sảnh vẽ chung một bộ (`src/render/furniture.ts`): mặt trên sáng, mặt trước tối, bóng đổ, vệt sáng. Mỗi món là một vật thể riêng, thứ tự che khuất theo mép dưới chân đế (đứng sau tủ thì bị che, đứng trước thì che tủ); sofa và ghế đá xếp theo mép trên để người ngồi nằm trên. Đồ sát tường phía dưới được vẽ thấp. Camera an ninh dùng ảnh nền có vẽ phẳng đủ đồ đạc.
+
+Chuyển động theo từng món (chỉ chạy khi món đó trong khung nhìn, đúng tầng): màn hình chạy chữ, đèn server/router nháy, hơi cà phê, bong bóng bình nước, cá bơi, lá cây và hoa đung đưa, quạt điều hòa quay, đèn máy gắp thú chạy vòng, máy quét vân tay quét, Face ID nhấp nháy, máy so màu đổi màu, vòi nước nhỏ giọt, vệt sáng lướt trên gương. Có người làm việc ở máy nào thì máy đó chạy mạnh hơn (máy in nhả giấy, cà phê chảy...). Mất điện: máy cắm điện tắt, màn hình máy tính vẫn sáng dịu (chạy pin).
+
+Xe cộ, mèo, cây ngoài phố và toàn cảnh sảnh vẽ cùng phong cách (`src/render/street.ts`). Người ngồi sofa giữ nguyên dáng, nằm trên lớp ghế.
+
+Kiểm tra: `python3 tests/lobby_reentry.py` (về sảnh nhiều lần vẫn đủ biển), `npx tsx tests/furn_overlap.ts` (phần nhô lên của đồ cao không che lối trốn, chỗ đứng làm việc, cửa thang máy, cửa thoát hiểm).
+
+## Sảnh chờ (tầng G)
+
+- **Ngoài phố:** người chơi xuống xe buýt ở trạm, đi bộ qua vỉa hè vào cửa kính tự động; bot tới bằng xe buýt hoặc taxi. Đường hai làn có xe chạy liên tục.
+- **Trong sảnh:** máy thay đồ, máy tính lễ tân (cài đặt phòng), thang máy (bắt đầu ca). Màn hình phòng trên tường, bên phải thang máy.
+- **Ngồi** được trên 2 sofa và ghế đá ngoài vỉa hè. **Món nghịch vặt:** chuông lễ tân, mèo văn phòng, cây nước, bể cá, chậu cây, bảng giờ xe buýt.
+- **Chat:** bấm Enter (hoặc nút chat) để mở thanh gõ, Enter gửi xong là đóng. Góc trái dưới hiện 4 tin gần nhất rồi tự mờ, bấm vào để xem lịch sử. Tin hiện thành bong bóng trên đầu (tối đa 4 bong bóng đầy đủ, tin mới nằm trên), chống spam 1,5 giây/tin. Bot thỉnh thoảng nói vu vơ và đáp lại khi được nhắc tên.
+- **Vào ca:** tới thang máy bấm "Bắt đầu làm việc", mọi người đi vào thang, bảng số tầng chạy G → 1 → 2.
+
 ## Bản đồ: tòa văn phòng 3 tầng + sân thượng
 
 | Tầng | Phòng |
@@ -44,6 +62,15 @@ npm run sim        # chạy thử 60 ván toàn bot để kiểm tra luật chơ
 - **Sơ đồ tòa nhà** chia thẻ theo tầng (kèm số việc của bạn ở mỗi tầng); sơ đồ phá hoại của Nội gián cũng chia theo tầng.
 - Mũi tên chỉ đường tới sự cố hay ghế trống ở tầng khác sẽ chỉ về thang bộ trước, kèm nhãn tầng đích.
 
+## Sau mỗi cuộc họp
+
+- **Chọn nơi bắt đầu** (kiểu Airship): Phòng họp luôn có, cộng 2 điểm ngẫu nhiên riêng của mỗi người trong 5 điểm còn lại (Lễ tân, Pantry, Hành lang tầng 3, Studio Art, Vườn mái). 10 giây để chọn, hết giờ thì ở lại Phòng họp. Không ai biết ai chọn gì; bot chọn điểm cùng tầng với việc kế tiếp.
+- **Hồn ma** chỉ bay xuyên tường trong tầng đang ở; cửa thang bộ và thang máy không có tác dụng với hồn ma; đổi tầng bằng nút Lên/Xuống tầng (PageUp/PageDown); chỉ thấy người cùng tầng.
+
+## Phòng thử mini-game
+
+Mở game với `?minigames` ở cuối địa chỉ: danh sách đủ 40 mini-game (việc thường theo tầng, bảo trì, khu giải trí, sân thượng, sửa sự cố, các màn đặc biệt). Mỗi mini-game có nút Chơi thử và Chơi bản Nội gián, tự ghi thời gian chơi, đánh dấu Ổn / Cần sửa kèm ghi chú (lưu trên máy). Nút Sao chép phản hồi / Tải file phản hồi xuất toàn bộ thành văn bản để gửi lại.
+
 ## Sửa nội dung (không cần đụng code)
 
 Mọi câu chữ trong game (tên vai, luật vai, tên việc, mini-game, tên phòng, trang phục, lời thoại bot, thông báo, danh sách tên...) đều sửa được bằng **Công cụ nội dung**:
@@ -58,20 +85,20 @@ Bước build (`scripts/content-build.mjs`) đọc `content/content.xlsx` thành
 
 ## Cân bằng (bản đồ 3 tầng)
 
-Hồi chiêu gài bẫy tự chỉnh theo số người và số Nội gián (`killCooldownFor` trong `sim.ts`). Ván 6 người trở xuống chỉ có 1 Nội gián. Mỗi người nhận việc ở 2 tầng liền kề (việc chấm công vẫn ở Lễ tân tầng 1). Kiểm chứng bằng 150 ván bot mỗi cỡ (`tests/balance.ts`):
+Tầm nhìn Nhân viên 3,8 ô (Nội gián gấp rưỡi). Hồi chiêu gài bẫy tự chỉnh theo số người và số Nội gián (`killCooldownFor` trong `sim.ts`). Ván 6 người trở xuống chỉ có 1 Nội gián. Mỗi người nhận việc ở 2 tầng liền kề (việc chấm công vẫn ở Lễ tân tầng 1). Kiểm chứng bằng 150 ván bot mỗi cỡ (`tests/balance.ts`):
 
 | Số người | Nội gián | Hồi chiêu | Nội gián thắng |
 |---|---|---|---|
-| 5 | 1 | 55s | 53% |
-| 6 | 1 | 36s | 49% |
-| 7 | 1 | 28s | 41% |
-| 7 | 2 | 120s | 54% |
-| 8 | 1 | 20s | 39% |
-| 8 | 2 | 82s | 45% |
-| 9 | 1 | 16s | 47% |
-| 9 | 2 | 62s | 42% |
-| 10 | 1 | 12s | 33% |
-| 10 | 2 | 50s | 55% |
+| 5 | 1 | 51s | 53% |
+| 6 | 1 | 33s | 53% |
+| 7 | 1 | 22s | 53% |
+| 7 | 2 | 118s | 42% |
+| 8 | 1 | 18s | 40% |
+| 8 | 2 | 74s | 43% |
+| 9 | 1 | 12s | 43% |
+| 9 | 2 | 57s | 44% |
+| 10 | 1 | 9s | 46% |
+| 10 | 2 | 43s | 51% (300 ván) |
 
 ## Phòng ban bí mật
 

@@ -111,12 +111,12 @@ export const ROLE_INFO: Record<RoleDept, { name: string; icon: string; short: st
   },
   engineer: {
     name: 'Engineer', icon: '🔧', short: 'Đi chỗ trốn',
-    ability: 'Dùng được 5 cặp chỗ trốn như Nội gián để di chuyển nhanh, nhưng có thêm việc bảo trì chỗ trốn.',
+    ability: 'Dùng được các lối trốn như Nội gián để di chuyển nhanh, nhưng có thêm việc bảo trì lối trốn.',
     rules: [
       'Mỗi lần trốn tối đa 15 giây thì tự chui ra. Hai lần trốn cách nhau 30 giây.',
       'Đang trốn thì không ai gài bẫy được bạn.',
       'Chui vào đúng chỗ đang có Nội gián nấp thì bạn nhận cảnh báo "Có ai đó trong này!" (không biết là ai).',
-      'Có thêm 2 việc bảo trì chỗ trốn, tính vào KPI như việc thường.',
+      'Có thêm 2 việc bảo trì lối trốn, tính vào KPI như việc thường.',
       'Ai thấy bạn chui ra từ tủ cũng sẽ nghi bạn là Nội gián: chuẩn bị tinh thần giải thích!',
     ],
   },
@@ -289,4 +289,33 @@ export const STICKERS: Sticker[] = [
   // Cảm xúc
   { e: '😱', kind: 'feel' }, { e: '😡', kind: 'feel' }, { e: '😭', kind: 'feel' }, { e: '😂', kind: 'feel' }, { e: '🤔', kind: 'feel' },
   { e: '👍', kind: 'feel' }, { e: '👎', kind: 'feel' }, { e: '❓', kind: 'feel' }, { e: '🙏', kind: 'feel' }, { e: '🤫', kind: 'feel' }, { e: '🫡', kind: 'feel' }, { e: '😴', kind: 'feel' },
+];
+
+/** Sảnh chờ: bot nói vu vơ trong lúc chờ vào ca */
+export const LOBBY_LINES = [
+  'Hôm nay deadline gì đấy mọi người?',
+  'Ai đổi áo mới thế, nhìn sang ghê.',
+  'Cà phê ở Pantry hết chưa nhỉ?',
+  'Tôi linh cảm hôm nay có rắn.',
+  'Sếp vào chưa? Chưa thì tôi ngồi thêm tí.',
+  'Thang máy hôm qua kẹt 5 phút, sợ thật.',
+  'Ai biết mật khẩu wifi tầng 3 không?',
+  'Nhìn mặt ai cũng đáng ngờ hết.',
+  'Đi làm sớm mà chẳng ai khen.',
+  'Ván này tôi làm KPI nhanh nhất cho xem.',
+];
+/** Sảnh chờ: bot đáp lại khi người chơi nhắc tên */
+export const LOBBY_REPLIES = [
+  'Gọi tôi à? Đang bận ngồi chờ đây.',
+  'Có tôi đây, chuẩn bị vào ca chưa?',
+  'Ừ, nghe nè.',
+  'Đừng nhìn tôi, tôi trong sạch.',
+  'Tí vào họp nói tiếp nhé.',
+];
+/** Sảnh chờ: câu đùa trên bảng giờ xe buýt */
+export const BUS_JOKES = [
+  'Chuyến tiếp theo: khi nào deadline xong.',
+  'Xe buýt số 07: chạy đúng giờ như sếp duyệt đơn.',
+  'Tuyến Nhà ↔ Văn phòng: chỉ có chiều đi.',
+  'Xe trễ 15 phút. Lý do: kẹt KPI.',
 ];

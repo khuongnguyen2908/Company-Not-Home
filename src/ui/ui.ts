@@ -1,9 +1,10 @@
 import { session } from '../session';
 import { World, BOSS_TIME, type Agent, type GameEvent, type SabotageKind } from '../game/sim';
 import { fmt } from '../content/text';
+import { iconSvg, stationIcon, ICON_ART } from './icons';
 import { PLAYER_NAMES, BOT_NAMES, ROLE_INFO, SPECIAL_ROLES, COLOR_GROUPS, STICKERS, normalize, type RoleDept } from '../game/data';
-import { ROOMS, TILE, MAP_W, MAP_H, DESKS, HIDE_SPOTS, CAMERAS, BELL, LOCKABLE_ROOMS, FLOORS, levelAt, levelName, type RoomId, station, taskDef, roomAt, roomName, GRID, type MiniKind } from '../game/map';
-import { slotStation, IT_CAM_TIME } from '../game/sim';
+import { ROOMS, TILE, MAP_W, MAP_H, DESKS, HIDE_SPOTS, CAMERAS, BELL, LOCKABLE_ROOMS, FLOORS, SPAWN_POINTS, levelAt, levelName, type RoomId, station, taskDef, roomAt, roomName, GRID, type MiniKind } from '../game/map';
+import { slotStation, IT_CAM_TIME, IT_CD, SAB_CD, ENG_CD, ADMIN_CD, MEDIA_CD, CLIMBER_CD, PRY_AFTER } from '../game/sim';
 import { avatarURL, avatarImage, chairURL, characterCanvas, tagText, nameInk, GUARD_LOOK, randomLook, lookKey, lookColor, normalizeLook, DEFAULT_LOOK, SKIN_TONES, CHAR_H, CHAR_ORIGIN_Y, SKINS, HAIR_COLORS, HAIR_STYLES, PALETTE, BODIES, MARKS, ITEMS, SLOT_NAMES, itemDef, bodyDef, colors2, defaultColor, type Look, type Slot, type ItemDef } from '../render/chars';
 import { sfx } from '../audio';
 import { openMini, closeMini, miniOpen, openFaceId, openCardSwipe, openColorCheck, openHold } from './minigames';
@@ -25,6 +26,50 @@ const LOCK_SVG = '<svg class="lock-ic" viewBox="0 0 24 24" aria-hidden="true"><r
 /** Phím điều khiển (máy tính chỉnh được; phím mũi tên luôn dùng để di chuyển) */
 type KeyAction = 'up' | 'down' | 'left' | 'right' | 'use' | 'report' | 'kill' | 'sab' | 'hide' | 'map' | 'laptop';
 const DEFAULT_KEYS: Record<KeyAction, string> = { up: 'w', down: 's', left: 'a', right: 'd', use: 'e', report: 'r', kill: 'q', sab: 'f', hide: ' ', map: 'tab', laptop: 'c' };
+// ---------- Sơ đồ tòa nhà: icon vẽ, ghim việc, màu phòng ----------
+const MAP_ICON: Record<string, string> = { '🛗': 'lift', '🪜': 'stairs', '🔔': 'bell', '📹': 'camera', '⚡': 'breaker', '📶': 'router', '🎨': 'palette', '🪪': 'idcard', '🔒': 'lock' };
+const mapIconCache = new Map<string, HTMLImageElement>();
+function mapIcon(name: string | undefined): HTMLImageElement | null {
+  if (!name) return null;
+  let img = mapIconCache.get(name);
+  if (!img) {
+    img = new Image();
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 64 64">${ICON_ART[name] ?? ICON_ART.work}</svg>`);
+    mapIconCache.set(name, img);
+  }
+  return img;
+}
+const mapAvatarCache = new Map<string, HTMLImageElement>();
+function mapAvatar(look: Look): HTMLImageElement {
+  const url = avatarURL(look);
+  let img = mapAvatarCache.get(url);
+  if (!img) { img = new Image(); img.src = url; mapAvatarCache.set(url, img); }
+  return img;
+}
+/** Ghim việc: giọt nước ngược màu vàng có dấu "!", nảy nhẹ */
+function drawTaskPin(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, fill: string) {
+  const r = size * 0.95, by = Math.sin(performance.now() / 260 + x) * 3;
+  const top = y - r * 2.2 + by;
+  ctx.fillStyle = 'rgba(29,26,43,.25)'; ctx.beginPath(); ctx.ellipse(x, y + 2, r * 0.7, r * 0.28, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(x, y + by); ctx.bezierCurveTo(x - r * 1.2, top + r * 1.4, x - r * 1.1, top, x, top); ctx.bezierCurveTo(x + r * 1.1, top, x + r * 1.2, top + r * 1.4, x, y + by);
+  ctx.fillStyle = fill; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = '#1d1a2b'; ctx.stroke();
+  ctx.fillStyle = '#1d1a2b'; ctx.font = `800 ${Math.round(r * 1.25)}px "Baloo 2", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('!', x, top + r * 0.75);
+}
+const ROOM_TINT: [string, string][] = [
+  ['meeting', '#ffe9b8'], ['open', '#f4e3c8'], ['pantry', '#fff2c2'], ['print', '#e6e8f0'], ['reception', '#f6dccb'], ['security', '#dfe6f5'],
+  ['fun', '#d6eefc'], ['power', '#e9e4d6'], ['director', '#f0d9c4'], ['hr', '#fbdcea'], ['server', '#d8e4f2'], ['qa', '#e2f3dc'], ['art', '#f7ecc9'],
+  ['roof_garden', '#cdeac0'], ['roof_terrace', '#e9e4d8'], ['roof_ac', '#dcdfe6'], ['hall', '#ddd6c6'], ['stairs', '#c9c4d8'], ['cabin', '#e6e8f0'],
+];
+function mapRoomColor(id: string | null): string {
+  if (!id) return '#d3ccbb';
+  for (const [pre, c] of ROOM_TINT) if (id.startsWith(pre)) return c;
+  return '#ece3cc';
+}
+
+type ActState = 'off' | 'ready' | 'target' | 'alarm' | 'cool' | 'active' | 'done';
+interface ActView { icon: string; label: string; state: ActState; cd?: number; cdMax?: number }
+
 const KEY_NAMES: Record<KeyAction, string> = {
   up: 'Đi lên', down: 'Đi xuống', left: 'Sang trái', right: 'Sang phải', use: 'Làm việc / Dùng', report: 'Báo cáo ghế trống',
   kill: 'Gài bẫy (Nội gián)', sab: 'Phá hoại (Nội gián)', hide: 'Trốn / Ra ngoài', map: 'Sơ đồ', laptop: 'Kỹ năng: Laptop (IT) / Họp gấp (PO)',
@@ -212,7 +257,7 @@ export class UI {
   private infoModal(title: string, html: string, onClose?: () => void, beforeClose?: () => Promise<boolean>): HTMLElement {
     const m = document.createElement('div');
     m.className = 'modal';
-    m.innerHTML = `<div class="sheet info-sheet" role="dialog" aria-label="${title}"><div class="sheet-head"><h2>${title}</h2><button class="x" aria-label="Đóng">✕</button></div><div class="info-body">${html}</div></div>`;
+    m.innerHTML = `<div class="sheet info-sheet" role="dialog" aria-label="${title}"><div class="sheet-head"><h2>${title}</h2><button class="x art" aria-label="Đóng">${iconSvg('close')}</button></div><div class="info-body">${html}</div></div>`;
     this.root.appendChild(m);
     const close = () => { m.remove(); session.paused = false; onClose?.(); };
     const tryClose = async () => { if (beforeClose && !(await beforeClose())) return; close(); };
@@ -304,9 +349,8 @@ export class UI {
         <button class="lc-id" id="l-id" type="button">Mã số của bạn: <b></b> <i>✏️ Đổi</i></button>
         <button class="lc-toggle" id="l-toggle" aria-expanded="false"><span class="lc-faces"></span><span class="lc-sum"></span><i>▾</i></button>
         <ul class="lc-people" hidden></ul>
-        <p class="lc-tip">Tới <b>máy thay đồ</b> để đổi ngoại hình, tới <b>máy tính lễ tân</b> để cài đặt phòng.</p>
       </div>
-      <div class="top-right"><button class="icon-btn" id="l-menu" aria-label="Menu">☰</button></div>
+      <div class="top-right"><button class="icon-btn art" id="l-menu" aria-label="Menu">${iconSvg('menu')}</button></div>
       <div class="menu-pop card-lite" hidden>
         <button class="menu-item" id="l-mute"></button>
         <button class="menu-item" id="l-music"></button>
@@ -314,8 +358,14 @@ export class UI {
         <button class="menu-item" id="l-rules">📖 Luật chơi</button>
         <button class="menu-item danger" id="l-exit">🚪 Về màn hình chính</button>
       </div>
-      <button class="start-shift primary big" id="l-start">🛗 Bắt đầu ca làm việc</button>
-      <div class="actions"><button class="act" id="l-use" disabled><span class="ic">👆</span><span class="lb">Dùng</span><kbd data-k="use">E</kbd></button></div>
+      <div class="actions"><button class="act" id="l-use"><span class="ic"></span><i class="sweep"></i><em class="cd"></em><span class="lb"></span><kbd data-k="use"></kbd><b class="done-badge">✓</b></button></div>
+      <button class="lchat-feed" type="button" aria-label="Xem lại tin nhắn"></button>
+      <div class="lchat-history card-lite" hidden><div class="lch-head"><b>Tin nhắn trong sảnh</b><button class="x art" type="button" aria-label="Đóng">${iconSvg('close')}</button></div><div class="lchat-log" aria-live="polite"></div></div>
+      <form class="lchat-bar" autocomplete="off" hidden>
+        <div class="lchat-quick" data-keep-emoji>${['👋', '😂', '👍', 'Đi thôi!', 'Đợi tí!'].map(q => `<button type="button" data-q="${q}">${q}</button>`).join('')}</div>
+        <div class="lchat-row"><input class="lchat-in" maxlength="120" placeholder="Nhập tin nhắn, Enter để gửi, Esc để đóng" aria-label="Tin nhắn"><button type="submit" class="lchat-send">Gửi</button></div>
+      </form>
+      <button class="lchat-btn" type="button" aria-label="Chat (Enter)">${iconSvg('chat')}<kbd>Enter</kbd></button>
       <div class="joy" aria-hidden="true"><div class="joy-knob"></div></div>`;
     this.root.appendChild(hud);
     this.lobbyHud = hud;
@@ -333,7 +383,6 @@ export class UI {
     sfx.ambientLevel(0);
     sfx.setMusic(this.prefs.music);
     sfx.startMusic('lobby');
-    $('#l-start', hud).onclick = () => { sfx.unlock(); this.startGame(); };
     $('#l-use', hud).onclick = () => this.lobbyUse();
     $('#l-id', hud).onclick = () => this.openIdEditor();
     $('#l-toggle', hud).onclick = () => {
@@ -342,6 +391,73 @@ export class UI {
     };
     this.bindJoystick($('.joy', hud));
     this.renderLobbyPeople();
+    this.bindLobbyChat(hud);
+  }
+
+  // ---------- Chat ở sảnh chờ ----------
+  private chatLast = 0;
+  /**
+   * Chat ở sảnh:
+   * - Không gõ: góc trái dưới hiện 4 tin gần nhất, mỗi tin tự mờ đi sau 8 giây.
+   * - Enter (hoặc nút chat): mở thanh gõ ở giữa phía dưới. Enter gửi xong là đóng ngay, nhân vật đi tiếp được.
+   * - Bấm vào dòng tin: mở lịch sử đầy đủ.
+   */
+  private bindLobbyChat(hud: HTMLElement) {
+    const feed = $('.lchat-feed', hud), hist = $('.lchat-history', hud), log = $('.lchat-log', hud);
+    const bar = $('.lchat-bar', hud) as HTMLFormElement, input = $('.lchat-in', hud) as HTMLInputElement;
+    const scene = () => session.phaser?.scene.getScene('lobby') as unknown as { chatSay?: (t: string) => void } | undefined;
+    const open = (on: boolean) => {
+      bar.hidden = !on; hud.classList.toggle('chatting', on);
+      if (on) { input.value = ''; window.setTimeout(() => input.focus(), 0); } else input.blur();
+    };
+    const send = (text: string) => {
+      const t = text.trim();
+      if (!t) return false;
+      const now = performance.now();
+      if (now - this.chatLast < 1500) { this.toast('Chậm lại chút, đợi 1–2 giây rồi gửi tiếp nhé'); return false; }
+      this.chatLast = now;
+      scene()?.chatSay?.(t.slice(0, 120));
+      return true;
+    };
+    session.lobby.onChat = (m) => {
+      // Lịch sử đầy đủ
+      const row = document.createElement('p');
+      row.className = 'lchat-msg' + (m.me ? ' me' : '');
+      row.innerHTML = `<b>${esc(m.name)} <small>#${m.empId}</small></b> `;
+      row.appendChild(document.createTextNode(m.text));
+      log.appendChild(row);
+      while (log.children.length > 80) log.firstElementChild?.remove();
+      log.scrollTop = log.scrollHeight;
+      // Dòng tin trôi: tối đa 4 tin, tự mờ
+      const line = document.createElement('span');
+      line.className = 'lf-line' + (m.me ? ' me' : '');
+      line.innerHTML = `<b>${esc(m.name)}</b> `;
+      line.appendChild(document.createTextNode(m.text));
+      feed.appendChild(line);
+      while (feed.children.length > 4) feed.firstElementChild?.remove();
+      window.setTimeout(() => line.classList.add('gone'), 8000);
+      window.setTimeout(() => line.remove(), 8600);
+    };
+    bar.onsubmit = (e) => { e.preventDefault(); if (send(input.value)) open(false); else if (!input.value.trim()) open(false); };
+    input.onkeydown = (e) => { if (e.key === 'Escape') { e.preventDefault(); open(false); } e.stopPropagation(); };
+    input.onblur = () => window.setTimeout(() => { if (document.activeElement !== input && !bar.contains(document.activeElement)) open(false); }, 150);
+    hud.querySelectorAll<HTMLButtonElement>('.lchat-quick button').forEach(b => {
+      b.onpointerdown = (e) => e.preventDefault(); // giữ ô gõ không mất tiêu điểm
+      b.onclick = () => { if (send(b.dataset.q!)) open(false); };
+    });
+    $('.lchat-btn', hud).onclick = () => open(!!bar.hidden);
+    feed.onclick = () => { hist.hidden = false; log.scrollTop = log.scrollHeight; };
+    $('.lch-head .x', hist).onclick = () => { hist.hidden = true; };
+    this.lobbyChatOpen = open;
+  }
+  private lobbyChatOpen: ((on: boolean) => void) | null = null;
+  private ghostHop: ((dir: 1 | -1) => void) | null = null;
+
+  /** Cập nhật thông tin cho màn hình phòng và bảng Nhân viên của tháng trên tường sảnh */
+  private syncLobbyInfo() {
+    const p = this.prefs, L = session.lobby, n = 1 + L.bots.length;
+    const enabled = SPECIAL_ROLES.filter(r => p.roles[r]).length;
+    L.info = { title: 'Phòng offline', people: n, max: n, imps: n <= 6 ? 1 : p.imps, roles: Math.min(enabled, p.maxSpecial), wins: this.stats.wins, played: this.stats.played, streak: this.stats.streak };
   }
 
   private renderLobbyPeople() {
@@ -359,11 +475,27 @@ export class UI {
 
   private lobbyUse() {
     const near = session.lobby.near;
-    if (!near || session.paused) return;
+    const info = session.lobby.nearInfo;
+    if (session.paused) return;
+    if (!near && info && !info.big) {
+      // Tương tác nhỏ: ngồi sofa, bấm chuông, vuốt mèo, lấy nước...
+      const sc = session.phaser?.scene.getScene('lobby') as unknown as { interact?: (k: string) => void } | undefined;
+      sfx.unlock(); sc?.interact?.(info.key);
+      return;
+    }
+    if (!near) return;
     sfx.unlock(); sfx.click();
     if (near === 'wardrobe') this.openWardrobe();
     else if (near === 'board') this.openBoard();
-    else if (near === 'elevator') this.startGame();
+    else if (near === 'elevator') this.startFromLobby();
+  }
+
+  /** Bắt đầu ca từ sảnh: cảnh mọi người vào thang máy đi lên văn phòng */
+  private startFromLobby() {
+    const sc = session.phaser?.scene.getScene('lobby') as unknown as { playElevator?: (done: () => void) => void } | undefined;
+    if (!sc?.playElevator || !this.lobbyHud) { this.startGame(); return; }
+    this.lobbyHud.classList.add('cutscene');
+    sc.playElevator(() => this.startGame());
   }
 
   /** Máy thay đồ: chỉnh ngoại hình (và tên) */
@@ -513,7 +645,7 @@ export class UI {
   }
 
   startGame() {
-    this.doneSeen = new Set(); this.lastFloorBanner = -1;
+    this.doneSeen = new Set(); this.lastFloorBanner = -1; this.lastDeptTxt = ''; this.lastRoomTitle = '';
     const p = this.prefs;
     this.lobbyHud = null;
     this.root.innerHTML = '';
@@ -543,7 +675,7 @@ export class UI {
         <ul class="task-list"></ul>
       </div>
       <div class="top-right">
-        <button class="icon-btn" id="b-menu" aria-label="Menu" aria-expanded="false">☰</button>
+        <button class="icon-btn art" id="b-menu" aria-label="Menu" aria-expanded="false">${iconSvg('menu')}</button>
       </div>
       <div class="menu-pop card-lite" hidden>
         <button class="menu-item" id="b-mute"></button>
@@ -552,17 +684,19 @@ export class UI {
         <button class="menu-item" id="b-rules">📖 Luật chơi</button>
         <button class="menu-item danger" id="b-quit">🚪 Rời ca, về sảnh tầng G</button>
       </div>
-      <button class="map-btn" id="b-map" aria-label="Mở sơ đồ (phím Tab)"><span class="ic">🗺️</span><span>Sơ đồ</span><kbd data-k="map">Tab</kbd></button>
+      <button class="map-btn" id="b-map" aria-label="Mở sơ đồ (phím Tab)"><span class="ic">${iconSvg('map')}</span><span class="lb">SƠ ĐỒ</span><kbd data-k="map">Tab</kbd><i class="alarm-dot"></i></button>
       <div class="sab-banner" hidden></div>
       <div class="room-name"></div>
       <div class="toast" hidden></div>
       <div class="actions">
-        <button class="act" id="a-laptop" hidden><span class="ic">💻</span><span class="lb">Laptop</span><kbd data-k="laptop">C</kbd><em class="cd"></em></button>
-        <button class="act" id="a-sab" hidden><span class="ic">⚡</span><span class="lb">Phá hoại</span><kbd data-k="sab">F</kbd></button>
-        <button class="act" id="a-hide" hidden><span class="ic">🫥</span><span class="lb">Trốn</span><kbd data-k="hide">Space</kbd></button>
-        <button class="act danger" id="a-kill" hidden><span class="ic">📂</span><span class="lb">Gài bẫy</span><kbd data-k="kill">Q</kbd><em class="cd"></em></button>
-        <button class="act alert" id="a-report" hidden><span class="ic">📢</span><span class="lb">Báo cáo</span><kbd data-k="report">R</kbd></button>
-        <button class="act" id="a-use"><span class="ic">💼</span><span class="lb">Làm việc</span><kbd data-k="use">E</kbd></button>
+        <button class="act" id="a-laptop" hidden><span class="ic"></span><i class="sweep"></i><em class="cd"></em><span class="lb"></span><kbd data-k="laptop"></kbd><b class="done-badge">✓</b></button>
+        <button class="act" id="a-sab" hidden><span class="ic"></span><i class="sweep"></i><em class="cd"></em><span class="lb"></span><kbd data-k="sab"></kbd><b class="done-badge">✓</b></button>
+        <button class="act" id="a-hide" hidden><span class="ic"></span><i class="sweep"></i><em class="cd"></em><span class="lb"></span><kbd data-k="hide"></kbd><b class="done-badge">✓</b></button>
+        <button class="act" id="a-kill" hidden><span class="ic"></span><i class="sweep"></i><em class="cd"></em><span class="lb"></span><kbd data-k="kill"></kbd><b class="done-badge">✓</b></button>
+        <button class="act" id="a-report" hidden><span class="ic"></span><i class="sweep"></i><em class="cd"></em><span class="lb"></span><kbd data-k="report"></kbd><b class="done-badge">✓</b></button>
+        <button class="act" id="a-gup" hidden><span class="ic"></span><i class="sweep"></i><em class="cd"></em><span class="lb"></span><kbd>PgUp</kbd><b class="done-badge">✓</b></button>
+        <button class="act" id="a-gdown" hidden><span class="ic"></span><i class="sweep"></i><em class="cd"></em><span class="lb"></span><kbd>PgDn</kbd><b class="done-badge">✓</b></button>
+        <button class="act" id="a-use"><span class="ic"></span><i class="sweep"></i><em class="cd"></em><span class="lb"></span><kbd data-k="use"></kbd><b class="done-badge">✓</b></button>
       </div>
       <div class="hide-ctrl" hidden>
         <button class="vent-arrow" id="h-next" aria-label="Chuồn sang chỗ trốn bên kia"><span class="va-ic">➜</span><span class="va-lb"></span><kbd data-k="use">E</kbd></button>
@@ -577,11 +711,11 @@ export class UI {
         <div class="cam-bottom"><button class="cam-nav" id="cam-prev" aria-label="Kênh trước">◀</button><div class="cam-dots"></div><button class="cam-nav" id="cam-next" aria-label="Kênh sau">▶</button></div>
         <div class="roster"></div>
       </div>
-      <div class="minimap-wrap" hidden><div class="minimap card-lite"><div class="mm-head"><b>Sơ đồ tòa nhà</b><div class="mm-tabs" hidden><button data-m="map">🗺️ Sơ đồ</button><button data-m="sab">⚡ Phá hoại</button></div><button class="x" id="mm-close" aria-label="Đóng">✕</button></div><div class="mm-floors" role="tablist"></div><div class="mm-canvas"><canvas width="1320" height="764"></canvas><div class="mm-sab"></div></div>
+      <div class="minimap-wrap" hidden><div class="minimap card-lite"><div class="mm-head"><b>Sơ đồ tòa nhà</b><div class="mm-tabs" hidden><button data-m="map">🗺️ Sơ đồ</button><button data-m="sab">⚡ Phá hoại</button></div><button class="x art" id="mm-close" aria-label="Đóng">${iconSvg('close')}</button></div><div class="mm-floors" role="tablist"></div><div class="mm-canvas"><canvas width="1320" height="764"></canvas><div class="mm-sab"></div></div>
         <div class="mm-legend">
-          <span><i class="lg task">!</i>Việc của bạn</span><span><i class="lg you"></i>Bạn</span><span><i class="lg desk"></i>Bàn của bạn</span>
-          <span><i class="lg power">⚡</i>Tủ cầu dao</span><span><i class="lg wifi">📶</i>Router</span><span><i class="lg cam">📹</i>Xem camera</span>
-          <span><i class="lg bell">🔔</i>Chuông họp</span><span><i class="lg lock">🔒</i>Cửa đang khóa</span><span class="lg-hr" hidden><i class="lg hr">🪪</i>Máy Face ID</span>
+          <span><i class="lg pin">!</i>Việc của bạn</span><span><i class="lg you"></i>Bạn</span><span><i class="lg desk"></i>Bàn của bạn</span>
+          <span><i class="lgi">${iconSvg('breaker')}</i>Tủ cầu dao</span><span><i class="lgi">${iconSvg('router')}</i>Router</span><span><i class="lgi">${iconSvg('camera')}</i>Xem camera</span>
+          <span><i class="lgi">${iconSvg('bell')}</i>Chuông họp</span><span><i class="lgi">${iconSvg('lock')}</i>Cửa đang khóa</span><span><i class="lgi">${iconSvg('lift')}</i>Thang máy</span><span><i class="lgi">${iconSvg('stairs')}</i>Thang bộ</span><span class="lg-hr" hidden><i class="lgi">${iconSvg('idcard')}</i>Máy Face ID</span>
         </div><p class="mm-note"></p></div></div>
       <div class="fake-work" hidden><div>Đang giả vờ làm việc…</div><div class="bar"><i></i></div></div>`;
     this.root.appendChild(hud);
@@ -605,6 +739,11 @@ export class UI {
       this.prefs.muted = !this.prefs.muted; savePrefs(this.prefs); sfx.setMuted(this.prefs.muted); muteLabel();
     };
     $('#b-menu', hud).onclick = () => this.toggleMenu();
+    // Hồn ma đổi tầng
+    const ghostHop = (dir: 1 | -1) => { const w = session.world; if (!w) return; const err = w.ghostFloor(w.player, dir); if (err) this.toast(err); else sfx.whoosh(); };
+    $('#a-gup', hud).onclick = () => ghostHop(1);
+    $('#a-gdown', hud).onclick = () => ghostHop(-1);
+    this.ghostHop = ghostHop;
     // Thu gọn bảng việc (nhất là trên điện thoại)
     const tasksBox = $('.tasks', hud);
     const collapsed = localStorage.getItem('noi-gian:tasks-collapsed');
@@ -653,7 +792,7 @@ export class UI {
           : imp
           ? `Gài bẫy cho đồng nghiệp bị đuổi việc mà không ai thấy. Thắng khi số Nội gián bằng số Nhân viên.${mates.length ? ' Đồng bọn của bạn ở dưới, đừng gài bẫy nhau.' : ' Ván này bạn hành động một mình.'}`
           : `Bạn thuộc phe Nhân viên. Chạy đủ KPI hoặc tìm ra ${w.aliveImp().length} Nội gián trong số ${w.agents.length - 1} đồng nghiệp.`}</p>
-        <div class="reveal-team">${(imp || climber ? w.agents.filter(a => a.role === 'impostor') : w.agents).map(a => `<figure class="${imp || climber ? 'mate' : ''}"><img src="${avatarURL(a.look)}" alt=""><figcaption style="--dc:${a.color};--dt:${tagText(a.color)}">${esc(a.name)} #${a.empId}${a.isPlayer ? ' (bạn)' : ''}</figcaption></figure>`).join('')}</div>
+        <div class="reveal-team">${w.agents.map(a => { const mate = (imp || climber) && a.role === 'impostor'; return `<figure class="${mate ? 'mate' : ''}" data-id="${a.id}"><img src="${avatarURL(a.look)}" alt=""><figcaption style="--dc:${a.color};--dt:${tagText(a.color)}">${esc(a.name)} #${a.empId}${a.isPlayer ? ' (bạn)' : ''}</figcaption><span class="rd-tag wait">Đang đọc</span></figure>`; }).join('')}</div>
         ${imp
           ? `<div class="dept-card imp"><b>Phòng ban: không có</b><p>Bạn có thể tự nhận bất kỳ phòng ban nào khi họp. Coi chừng phòng ban thật lên tiếng phản bác.</p></div>`
           : `<div class="dept-card"><b>${ROLE_INFO[p.dept as RoleDept].icon} Phòng ban bí mật của bạn: ${ROLE_INFO[p.dept as RoleDept].name}</b><p>${ROLE_INFO[p.dept as RoleDept].ability}</p>
@@ -661,7 +800,6 @@ export class UI {
               ${p.dept === 'developer' ? `<div class="dev-pick"><b>Chọn một đồng nghiệp để backup:</b><div class="dev-list">${w.agents.filter(a => a !== p).map(a => `<button type="button" data-id="${a.id}"><img src="${avatarURL(a.look)}" alt=""><span>${esc(a.name)} #${a.empId}</span></button>`).join('')}</div><small class="dev-warn">Bắt buộc chọn 1 người trước khi bấm Sẵn sàng.</small></div>` : ''}
             </div>`}
         <p class="role-list">Có trong ván: ${this.roleListText()}</p>
-        <div class="ready-row">${w.agents.map(a => `<span class="rd" data-id="${a.id}" title="${esc(a.name)} #${a.empId}"><img src="${avatarURL(a.look)}" alt=""><i>⏳</i></span>`).join('')}</div>
         <p class="ready-msg">Mọi người đọc phân công, ai sẵn sàng thì bấm nút. Đủ người là vào ca.</p>
         <button class="primary big" id="go">${esc(fmt('ui.reveal.ready'))}</button>
       </div>`;
@@ -674,17 +812,38 @@ export class UI {
       sfx.click();
     });
     // Mọi người phải bấm Sẵn sàng thì mới vào ca. Chơi offline: bot đọc xong phân công rồi tự sẵn sàng.
+    // Đủ người thì đếm ngược 2 giây rồi vào ca; trong lúc đó ai bấm hủy thì dừng lại.
     const ready = new Set<number>();
-    const setReady = (id: number) => {
-      ready.add(id);
-      const chip = el.querySelector(`.rd[data-id="${id}"]`) as HTMLElement | null;
-      if (chip) { chip.classList.add('ok'); (chip.querySelector('i') as HTMLElement).textContent = '✅'; }
+    let startTimer = 0;
+    const btn = $('#go', el) as HTMLButtonElement;
+    const refresh = () => {
       const left = w.agents.length - ready.size;
-      if (ready.has(p.id)) $('.ready-msg', el).textContent = left > 0 ? `Đang chờ ${left} người sẵn sàng…` : 'Đủ người! Vào ca thôi.';
-      if (left === 0) setTimeout(() => { el.remove(); session.paused = false; }, 700);
+      const meReady = ready.has(p.id);
+      btn.classList.toggle('is-ready', meReady);
+      btn.innerHTML = meReady ? esc(fmt('ui.reveal.cancel')) : esc(fmt('ui.reveal.ready'));
+      $('.ready-msg', el).textContent = left > 0 ? (meReady ? `Đang chờ ${left} người sẵn sàng…` : 'Mọi người đọc phân công, ai sẵn sàng thì bấm nút. Đủ người là vào ca.') : 'Đủ người! Vào ca sau 2 giây…';
+      clearTimeout(startTimer);
+      if (left === 0) startTimer = window.setTimeout(() => { if (ready.size === w.agents.length) { el.remove(); session.paused = false; } }, 2000);
     };
-    const timers = w.agents.filter(a => !a.isPlayer).map(a => window.setTimeout(() => { if (el.isConnected) { setReady(a.id); sfx.click(); } }, 1200 + Math.random() * 4500));
-    $('#go', el).onclick = () => {
+    const setReady = (id: number, on: boolean) => {
+      if (on) ready.add(id); else ready.delete(id);
+      const tag = el.querySelector(`.reveal-team figure[data-id="${id}"] .rd-tag`) as HTMLElement | null;
+      if (tag) {
+        tag.className = 'rd-tag ' + (on ? 'ok' : 'wait');
+        tag.textContent = on ? '✓ Sẵn sàng' : 'Đang đọc';
+        if (on) { tag.classList.remove('pop'); void tag.offsetWidth; tag.classList.add('pop'); }
+      }
+      refresh();
+    };
+    const timers = w.agents.filter(a => !a.isPlayer).map(a => window.setTimeout(() => { if (el.isConnected) { setReady(a.id, true); sfx.click(); } }, 1200 + Math.random() * 4500));
+    btn.onclick = () => {
+      if (ready.has(p.id)) {
+        // Hủy sẵn sàng: đọc lại phân công, được đổi người backup
+        setReady(p.id, false);
+        el.querySelectorAll<HTMLButtonElement>('.dev-list button').forEach(b => b.disabled = false);
+        sfx.click();
+        return;
+      }
       if (p.role === 'crew' && p.dept === 'developer' && p.devBackup === null) {
         const warn = el.querySelector('.dev-warn') as HTMLElement;
         warn.textContent = '⚠️ Bạn phải chọn 1 đồng nghiệp để backup trước khi sẵn sàng!';
@@ -693,11 +852,9 @@ export class UI {
         sfx.fail();
         return;
       }
-      const btn = $('#go', el) as HTMLButtonElement;
-      btn.disabled = true; btn.textContent = '✅ Đã sẵn sàng';
       el.querySelectorAll<HTMLButtonElement>('.dev-list button').forEach(b => b.disabled = true);
       sfx.taskDone();
-      setReady(p.id);
+      setReady(p.id, true);
     };
     void timers;
   }
@@ -712,10 +869,17 @@ export class UI {
     return parts.join(' · ') + ` · ${w.agents.length - crewN} Nội gián`;
   }
 
+  /** Thông báo nổi dạng giấy note: icon theo nội dung, có thanh thời gian chạy ngược */
   private toast(msg: string, ms = 2200) {
     const t = this.hudEl?.querySelector('.toast') as HTMLElement | null;
     if (!t) return;
-    t.textContent = msg; t.hidden = false;
+    const lead = /^[\p{Extended_Pictographic}]/u.test(msg);
+    const kind = /(Cúp điện|Mất|kẹt|thất bại|Hết|không|Không|⚠|😨|bị gài)/.test(msg) ? 'warn' : /(Đã |đã |rồi!|Xong|sống lại)/.test(msg) ? 'ok' : 'info';
+    t.className = 'toast ' + kind;
+    t.innerHTML = `${lead ? '' : iconSvg(kind === 'warn' ? 'warn' : kind === 'ok' ? 'check' : 'info')}<span></span><i class="toast-bar" style="animation-duration:${ms}ms"></i>`;
+    (t.querySelector('span') as HTMLElement).textContent = msg;
+    t.hidden = false;
+    t.classList.remove('in'); void t.offsetWidth; t.classList.add('in');
     clearTimeout(this.toastTimer);
     this.toastTimer = window.setTimeout(() => { t.hidden = true; }, ms);
   }
@@ -859,6 +1023,41 @@ export class UI {
     if (e2) this.toast(e2);
   }
 
+  /** Cập nhật một nút hành động: icon, chữ, trạng thái, hồi chiêu và hoạt cảnh chuyển trạng thái */
+  private setAct(el: HTMLButtonElement, o: ActView & { show?: boolean }) {
+    const show = o.show ?? true;
+    if (el.hidden === show) { el.hidden = !show; if (show) this.animOnce(el, 'appear'); }
+    if (!show) return;
+    if (el.dataset.icon !== o.icon) {
+      $('.ic', el).innerHTML = iconSvg(o.icon);
+      if (el.dataset.icon) this.animOnce(el, 'swap');
+      el.dataset.icon = o.icon;
+    }
+    const lbl = o.label.toUpperCase();
+    const lb = $('.lb', el); if (lb.textContent !== lbl) lb.textContent = lbl;
+    el.setAttribute('aria-label', o.label);
+    const prev = el.dataset.state as ActState | undefined;
+    if (prev !== o.state) {
+      if (prev) el.classList.remove('st-' + prev);
+      el.classList.add('st-' + o.state);
+      el.dataset.state = o.state;
+      if (prev === 'cool' && o.state !== 'cool') { this.animOnce(el, 'flash'); if (el.id === 'a-kill') sfx.ting(); }
+      else if (o.state === 'target' || o.state === 'alarm') this.animOnce(el, 'pop');
+      else if (o.state === 'done') this.animOnce(el, 'pop');
+    }
+    el.disabled = o.state === 'off' || o.state === 'cool' || o.state === 'done';
+    const cd = $('.cd', el);
+    if (o.state === 'cool' && o.cd && o.cd > 0) {
+      const t = String(Math.ceil(o.cd));
+      if (cd.textContent !== t) cd.textContent = t;
+      el.style.setProperty('--p', String(Math.max(0, Math.min(1, o.cd / (o.cdMax || o.cd)))));
+    } else if (cd.textContent) cd.textContent = '';
+  }
+  private animOnce(el: HTMLElement, cls: string) {
+    el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
+    window.setTimeout(() => el.classList.remove(cls), 750);
+  }
+
   /** Người chơi biết người này là Nội gián (Nội gián thấy đồng bọn, Intern tham vọng thấy mọi Nội gián) */
   private seesAsImpostor(a: { role: string; id: number }) {
     const p = session.world!.player;
@@ -867,26 +1066,37 @@ export class UI {
 
   private vitalsEl: HTMLElement | null = null;
   /** Bảng chấm công của Admin: không dừng game, tự đóng khi hết pin */
+  /** Bảng chấm công của Admin: popup che toàn màn hình (đang xem thì không thấy gì bên dưới, đứng yên) */
   private renderVitals() {
     const w = session.world!, p = w.player;
     if (!this.vitalsEl) {
       const el = document.createElement('div');
-      el.className = 'vitals card-lite';
-      el.innerHTML = `<div class="vt-head"><b>📊 Bảng chấm công</b><button class="x" aria-label="Đóng">✕</button></div><div class="vt-bat"><i></i><span></span></div><ul class="vt-list"></ul>`;
+      el.className = 'modal vitals-modal';
+      el.innerHTML = `<div class="sheet info-sheet vitals-sheet" role="dialog" aria-label="Bảng chấm công">
+        <div class="sheet-head"><h2>${iconSvg('clipboard').replace('class="ico"', 'class="ico vt-ico"')} Bảng chấm công</h2><button class="x art" aria-label="Đóng">${iconSvg('close')}</button></div>
+        <div class="vt-bat"><span class="vt-bat-lb">Pin</span><div class="vt-bar"><i></i></div><b></b></div>
+        <div class="info-body"><div class="vt-grid"></div></div>
+      </div>`;
       (el.querySelector('.x') as HTMLElement).onclick = () => w.adminClose(p);
-      this.hudEl.appendChild(el);
+      el.onclick = (e) => { if (e.target === el) w.adminClose(p); };
+      this.root.appendChild(el);
       this.vitalsEl = el;
     }
     const el = this.vitalsEl;
-    (el.querySelector('.vt-bat i') as HTMLElement).style.width = `${(p.adminBattery / 10) * 100}%`;
-    (el.querySelector('.vt-bat span') as HTMLElement).textContent = `Pin ${p.adminBattery.toFixed(1)}s`;
+    const bat = Math.max(0, p.adminBattery);
+    const bar = el.querySelector('.vt-bar i') as HTMLElement;
+    bar.style.width = `${(bat / 10) * 100}%`;
+    bar.classList.toggle('low', bat < 3);
+    (el.querySelector('.vt-bat b') as HTMLElement).textContent = `${bat.toFixed(1)}s`;
     const key = w.vitals().map(v => v.status).join(',');
     if (el.dataset.k !== key) {
       el.dataset.k = key;
-      (el.querySelector('.vt-list') as HTMLElement).innerHTML = w.vitals().map(v => {
+      (el.querySelector('.vt-grid') as HTMLElement).innerHTML = w.vitals().map(v => {
         const a = w.agents[v.id];
-        const st = v.status === 'alive' ? ['ok', '🟢 Đang làm việc'] : v.status === 'dead' ? ['dead', '🔴 Đã bị đuổi việc'] : ['out', '⚪ Bị sa thải trong họp'];
-        return `<li class="${st[0]}"><img src="${avatarURL(a.look)}" alt=""><span${this.seesAsImpostor(a) ? ' class="bad"' : ''}>${esc(a.name)} <small>#${a.empId}</small></span><em>${st[1]}</em></li>`;
+        const name = `<b${this.seesAsImpostor(a) ? ' class="bad"' : ''}>${esc(a.name)}</b><small>#${a.empId}</small>`;
+        if (v.status === 'alive') return `<div class="vt-card ok"><img src="${avatarURL(a.look)}" alt="">${name}<span class="vt-st">Đang làm việc<i class="vt-dots"><u></u><u></u><u></u></i></span></div>`;
+        if (v.status === 'dead') return `<div class="vt-card dead"><img src="${avatarURL(a.look)}" alt="">${name}<span class="vt-note">ĐÃ NGHỈ VIỆC<small>Ghế trống</small></span></div>`;
+        return `<div class="vt-card out"><img src="${avatarURL(a.look)}" alt="">${name}<span class="vt-stamp">BỊ SA THẢI</span></div>`;
       }).join('');
     }
   }
@@ -913,12 +1123,12 @@ export class UI {
       const now = performance.now();
       const rerollLeft = Math.max(0, Math.ceil((this.mediaRerollAt - now) / 1000));
       wrap.innerHTML = `<div class="sheet media-sheet" role="dialog" aria-label="Liên lạc">
-        <div class="sheet-head"><div><h2>📸 Liên lạc với người sống</h2><p class="hint">Chọn 1 đến 3 sticker theo thứ tự để ghép thành ý. Chỉ người nhận thấy, và họ không biết ai gửi.</p></div><button class="x" aria-label="Đóng">✕</button></div>
+        <div class="sheet-head"><div><h2>📸 Liên lạc với người sống</h2><p class="hint">Chọn 1 đến 3 sticker theo thứ tự để ghép thành ý. Chỉ người nhận thấy, và họ không biết ai gửi.</p></div><button class="x art" aria-label="Đóng">${iconSvg('close')}</button></div>
         ${targets.length > 1 ? `<div class="md-targets">${targets.map(t => `<button data-t="${t.id}" class="${t.id === target ? 'on' : ''}"><img src="${avatarURL(t.look)}" alt=""><span>${esc(t.name)} #${t.empId}</span></button>`).join('')}</div>` : `<p class="md-to">Gửi cho: <b>${esc(w.agents[target].name)} #${w.agents[target].empId}</b></p>`}
         <div class="md-slots">${[0, 1, 2].map(i => `<div class="md-slot">${chosen[i] !== undefined ? STICKERS[chosen[i]].e : ''}</div>`).join('<span class="md-plus">+</span>')}</div>
         <div class="md-hand">${hand.map(i => `<button class="md-st${chosen.includes(i) ? ' used' : ''}" data-i="${i}">${STICKERS[i].e}</button>`).join('')}</div>
         <div class="md-foot">
-          <button class="ghost-btn" id="md-reroll" ${rerollLeft > 0 ? 'disabled' : ''}>🔄 Đổi${rerollLeft > 0 ? ` (${rerollLeft}s)` : ''}</button>
+          <button class="ghost-btn" id="md-reroll" ${rerollLeft > 0 ? 'disabled' : ''}>🔄 <span class="md-rl">Đổi${rerollLeft > 0 ? ` (${rerollLeft}s)` : ''}</span></button>
           <button class="ghost-btn" id="md-cancel">Hủy</button>
           <button class="primary" id="md-use" ${chosen.length ? '' : 'disabled'}>Gửi</button>
         </div></div>`;
@@ -938,7 +1148,17 @@ export class UI {
         sfx.ting(); close(); this.toast('Đã gửi sticker 📸', 1500);
       };
     };
-    const tick = window.setInterval(() => { if (!wrap.isConnected) { clearInterval(tick); return; } if (performance.now() < this.mediaRerollAt + 1000) render(); }, 1000);
+    // Chỉ cập nhật chữ đếm ngược trên nút Đổi, không dựng lại cả khung
+    const tick = window.setInterval(() => {
+      if (!wrap.isConnected) { clearInterval(tick); return; }
+      const btn = wrap.querySelector('#md-reroll') as HTMLButtonElement | null;
+      if (!btn) return;
+      const left = Math.max(0, Math.ceil((this.mediaRerollAt - performance.now()) / 1000));
+      btn.disabled = left > 0;
+      const txt = left > 0 ? `Đổi (${left}s)` : 'Đổi';
+      const lbl = btn.querySelector('.md-rl') as HTMLElement | null;
+      if (lbl && lbl.textContent !== txt) lbl.textContent = txt;
+    }, 250);
     render();
   }
 
@@ -1067,6 +1287,8 @@ export class UI {
   private closeOverlays() {
     this.toggleSabMenu(false); this.toggleMap(false); this.toggleCams(false); this.toggleMenu(false);
     this.fakeT = 0;
+    // Bảng chấm công là popup riêng: họp, bị gài hay hết ván đều phải đóng
+    if (this.vitalsEl) { this.vitalsEl.remove(); this.vitalsEl = null; }
   }
 
   private camIdx = 0;
@@ -1348,7 +1570,7 @@ export class UI {
       <div class="meet-win">
         <div class="meet-top">
           <div class="meet-title"><b>Họp khẩn</b><span>${reason}</span><small class="meet-roles">Có trong ván: ${this.roleListText()}</small></div>
-          <div class="meet-timer"><span class="rec">●</span> <span id="m-phase">Thảo luận</span> <span id="m-time">--</span></div>
+          <div class="meet-timer"><span class="m-phase-pill" id="m-phase">THẢO LUẬN</span><span class="m-clock" id="m-time">--</span></div>
         </div>
         <div class="meet-main">
           <div class="tiles"></div>
@@ -1495,8 +1717,19 @@ export class UI {
     const el = this.meetEl!;
     if (!m) return;
     const discussing = m.t < m.discussEnd;
-    $('#m-phase', el).textContent = m.result ? 'Kết quả' : discussing ? 'Thảo luận' : 'Bỏ phiếu';
-    $('#m-time', el).textContent = m.result ? '' : `${Math.max(0, Math.ceil((discussing ? m.discussEnd : m.duration) - m.t))}s`;
+    const phase = m.result ? 'KẾT QUẢ' : discussing ? 'THẢO LUẬN' : 'BỎ PHIẾU';
+    const ph = $('#m-phase', el);
+    if (ph.textContent !== phase) { ph.textContent = phase; ph.className = 'm-phase-pill ' + (m.result ? 'res' : discussing ? 'talk' : 'vote'); }
+    const left = m.result ? -1 : Math.max(0, Math.ceil((discussing ? m.discussEnd : m.duration) - m.t));
+    const clock = $('#m-time', el);
+    const txt = left < 0 ? '' : `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+    if (clock.textContent !== txt) {
+      clock.textContent = txt;
+      // Còn 5 giây: đồng hồ đỏ, nảy từng nhịp, kèm tiếng tích tắc
+      const urgent = left >= 0 && left <= 5;
+      clock.classList.toggle('urgent', urgent);
+      if (urgent && left > 0) { clock.classList.remove('tick'); void clock.offsetWidth; clock.classList.add('tick'); sfx.click(); }
+    }
     el.classList.toggle('voting', !discussing && !m.result);
     const ready = $('#m-ready', el) as HTMLButtonElement;
     ready.hidden = !discussing;
@@ -1510,7 +1743,10 @@ export class UI {
       const a = w.agents[c.from];
       const row = document.createElement('div');
       row.className = 'msg' + (a.isPlayer && !c.system ? ' me' : '') + (!a.alive ? ' ghost' : '') + (c.system ? ' system' : '');
-      row.innerHTML = c.anon
+      if (c.alert) row.classList.add('alert');
+      row.innerHTML = c.alert
+        ? `<span class="alert-ic">${iconSvg('warn')}</span><div><p>${esc(c.text)}</p></div>`
+        : c.anon
         ? `<span class="anon-ic">📰</span><div><b class="anon-name">Nguồn tin giấu tên</b><p>${esc(c.text)}</p></div>`
         : `<img src="${avatarURL(a.look)}" alt=""><div><b style="color:${this.seesAsImpostor(a) ? '#e2412f' : nameInk(a.color)}">${esc(a.name)} <span class="chat-id">#${a.empId}</span></b><p>${esc(c.text)}</p></div>`;
       if (c.anon) row.classList.add('anon');
@@ -1605,7 +1841,54 @@ export class UI {
       el.remove();
       w.finishMeeting();
       if (w.phase === 'ended') this.showGameOver();
+      else if (w.spawnOffer) this.showSpawnPicker();
     }, 4800);
+  }
+
+  /**
+   * Chọn nơi bắt đầu sau họp (kiểu Airship): 3 lựa chọn riêng của bạn, 10 giây.
+   * Game tạm dừng trong lúc chọn; hết giờ thì máy chọn ngẫu nhiên giúp.
+   */
+  private showSpawnPicker() {
+    const w = session.world!, p = w.player;
+    const offer = w.spawnOffer;
+    if (!offer) return;
+    session.paused = true;
+    const myTasksOn = (lv: number) => p.tasks.filter(t => !t.done && levelAt((station(slotStation(t)).stand.x + 0.5) * TILE, (station(slotStation(t)).stand.y + 0.5) * TILE) === lv).length;
+    const el = document.createElement('div');
+    el.className = 'modal spawn-modal';
+    el.innerHTML = `<div class="sheet info-sheet spawn-sheet" role="dialog" aria-label="Chọn nơi bắt đầu">
+      <div class="sheet-head"><h2>Chọn nơi bắt đầu</h2><b class="sp-left">10</b></div>
+      <p class="sp-sub">Phòng họp luôn có sẵn; 2 nơi còn lại là của riêng bạn, không ai biết bạn chọn đâu.</p>
+      <div class="sp-cards">${offer.map((idx, i) => {
+        const sp = SPAWN_POINTS[idx];
+        const n = p.role === 'crew' && p.dept !== 'gd' && p.dept !== 'climber' ? myTasksOn(sp.level) : 0;
+        return `<button type="button" class="sp-card${i === 0 ? ' stay' : ''}" data-i="${i}">${i === 0 ? '<span class="sp-default">Hết giờ sẽ ở lại đây</span>' : ''}<span class="sp-ic">${iconSvg(sp.icon)}</span><b>${esc(roomName(sp.room))}</b><small>${esc(levelName(sp.level))}</small>${n ? `<em>${n} việc của bạn ở tầng này</em>` : '<em class="none">Không có việc của bạn</em>'}</button>`;
+      }).join('')}</div>
+      <div class="sp-bar"><i></i></div>
+    </div>`;
+    this.root.appendChild(el);
+    sfx.ting();
+    let left = 10, done = false;
+    const finish = (i: number) => {
+      if (done) return;
+      done = true;
+      clearInterval(tick);
+      w.chooseSpawn(i);
+      el.classList.add('closing');
+      setTimeout(() => { el.remove(); if (session.world === w && w.phase === 'play') session.paused = false; }, 200);
+      sfx.whoosh();
+    };
+    el.querySelectorAll<HTMLButtonElement>('.sp-card').forEach(b => b.onclick = () => finish(Number(b.dataset.i)));
+    const tick = window.setInterval(() => {
+      left--;
+      const lb = el.querySelector('.sp-left') as HTMLElement | null;
+      if (lb) { lb.textContent = String(Math.max(0, left)); lb.classList.toggle('urgent', left <= 3); }
+      if (left <= 3 && left > 0) sfx.click();
+      if (left <= 0) finish(-1); // hết giờ: ở lại Phòng họp
+    }, 1000);
+    // thanh thời gian chạy ngược (CSS) đồng bộ 10 giây
+    (el.querySelector('.sp-bar i') as HTMLElement).style.animationDuration = '10s';
   }
 
   // ================= KẾT THÚC =================
@@ -1665,16 +1948,18 @@ export class UI {
     if (this.keys.has(K.up) || this.keys.has('arrowup')) y -= 1;
     if (this.keys.has(K.down) || this.keys.has('arrowdown')) y += 1;
     if (this.joy.active) { x = this.joy.x; y = this.joy.y; }
-    if (miniOpen() || this.fakeT > 0 || this.camsOpen) { x = 0; y = 0; }
+    if (miniOpen() || this.fakeT > 0 || this.camsOpen || this.vitalsEl) { x = 0; y = 0; }
     session.input = { x, y };
 
     const w = session.world;
     if (!w && this.lobbyHud) {
       const near = session.lobby.near;
       const use = $('#l-use', this.lobbyHud) as HTMLButtonElement;
-      use.disabled = !near;
-      const lbl = near === 'wardrobe' ? 'Thay đồ' : near === 'board' ? 'Cài đặt phòng' : near === 'elevator' ? 'Lên văn phòng' : 'Dùng';
-      const lb = $('.lb', use); if (lb.textContent !== lbl) lb.textContent = lbl;
+      const info = session.lobby.nearInfo;
+      this.setAct(use, info
+        ? { icon: info.icon, label: info.label, state: near === 'elevator' ? 'alarm' : 'target' }
+        : { icon: 'work', label: 'Dùng', state: 'off' });
+      this.syncLobbyInfo();
       return;
     }
     if (!w || !this.hudEl) return;
@@ -1691,25 +1976,55 @@ export class UI {
     }
 
     const ctx = w.context(p);
+    // ===== Nút hành động: mỗi nút tự đổi icon, chữ và trạng thái theo đúng tình huống =====
     const use = $('#a-use', this.hudEl) as HTMLButtonElement;
-    use.disabled = !ctx.use;
-    $('.lb', use).textContent = ctx.use?.label ?? 'Làm việc';
-    const rep = $('#a-report', this.hudEl); rep.hidden = !p.alive;
-    (rep as HTMLButtonElement).disabled = !ctx.report;
+    {
+      const u = ctx.use;
+      let o: ActView = { icon: 'work', label: 'Làm việc', state: 'off' };
+      if (u) switch (u.kind) {
+        case 'task': o = { icon: stationIcon(u.station?.id), label: u.station?.name ?? u.label, state: 'target' }; break; // hiện đúng tên việc: In tài liệu, Pha cà phê...
+        case 'fix': o = { icon: stationIcon(u.station?.id), label: 'Sửa sự cố', state: 'alarm' }; break;
+        case 'bell':
+          o = p.emergencyLeft <= 0 ? { icon: 'bell', label: 'Hết lượt họp', state: 'done' }
+            : w.emergencyCd > 0 ? { icon: 'bell', label: 'Họp khẩn', state: 'cool', cd: w.emergencyCd, cdMax: 15 }
+            : w.sabotage?.kind === 'boss' ? { icon: 'bell', label: 'Sếp đang tuần', state: 'off' }
+            : { icon: 'bell', label: 'Họp khẩn', state: 'alarm' };
+          break;
+        case 'desk': o = { icon: 'desk', label: 'Ngồi vào bàn', state: 'alarm' }; break;
+        case 'camera': o = { icon: 'camera', label: 'Xem camera', state: 'target' }; break;
+        case 'faceid': o = { icon: 'idcard', label: 'Face ID', state: 'target' }; break;
+        case 'door': o = { icon: 'keycard', label: 'Quẹt thẻ', state: 'alarm' }; break;
+        case 'colorcheck': o = { icon: 'palette', label: 'So màu', state: 'target' }; break;
+        case 'liftcall': o = { icon: 'lift', label: w.lift.stuck ? 'Thang kẹt' : w.lift.requests.has(levelAt(p.x, p.y)) ? 'Đang gọi…' : 'Gọi thang', state: w.lift.stuck ? 'off' : w.lift.requests.has(levelAt(p.x, p.y)) ? 'active' : 'target' }; break;
+        case 'liftpanel': o = { icon: 'liftPanel', label: 'Chọn tầng', state: 'target' }; break;
+        case 'pry': o = w.lift.stuckT < PRY_AFTER ? { icon: 'crowbar', label: 'Cạy cửa', state: 'cool', cd: PRY_AFTER - w.lift.stuckT, cdMax: PRY_AFTER } : { icon: 'crowbar', label: 'Cạy cửa', state: 'alarm' }; break;
+        case 'rescue': o = { icon: 'wrench', label: 'Mở cửa thang', state: 'alarm' }; break;
+      }
+      this.setAct(use, o);
+    }
+    // Hồn ma: nút lên/xuống tầng (tầng cao nhất/thấp nhất thì nút tương ứng mờ)
+    {
+      const lv = levelAt(p.x, p.y), cur = lv >= 1 && lv <= 4 ? lv : lv === 0 ? Math.round(w.lift.pos) : p.ghostLv;
+      this.setAct($('#a-gup', this.hudEl) as HTMLButtonElement, { show: !p.alive, icon: 'stairs', label: 'Lên tầng', state: cur >= 4 ? 'off' : 'ready' });
+      this.setAct($('#a-gdown', this.hudEl) as HTMLButtonElement, { show: !p.alive, icon: 'stairs', label: 'Xuống tầng', state: cur <= 1 ? 'off' : 'ready' });
+    }
+    const rep = $('#a-report', this.hudEl) as HTMLButtonElement;
+    this.setAct(rep, { show: p.alive, icon: 'report', label: 'Báo cáo', state: ctx.report ? 'alarm' : 'off' });
     const isImp = p.role === 'impostor';
     const isClimber = p.role === 'crew' && p.dept === 'climber';
     const kill = $('#a-kill', this.hudEl) as HTMLButtonElement;
-    kill.hidden = !(isImp || isClimber) || !p.alive;
-    kill.disabled = !ctx.kill || p.killCd > 0;
-    $('.cd', kill).textContent = p.killCd > 0 ? String(Math.ceil(p.killCd)) : '';
+    {
+      const max = isClimber ? CLIMBER_CD : w.killCdBase;
+      this.setAct(kill, { show: (isImp || isClimber) && p.alive, icon: 'trap', label: 'Gài bẫy',
+        state: p.killCd > 0 ? 'cool' : ctx.kill ? 'target' : 'off', cd: p.killCd, cdMax: Math.max(max, p.killCd) });
+    }
     const sab = $('#a-sab', this.hudEl) as HTMLButtonElement;
-    sab.hidden = !isImp;
-    sab.disabled = !!w.sabotage || w.sabCd > 0;
-    $('.lb', sab).textContent = w.sabCd > 0 && !w.sabotage ? `Phá hoại ${Math.ceil(w.sabCd)}` : 'Phá hoại';
+    this.setAct(sab, { show: isImp, icon: 'sabotage', label: w.sabotage ? 'Đang phá' : 'Phá hoại',
+      state: w.sabotage ? 'active' : w.sabCd > 0 ? 'cool' : 'ready', cd: w.sabCd, cdMax: SAB_CD });
     const hideB = $('#a-hide', this.hudEl) as HTMLButtonElement;
     const isEng = p.role === 'crew' && p.dept === 'engineer';
-    hideB.hidden = !(isImp || isEng || isClimber) || !p.alive;
-    hideB.disabled = (ctx.hide === null && p.hidden === null) || (isEng && p.hidden === null && !!w.engineerBlocked(p));
+    this.setAct(hideB, { show: (isImp || isEng || isClimber) && p.alive, icon: 'hide', label: 'Trốn',
+      state: isEng && p.hidden === null && p.engCd > 0 ? 'cool' : ctx.hide !== null ? 'target' : 'off', cd: p.engCd, cdMax: ENG_CD });
     const hc = $('.hide-ctrl', this.hudEl);
     hc.hidden = p.hidden === null;
     if (p.hidden !== null) {
@@ -1737,21 +2052,26 @@ export class UI {
     const isMedia = crewP && p.dept === 'media' && !p.alive;
     const isAnim = crewP && p.dept === 'animator' && p.alive && !p.animUsed;
     const isTester = crewP && p.dept === 'tester' && p.alive;
-    lap.hidden = !(isIt || isPo || isAdmin || isMedia || isAnim || isTester);
-    if (!lap.hidden) {
-      lap.classList.toggle('po', isPo);
-      const [ic, lb] = isPo ? ['📣', 'Họp gấp'] : isAdmin ? ['📊', 'Chấm công'] : isMedia ? ['📸', 'Liên lạc'] : isAnim ? ['🎬', 'Làm lại anim'] : isTester ? (p.testUsed ? ['✅', 'Đã viết'] : ['🧪', 'Viết testcase']) : ['💻', 'Laptop'];
-      if (isTester && $('.ic', lap).textContent !== ic) $('.ic', lap).textContent = ic;
-      if (isTester && $('.lb', lap).textContent !== lb) $('.lb', lap).textContent = lb;
-      if ($('.ic', lap).textContent !== ic) { $('.ic', lap).textContent = ic; $('.lb', lap).textContent = lb; }
-      if (isMedia) lap.disabled = !!w.mediaBlocked(p) || !w.mediaTargets(p).length;
-      else if (isAnim) lap.disabled = !!w.animatorBlocked(p);
-      else if (isTester) lap.disabled = !!w.testerBlocked(p) || !w.testerTargets(p).length;
-      else if (isAdmin) lap.disabled = !p.adminViewing && !!w.adminBlocked(p);
-      else lap.disabled = isPo ? !!w.poBlocked(p) : !!w.itBlocked(p);
-      const cdTxt = isIt && p.itCd > 0 && p.itCamT <= 0 ? p.itCd : isAdmin && !p.adminViewing && p.adminCd > 0 ? p.adminCd : isMedia && p.mediaCd > 0 ? p.mediaCd : 0;
-      $('.cd', lap).textContent = cdTxt > 0 ? String(Math.ceil(cdTxt)) : '';
-    }
+    const poDone = crewP && p.dept === 'po' && p.alive && p.poUsed;
+    const animDone = crewP && p.dept === 'animator' && p.alive && p.animUsed;
+    let ab: ActView & { show: boolean } = { show: false, icon: 'work', label: '', state: 'off' };
+    if (isIt) ab = this.laptopT > 0 ? { show: true, icon: 'laptop', label: 'Đang xem', state: 'active' }
+      : p.itCd > 0 ? { show: true, icon: 'laptop', label: 'Laptop', state: 'cool', cd: p.itCd, cdMax: IT_CD + 10 }
+      : w.itBlocked(p) ? { show: true, icon: 'laptop', label: 'Mất kết nối', state: 'off' }
+      : { show: true, icon: 'laptop', label: 'Laptop', state: 'ready' };
+    else if (isPo) ab = { show: true, icon: 'megaphone', label: 'Họp gấp', state: w.poBlocked(p) ? 'off' : 'ready' };
+    else if (poDone) ab = { show: true, icon: 'megaphone', label: 'Đã họp gấp', state: 'done' };
+    else if (isAdmin) ab = p.adminViewing ? { show: true, icon: 'clipboard', label: 'Đóng bảng', state: 'active' }
+      : p.adminCd > 0 ? { show: true, icon: 'clipboard', label: 'Chấm công', state: 'cool', cd: p.adminCd, cdMax: ADMIN_CD }
+      : w.adminBlocked(p) ? { show: true, icon: 'clipboard', label: p.adminBattery <= 0.05 ? 'Hết pin' : 'Mất kết nối', state: 'off' }
+      : { show: true, icon: 'clipboard', label: 'Chấm công', state: 'ready' };
+    else if (isMedia) ab = p.mediaCd > 0 ? { show: true, icon: 'photo', label: 'Liên lạc', state: 'cool', cd: p.mediaCd, cdMax: MEDIA_CD }
+      : { show: true, icon: 'photo', label: 'Liên lạc', state: w.mediaTargets(p).length ? 'target' : 'off' };
+    else if (isAnim) ab = { show: true, icon: 'clapper', label: 'Làm lại anim', state: w.animatorBlocked(p) ? 'off' : 'target' };
+    else if (animDone) ab = { show: true, icon: 'clapper', label: 'Đã dùng', state: 'done' };
+    else if (isTester) ab = p.testUsed ? { show: true, icon: 'flask', label: 'Đã viết', state: 'done' }
+      : { show: true, icon: 'flask', label: 'Viết testcase', state: w.testerTargets(p).length ? 'target' : 'off' };
+    this.setAct(lap, ab);
     if (isAdmin && p.adminViewing) this.renderVitals(); else if (this.vitalsEl) { this.vitalsEl.remove(); this.vitalsEl = null; }
     const camTitle = $('.cam-title', this.hudEl);
     const wantTitle = this.laptopT > 0 ? `Laptop IT · còn ${Math.ceil(this.laptopT)} giây` : 'Camera an ninh';
@@ -1796,7 +2116,7 @@ export class UI {
         deptTxt += bl ? `<br>${bl}` : '<br><b class="good">Máy so màu ở Studio Art đã sẵn sàng</b>';
       }
     }
-    if (md.innerHTML !== deptTxt) md.innerHTML = deptTxt;
+    if (this.lastDeptTxt !== deptTxt) { this.lastDeptTxt = deptTxt; md.innerHTML = deptTxt; }
 
     // Bảng nhiệm vụ: chỉ cập nhật khi đổi
     const k = w.crewTasksDone();
@@ -1854,13 +2174,14 @@ export class UI {
         : s.kind === 'power' ? fmt('ui.sab.power') : fmt('ui.sab.wifi');
     } else ban.hidden = true;
     // Biển tên tầng trượt xuống khi vừa sang tầng mới
+    $('#b-map', this.hudEl).classList.toggle('alarm', !!w.sabotage && w.sabotage.kind !== 'boss' && p.role !== 'impostor');
     { const lvb = levelAt(p.x, p.y);
       if (lvb >= 1 && lvb <= 4 && lvb !== this.lastFloorBanner && w.phase === 'play') {
         const first = this.lastFloorBanner === -1;
         this.lastFloorBanner = lvb;
         if (!first) this.floorBanner(lvb);
       } }
-    { const lv = levelAt(p.x, p.y); const rn = roomName(roomAt(p.x, p.y)); const t = lv === 0 ? `🛗 Thang máy · tầng ${Math.round(w.lift.pos)}${w.lift.stuck ? ' · ĐANG KẸT' : ''}` : lv === 5 ? '🪜 Thang bộ' : lv === 4 ? rn : `${levelName(lv)} · ${rn}`; const el = $('.room-name', this.hudEl); if (el.textContent !== t) el.textContent = t; }
+    { const lv = levelAt(p.x, p.y); const rn = roomName(roomAt(p.x, p.y)); const t = lv === 0 ? `🛗 Thang máy · tầng ${Math.round(w.lift.pos)}${w.lift.stuck ? ' · ĐANG KẸT' : ''}` : lv === 5 ? '🪜 Thang bộ' : lv === 4 ? rn : `${levelName(lv)} · ${rn}`; const el = $('.room-name', this.hudEl); if (this.lastRoomTitle !== t) { this.lastRoomTitle = t; el.textContent = t; } }
     if (this.mapOpen) { this.drawMinimap(); if (this.sabBtns.length) this.updateSabotageMap(); }
     w.playerWatching = this.camsOpen;
     if (this.camsOpen) this.drawCams();
@@ -1870,6 +2191,8 @@ export class UI {
   private mapFloor = 2;
   private mapFloorKey = '';
   private lastMapLevel = 0;
+  private lastDeptTxt = '';
+  private lastRoomTitle = '';
   private doneSeen = new Set<string>();
   private lastFloorBanner = -1;
   private renderMapFloors() {
@@ -1905,24 +2228,44 @@ export class UI {
     const onFloor = (tx: number, ty: number) => levelAt((tx + 0.5) * TILE, (ty + 0.5) * TILE) === F.id;
     ctx.clearRect(0, 0, cv.width, cv.height);
     ctx.fillStyle = '#2b2e4a'; ctx.fillRect(0, 0, cv.width, cv.height);
+    // Mỗi phòng một màu nhạt, hành lang xám ấm; viền đậm giữa sàn và tường
     for (let y = F.oy; y < F.oy + F.h; y++) for (let x = F.ox; x < F.ox + F.w; x++) {
       if (GRID[y * MAP_W + x] === 0) continue;
-      const r = ROOMS.find(r => r.id === roomAt((x + 0.5) * TILE, (y + 0.5) * TILE));
-      ctx.fillStyle = GRID[y * MAP_W + x] === 2 ? '#a9a290' : r?.id.startsWith('stair') ? '#9a96aa' : r && r.label ? '#ece3cc' : '#d3ccbb';
+      const rid = roomAt((x + 0.5) * TILE, (y + 0.5) * TILE);
+      ctx.fillStyle = GRID[y * MAP_W + x] === 2 ? '#a9a290' : mapRoomColor(rid);
       const [X, Y] = M(x * TILE, y * TILE);
       ctx.fillRect(X, Y, TILE * k + 0.6, TILE * k + 0.6);
     }
-    ctx.fillStyle = 'rgba(29,26,43,.55)'; ctx.font = '800 26px "Baloo 2", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    for (const r of ROOMS) if (r.label && r.level === F.id) { const [X, Y] = M((r.x + r.w / 2) * TILE, (r.y + r.h / 2) * TILE); ctx.fillText(r.name, X, Y + (r.id === 'meeting' ? 60 : 0)); }
+    ctx.strokeStyle = '#1d1a2b'; ctx.lineWidth = 3;
+    for (let y = F.oy; y < F.oy + F.h; y++) for (let x = F.ox; x < F.ox + F.w; x++) {
+      if (GRID[y * MAP_W + x] === 0) continue;
+      const [X, Y] = M(x * TILE, y * TILE), s0 = TILE * k;
+      if (GRID[(y - 1) * MAP_W + x] === 0) { ctx.beginPath(); ctx.moveTo(X, Y); ctx.lineTo(X + s0, Y); ctx.stroke(); }
+      if (GRID[(y + 1) * MAP_W + x] === 0) { ctx.beginPath(); ctx.moveTo(X, Y + s0); ctx.lineTo(X + s0, Y + s0); ctx.stroke(); }
+      if (GRID[y * MAP_W + x - 1] === 0) { ctx.beginPath(); ctx.moveTo(X, Y); ctx.lineTo(X, Y + s0); ctx.stroke(); }
+      if (GRID[y * MAP_W + x + 1] === 0) { ctx.beginPath(); ctx.moveTo(X + s0, Y); ctx.lineTo(X + s0, Y + s0); ctx.stroke(); }
+    }
+    // Tên phòng trong nhãn bo tròn
+    ctx.font = '800 22px "Baloo 2", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const r of ROOMS) if (r.label && r.level === F.id) {
+      const [X, Y0] = M((r.x + r.w / 2) * TILE, (r.y + r.h / 2) * TILE), Y = Y0 + (r.id === 'meeting' ? 60 : 0);
+      const tw = ctx.measureText(r.name).width + 22;
+      ctx.fillStyle = 'rgba(255,255,255,.92)'; ctx.beginPath(); ctx.roundRect(X - tw / 2, Y - 15, tw, 30, 15); ctx.fill();
+      ctx.lineWidth = 2.5; ctx.strokeStyle = '#1d1a2b'; ctx.stroke();
+      ctx.fillStyle = '#1d1a2b'; ctx.fillText(r.name, X, Y + 1);
+    }
     const p = w.player;
     const wifiDown = w.sabotage?.kind === 'wifi';
     const sab = w.sabotage?.kind;
     const pulse = 1 + Math.sin(performance.now() / 180) * 0.15;
     const badge = (x: number, y: number, fill: string, glyph: string, size = 17, glyphColor = '#1d1a2b') => {
-      ctx.beginPath(); ctx.arc(x, y, size, 0, Math.PI * 2); ctx.fillStyle = fill; ctx.fill();
+      // "!" là ghim việc; còn lại là icon vẽ trên đế tròn mang màu trạng thái
+      if (glyph === '!') { drawTaskPin(ctx, x, y + 4, size, fill); return; }
+      ctx.beginPath(); ctx.arc(x, y, size + 3, 0, Math.PI * 2); ctx.fillStyle = fill; ctx.fill();
       ctx.lineWidth = 3; ctx.strokeStyle = '#1d1a2b'; ctx.stroke();
-      ctx.fillStyle = glyphColor; ctx.font = `800 ${Math.round(size * 1.25)}px "Baloo 2", "Segoe UI Emoji", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(glyph, x, y + 1);
+      const img = mapIcon(MAP_ICON[glyph]);
+      if (img && img.complete && img.naturalWidth) ctx.drawImage(img, x - size * 1.05, y - size * 1.05, size * 2.1, size * 2.1);
+      else { ctx.fillStyle = glyphColor; ctx.font = `800 ${Math.round(size * 1.25)}px "Baloo 2", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(glyph, x, y + 1); }
     };
     // Lõi thang: thang máy (kèm vị trí buồng) và thang bộ
     if (F.id <= 3) {
@@ -1992,13 +2335,22 @@ export class UI {
     $('.mm-note', this.hudEl).textContent = wifiDown
       ? 'Mất kết nối: danh sách việc tạm thời không hiển thị.'
       : sab === 'boss' ? 'Sếp đi tuần! Về bàn của bạn ở Phòng làm việc tầng 2 (khung xanh) ngay.' : 'Bấm tên tầng ở trên để xem các tầng khác. Số trong ô tầng là số việc của bạn ở tầng đó.';
-    // Bạn
+    // Bạn: mặt nhân vật trong vòng tròn, vòng sáng nhấp nháy, nhãn "Bạn"
     if (levelAt(p.x, p.y) === F.id) {
       const [X, Y] = M(p.x, p.y);
-      ctx.fillStyle = '#fff'; ctx.strokeStyle = '#e8443a'; ctx.lineWidth = 5;
-      ctx.beginPath(); ctx.arc(X, Y, 12, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = '#1d1a2b'; ctx.font = '800 17px "Be Vietnam Pro", sans-serif'; ctx.textBaseline = 'bottom';
-      ctx.fillText('Bạn', X, Y - 15);
+      const ring = 22 + Math.sin(performance.now() / 220) * 4;
+      ctx.beginPath(); ctx.arc(X, Y, ring + 6, 0, Math.PI * 2); ctx.fillStyle = 'rgba(232,68,58,.22)'; ctx.fill();
+      ctx.beginPath(); ctx.arc(X, Y, 22, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = '#e8443a'; ctx.stroke();
+      const face = mapAvatar(p.look);
+      if (face.complete && face.naturalWidth) {
+        ctx.save(); ctx.beginPath(); ctx.arc(X, Y, 19, 0, Math.PI * 2); ctx.clip();
+        const fw = 46, fh = fw * face.naturalHeight / face.naturalWidth;
+        ctx.drawImage(face, X - fw / 2, Y - 18, fw, fh); ctx.restore();
+      }
+      ctx.font = '800 17px "Baloo 2", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const tw = ctx.measureText('Bạn').width + 16;
+      ctx.fillStyle = '#e8443a'; ctx.beginPath(); ctx.roundRect(X - tw / 2, Y - 50, tw, 22, 11); ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = '#1d1a2b'; ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.fillText('Bạn', X, Y - 38);
     }
   }
 
@@ -2011,9 +2363,13 @@ export class UI {
       this.keys.add(k);
       const K = this.prefs.keys;
       if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'tab'].includes(k) || Object.values(K).includes(k)) e.preventDefault();
-      if (!session.world && this.lobbyHud && !session.paused) { if (k === K.use || k === 'enter') this.lobbyUse(); return; }
+      if (!session.world && this.lobbyHud && !session.paused) {
+        if (k === 'enter') { e.preventDefault(); this.lobbyChatOpen?.(true); return; }
+        if (k === K.use) this.lobbyUse();
+        return;
+      }
       if (!session.world || session.paused) return;
-      if (k === 'escape') { closeMini(); this.toggleSabMenu(false); this.toggleMap(false); this.toggleCams(false); }
+      if (k === 'escape') { closeMini(); this.toggleSabMenu(false); this.toggleMap(false); this.toggleCams(false); if (session.world.player.adminViewing) session.world.adminClose(session.world.player); }
       if (this.meetEl || miniOpen()) return;
       if (this.camsOpen) {
         if (k === 'arrowleft' || k === K.left) this.camChannel(-1);
@@ -2021,6 +2377,7 @@ export class UI {
         else if (k === K.use || k === K.map) this.toggleCams(false);
         return;
       }
+      if ((k === 'pageup' || k === 'pagedown') && !session.world.player.alive) { e.preventDefault(); this.ghostHop?.(k === 'pageup' ? 1 : -1); return; }
       if (k === K.use) this.doUse();
       else if (k === K.report) this.doReport();
       else if (k === K.kill) this.doKill();
@@ -2068,7 +2425,7 @@ function fmtTime(s: number) {
 }
 
 /** Sếp đi tuần: bấm liên tục để "giả vờ gõ phím" */
-function openMiniDesk(root: HTMLElement, onDone: () => void) {
+export function openMiniDesk(root: HTMLElement, onDone: () => void) {
   closeMini();
   const wrap = document.createElement('div');
   wrap.className = 'modal';
@@ -2097,7 +2454,7 @@ const howtoHtml = () => `
     <p>Tới các dấu <span class="bang">!</span> để làm việc (xem danh sách góc trên bên trái và sơ đồ). Thấy <b>ghế trống</b> của đồng nghiệp bị gài bẫy thì bấm Báo cáo. Nghi ai thì chạy về Phòng họp bấm <b>chuông họp khẩn</b> (mỗi người 1 lần mỗi ván).</p>
 
     <h3>Nội gián làm gì</h3>
-    <p>Gài bẫy cho đồng nghiệp bị đuổi việc mà không ai thấy, chui qua 5 cặp <b>chỗ trốn</b> (thang máy VIP, tủ hồ sơ, gầm bàn, sàn kỹ thuật, buồng WC ↔ kho điện), và gây sự cố trên sơ đồ phá hoại:</p>
+    <p>Gài bẫy cho đồng nghiệp bị đuổi việc mà không ai thấy, chui qua các <b>lối trốn</b> (nắp trần thang máy, ống cáp, ống gió, gầm bàn, tủ đồ, trần thạch cao), và gây sự cố trên sơ đồ phá hoại:</p>
     <ul>
       <li><b>Cúp điện:</b> tầm nhìn Nhân viên còn rất nhỏ, thang máy kẹt (ai đang ở trong bị nhốt), camera, máy Face ID và máy so màu ngừng chạy. Việc thường vẫn làm được. Sửa ở tủ cầu dao trong Kho điện (Tầng 1).</li>
       <li><b>Rớt mạng:</b> tắt camera, ẩn danh sách việc. Sửa router ở Phòng Server.</li>

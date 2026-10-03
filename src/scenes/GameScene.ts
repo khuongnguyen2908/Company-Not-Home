@@ -5,9 +5,12 @@ import {
 } from '../game/map';
 import { characterCanvas, chairCanvas, lightCanvas, glowCanvas, shadowCanvas, lookKey, tagText, CHAR_ORIGIN_Y } from '../render/chars';
 import { visibilityPolygon } from '../game/vision';
+import { furnitureArt, drawAnim, Pen, ventArt, ventKind, type Anim } from '../render/furniture';
+import { GRID as MAP_GRID } from '../game/map';
 import { DOOR_BLOCK, CAMERAS, FLOORS, PORTALS, LIFT_DOORS, CABIN, CABIN_DOOR, levelAt, levelName, ELEV_BLOCK, STAIRWELL, STAIRS_LEVEL, LANDINGS, STAIR_FLIGHTS } from '../game/map';
 import { STICKERS } from '../game/data';
 import { session } from '../session';
+import { sfx } from '../audio';
 import { slotStation, type Agent } from '../game/sim';
 
 const INK = 0x1d1a2b;
@@ -54,7 +57,7 @@ export class GameScene extends Phaser.Scene {
   create() {
     // Cảnh này được bật/tắt nhiều lần (sảnh <-> văn phòng): xóa trạng thái cũ
     this.views = new Map(); this.bodyViews = []; this.markers = new Map(); this.hideMarkers = []; this.glows = [];
-    this.gameId = -1; this.doorKey = ''; this.fidMarker = null; this.deskLabels = []; this.artMarker = null; this.readyHalo = null; this.noiseIcons = []; this.stickerBubble = null; this.liftG = null; this.liftLabels = []; this.floorTags = []; this.liftOpen = new Map(); this.emotes = new Map(); this.powerFxStart = -1;
+    this.gameId = -1; this.doorKey = ''; this.fidMarker = null; this.deskLabels = []; this.artMarker = null; this.readyHalo = null; this.noiseIcons = []; this.stickerBubble = null; this.liftG = null; this.liftLabels = []; this.floorTags = []; this.liftOpen = new Map(); this.emotes = new Map(); this.powerFxStart = -1; this.ventPop = new Map();
     const tex = (key: string, make: () => HTMLCanvasElement) => { if (!this.textures.exists(key)) this.textures.addCanvas(key, make()); };
     tex('chair', chairCanvas);
     tex('light', () => lightCanvas(256));
@@ -81,7 +84,8 @@ export class GameScene extends Phaser.Scene {
     this.scanGlow = this.add.image(sc.mark.x * TILE, sc.mark.y * TILE + 4, 'scanglow').setScale(1.4).setDepth(40001)
       .setBlendMode(Phaser.BlendModes.ADD).setVisible(false);
     for (const d of DESKS) {
-      const gl = this.add.image((d.x + 1) * TILE, d.y * TILE + 10, 'glow').setScale(1.6).setDepth(50001)
+      // Quầng sáng màn hình lúc mất điện: đặt đúng chỗ màn hình dựng phía sau bàn (góc nhìn 3/4)
+      const gl = this.add.image((d.x + 1) * TILE, d.y * TILE - 15, 'glow').setScale(1.6).setDepth(50001)
         .setBlendMode(Phaser.BlendModes.ADD).setVisible(false);
       this.glows.push(gl);
     }
@@ -119,7 +123,7 @@ export class GameScene extends Phaser.Scene {
   // ---------- Vẽ bản đồ ----------
   private drawMap() {
     // Bản đồ chỉ cần nướng một lần
-    if (this.textures.exists('map')) { this.addMapLayers(); return; }
+    if (this.textures.exists('map') && this.textures.exists('mapfull')) { this.addMapLayers(); this.addFurniture(); this.addVents(); return; } // ván sau: dùng lại ảnh nền, vẫn phải đặt lại đồ đạc
     const g = this.add.graphics().setDepth(-100);
     // Sàn
     for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
@@ -157,16 +161,25 @@ export class GameScene extends Phaser.Scene {
     }
     // Trang trí tường: cửa thang máy VIP, cửa sổ, bảng
     this.decorWalls(g);
-    for (const f of FURNITURE) this.drawFurniture(g, f);
-    this.drawHideSpots(g);
-    // Nướng bản đồ thành một texture duy nhất để không phải vẽ lại hàng nghìn hình mỗi khung hình
+    // Nướng nền (sàn, tường, trang trí) thành một ảnh. Đồ đạc là vật thể riêng để che khuất đúng theo góc nhìn 3/4.
     g.generateTexture('map', MAP_W * TILE, MAP_H * TILE);
+    // Bản có đủ đồ đạc (vẽ phẳng) cho màn hình camera an ninh
+    for (const f of FURNITURE) {
+      const art = furnitureArt(f.kind, f.w * TILE, f.h * TILE, { low: this.againstSouthWall(f) });
+      const pen = new Pen(g, f.x * TILE, f.y * TILE);
+      art.draw(pen);
+      for (const a of art.anims) drawAnim(pen, a, 0, { power: true, wifi: false, seed: 0 });
+    }
+    for (const h of HIDE_SPOTS) { const art = ventArt(ventKind(h.id)); const pen = new Pen(g, h.x * TILE, h.y * TILE); art.draw(pen); for (const a of art.anims) drawAnim(pen, a, 0, { power: true, wifi: false, seed: 0 }); }
+    g.generateTexture('mapfull', MAP_W * TILE, MAP_H * TILE);
     g.destroy();
     this.addMapLayers();
+    this.addFurniture();
+    this.addVents();
   }
 
   private addMapLayers() {
-    session.mapImage = this.textures.get('map').getSourceImage() as CanvasImageSource;
+    session.mapImage = this.textures.get('mapfull').getSourceImage() as CanvasImageSource;
     this.add.image(0, 0, 'map').setOrigin(0, 0).setDepth(-100);
 
     for (const r of ROOMS) {
@@ -174,6 +187,81 @@ export class GameScene extends Phaser.Scene {
       this.add.text((r.x + r.w / 2) * TILE, (r.y + r.h / 2) * TILE + (r.id === 'open' ? 0.2 * TILE : r.id === 'meeting' ? 3.6 * TILE : 0), r.name, {
         fontFamily: '"Baloo 2", "Trebuchet MS", sans-serif', fontSize: '40px', fontStyle: '800', color: '#1d1a2b',
       }).setOrigin(0.5).setAlpha(0.13).setDepth(-50);
+    }
+  }
+
+  /** Đồ đạc: mỗi món là một ảnh riêng, thứ tự che khuất theo mép dưới chân đế; món nào có chuyển động thì có lớp vẽ riêng */
+  private furnAnims: { g: Phaser.GameObjects.Graphics; x: number; y: number; cx: number; cy: number; rx: number; ry: number; anims: Anim[]; level: number; bx: number; by: number; bw: number; bh: number; seed: number; spot?: number }[] = [];
+  private addFurniture() {
+    this.furnAnims = [];
+    FURNITURE.forEach((f, i) => {
+      const W = f.w * TILE, H = f.h * TILE;
+      const low = this.againstSouthWall(f);
+      const art = furnitureArt(f.kind, W, H, { low });
+      const key = `fu_${f.kind}_${W}_${H}${low ? '_low' : ''}`;
+      const tw = W + art.left + art.right + art.pad * 2, th = H + art.up + art.pad * 2;
+      if (!this.textures.exists(key)) {
+        const g = this.make.graphics({ x: 0, y: 0 }, false);
+        art.draw(new Pen(g, art.pad + art.left, art.pad + art.up));
+        g.generateTexture(key, tw, th);
+        g.destroy();
+      }
+      const X = f.x * TILE, Y = f.y * TILE;
+      // Món cho người ngồi lên (sofa): xếp theo mép trên để người ngồi nằm trên; còn lại theo mép dưới
+      const depth = art.seatDepth ? Y + 2 : Y + H;
+      this.add.image(X - art.pad - art.left, Y - art.up - art.pad, key).setOrigin(0, 0).setDepth(depth);
+      if (art.anims.length) {
+        const g = this.add.graphics().setDepth(depth + 0.5);
+        this.furnAnims.push({ g, x: X, y: Y, cx: X + W / 2, cy: Y + H / 2, rx: W / 2 + 1.6 * TILE, ry: H / 2 + 1.6 * TILE, anims: art.anims, level: levelAt(X + W / 2, Y + H / 2), bx: X - art.left - 30, by: Y - art.up - 40, bw: W + art.left + art.right + 60, bh: H + art.up + 60, seed: i * 1.37 });
+      }
+    });
+  }
+  /** Đồ đặt sát tường phía dưới (cả cạnh dưới đều là tường) */
+  private againstSouthWall(f: { x: number; y: number; w: number; h: number }) {
+    for (let x = f.x; x < f.x + f.w; x++) if (MAP_GRID[(f.y + f.h) * MAP_W + x] !== 0) return false;
+    return true;
+  }
+  /** Lối trốn: đế tĩnh + lớp nắp/cửa động. Nắp bật khi có người chui (chỉ khi bạn nhìn thấy) */
+  private ventPop = new Map<number, number>();
+  private addVents() {
+    HIDE_SPOTS.forEach((h, i) => {
+      const kind = ventKind(h.id);
+      const art = ventArt(kind);
+      const key = `ve_${kind}`;
+      if (!this.textures.exists(key)) {
+        const g = this.make.graphics({ x: 0, y: 0 }, false);
+        art.draw(new Pen(g, art.pad, art.pad + art.up));
+        g.generateTexture(key, TILE + art.pad * 2, TILE + art.up + art.pad * 2);
+        g.destroy();
+      }
+      const X = h.x * TILE, Y = h.y * TILE;
+      const depth = art.flat ? -90 : Y + TILE;
+      this.add.image(X - art.pad, Y - art.up - art.pad, key).setOrigin(0, 0).setDepth(depth);
+      const g = this.add.graphics().setDepth(depth + 0.5);
+      this.furnAnims.push({ g, x: X, y: Y, cx: X + TILE / 2, cy: Y + TILE / 2, rx: 0, ry: 0, anims: art.anims, level: levelAt(X + TILE / 2, Y + TILE / 2), bx: X - 30, by: Y - art.up - 40, bw: TILE + 60, bh: TILE + art.up + 60, seed: 50 + i * 1.7, spot: i });
+    });
+  }
+
+  /** Vẽ chuyển động của đồ đạc đang trong khung nhìn ở tầng đang xem */
+  private animateFurniture(world: NonNullable<typeof session.world>) {
+    const view = this.cameras.main.worldView;
+    const p = world.player;
+    const lv = levelAt(p.x, p.y);
+    const t = this.time.now / 1000;
+    const opt = { power: world.sabotage?.kind !== 'power', wifi: world.sabotage?.kind === 'wifi', seed: 0, kick: 0 };
+    // Ai đang làm việc ở cạnh máy nào thì máy đó "chạy" (bot đang làm, hoặc bạn đang mở mini-game)
+    const workers = world.agents.filter(a => a.alive && (a.brain.workT > 0 && (a.brain.goal ?? '').startsWith('task:') || (a.isPlayer && !!document.querySelector('.modal .sheet.mini'))));
+    for (const fa of this.furnAnims) {
+      const on = fa.level === lv && fa.bx < view.right && fa.bx + fa.bw > view.x && fa.by < view.bottom && fa.by + fa.bh > view.y;
+      if (!on) { if (fa.g.visible) { fa.g.clear(); fa.g.setVisible(false); } continue; }
+      fa.g.setVisible(true).clear();
+      const pen = new Pen(fa.g, fa.x, fa.y);
+      opt.seed = fa.seed;
+      if (fa.spot !== undefined) {
+        const t0 = this.ventPop.get(fa.spot);
+        opt.kick = t0 === undefined ? 0 : Math.max(0, 1 - (this.time.now - t0) / 700);
+      } else opt.kick = workers.some(a => Math.abs(a.x - fa.cx) < fa.rx && Math.abs(a.y - fa.cy) < fa.ry) ? 1 : 0;
+      for (const a of fa.anims) drawAnim(pen, a, t, opt);
     }
   }
 
@@ -242,290 +330,6 @@ export class GameScene extends Phaser.Scene {
     g.fillStyle(0xffffff, 1); g.fillRect(X + 10, Y + 14, TILE - 20, 6);
   }
 
-  private drawFurniture(g: Phaser.GameObjects.Graphics, f: Furniture) {
-    const X = f.x * TILE, Y = f.y * TILE, W = f.w * TILE, H = f.h * TILE;
-    switch (f.kind) {
-      case 'desk':
-      case 'computer': {
-        this.box(g, X + 3, Y + 6, W - 6, H - 8, 0xd6a46c, 6);
-        g.fillStyle(0xc28f58, 1); g.fillRect(X + 6, Y + H - 10, W - 12, 5);
-        this.box(g, X + W / 2 - 22, Y - 14, 44, 30, 0x2d3142, 4, 3);
-        g.fillStyle(f.kind === 'computer' ? 0x3fbf6a : 0x5fb8ff, 1); g.fillRect(X + W / 2 - 18, Y - 10, 36, 21);
-        if (f.kind === 'computer') { g.fillStyle(0xffffff, 0.8); for (let i = 0; i < 3; i++) g.fillRect(X + W / 2 - 15, Y - 7 + i * 6, 30, 2); }
-        this.box(g, X + W / 2 - 16, Y + 22, 32, 9, 0xeeeeee, 2, 2);
-        g.fillStyle(0xffffff, 1); g.fillRect(X + 10, Y + 14, 12, 14); g.lineStyle(2, INK, 1); g.strokeRect(X + 10, Y + 14, 12, 14);
-        break;
-      }
-      case 'bigdesk': {
-        this.box(g, X + 2, Y + 4, W - 4, H - 6, 0x8a5a35, 8);
-        g.fillStyle(0x7a4c2b, 1); g.fillRect(X + 8, Y + H - 14, W - 16, 6);
-        this.box(g, X + W / 2 - 28, Y + 14, 56, 34, 0xbfc5d2, 4, 3);
-        g.fillStyle(0x2d3142, 1); g.fillRect(X + W / 2 - 23, Y + 18, 46, 24);
-        this.box(g, X + 18, Y + 20, 30, 40, 0xffffff, 2, 2.5);
-        this.box(g, X + 22, Y + 16, 30, 40, 0xffffff, 2, 2.5);
-        this.box(g, X + W - 56, Y + 62, 46, 14, 0xe8c547, 3, 2.5);
-        g.fillStyle(0xc8323c, 1); g.fillCircle(X + W - 34, Y + 30, 10); g.lineStyle(3, INK, 1); g.strokeCircle(X + W - 34, Y + 30, 10);
-        break;
-      }
-      case 'rack': {
-        this.box(g, X + 4, Y - 18, W - 8, H + 14, 0x2a2f45, 4);
-        for (let i = 0; i < 6; i++) {
-          g.fillStyle(0x3b425e, 1); g.fillRect(X + 10, Y - 10 + i * 15, W - 20, 10);
-          g.fillStyle(i % 3 === 0 ? 0xff5d5d : 0x4ee1a0, 1); g.fillCircle(X + W - 18, Y - 5 + i * 15, 2.5);
-          g.fillStyle(0x4ee1a0, 1); g.fillCircle(X + W - 26, Y - 5 + i * 15, 2.5);
-        }
-        g.lineStyle(3, 0xff4d6d, 1); g.beginPath(); g.moveTo(X + 14, Y + H - 4); g.lineTo(X + 30, Y + H + 6); g.lineTo(X + 48, Y + H - 2); g.strokePath();
-        g.lineStyle(3, 0xffd23f, 1); g.beginPath(); g.moveTo(X + 20, Y + H - 4); g.lineTo(X + 40, Y + H + 10); g.lineTo(X + 60, Y + H); g.strokePath();
-        break;
-      }
-      case 'fridge': {
-        this.box(g, X + 6, Y - 30, W - 12, H + 24, 0xf4f6fb, 8);
-        g.lineStyle(3, INK, 1); g.lineBetween(X + 6, Y - 2, X + W - 6, Y - 2);
-        g.fillStyle(0xb9c0cf, 1); g.fillRect(X + W - 22, Y - 22, 5, 14); g.fillRect(X + W - 22, Y + 4, 5, 10);
-        g.fillStyle(0xff5fa2, 1); g.fillRect(X + 18, Y - 20, 10, 8); g.fillStyle(0xffd23f, 1); g.fillRect(X + 34, Y - 24, 9, 9);
-        break;
-      }
-      case 'coffee': {
-        this.box(g, X + 8, Y + 6, W - 16, H - 8, 0xa0a6b6, 4);
-        this.box(g, X + 16, Y - 26, 40, 46, 0x2d2a33, 6);
-        g.fillStyle(0xff5d5d, 1); g.fillCircle(X + 26, Y - 16, 3); g.fillStyle(0x4ee1a0, 1); g.fillCircle(X + 36, Y - 16, 3);
-        this.box(g, X + 28, Y + 6, 14, 14, 0xffffff, 3, 2.5);
-        this.box(g, X + 62, Y + 10, 22, 20, 0xffffff, 4, 2.5);
-        break;
-      }
-      case 'copier': {
-        this.box(g, X + 4, Y - 16, W - 8, H + 10, 0xd9dce6, 6);
-        this.box(g, X + 12, Y - 26, W - 24, 14, 0xb9bfcf, 3, 3);
-        g.fillStyle(0xffffff, 1); g.fillRect(X + 22, Y - 22, 40, 6);
-        g.fillStyle(0xff3b3b, 1); g.fillCircle(X + W - 20, Y - 4, 5);
-        this.box(g, X + 20, Y + 10, 50, 10, 0xffffff, 2, 2);
-        break;
-      }
-      case 'meetingtable': {
-        this.box(g, X + 4, Y + 4, W - 8, H - 8, 0xb07a4b, 26);
-        g.fillStyle(0x9c6a3e, 1); g.fillRoundedRect(X + 14, Y + 14, W - 28, H - 28, 18);
-        g.fillStyle(0xc8323c, 1); g.fillCircle(X + W / 2, Y + H / 2, 18);
-        g.lineStyle(4, INK, 1); g.strokeCircle(X + W / 2, Y + H / 2, 18);
-        g.fillStyle(0xff7a7a, 1); g.fillCircle(X + W / 2 - 5, Y + H / 2 - 5, 6);
-        break;
-      }
-      case 'router': {
-        this.box(g, X + 6, Y + 14, W - 12, 22, 0x2d3142, 4);
-        g.lineStyle(3, INK, 1); g.lineBetween(X + 12, Y + 14, X + 8, Y - 4); g.lineBetween(X + W - 12, Y + 14, X + W - 8, Y - 4);
-        g.fillStyle(0x4ee1a0, 1); for (let i = 0; i < 3; i++) g.fillCircle(X + 16 + i * 8, Y + 25, 2.5);
-        break;
-      }
-      case 'panel': {
-        this.box(g, X + 6, Y + 4, W - 12, H - 6, 0x9aa1b4, 4);
-        g.fillStyle(0xffd23f, 1); g.fillTriangle(X + W / 2, Y + 10, X + W / 2 - 8, Y + 24, X + W / 2 + 8, Y + 24);
-        for (let i = 0; i < 3; i++) { g.fillStyle(0x2d3142, 1); g.fillRect(X + 12 + i * 9, Y + 30, 6, 10); }
-        break;
-      }
-      case 'sink': {
-        this.box(g, X + 2, Y + 8, W - 4, H - 10, 0xf4f6fb, 6);
-        for (let i = 0; i < 3; i++) { g.fillStyle(0xbfe6f2, 1); g.fillEllipse(X + 24 + i * TILE, Y + 26, 30, 16); g.lineStyle(2.5, INK, 1); g.strokeEllipse(X + 24 + i * TILE, Y + 26, 30, 16); }
-        break;
-      }
-      case 'pantrytable': {
-        this.box(g, X + 4, Y + 4, W - 8, H - 8, 0xf2f2f2, 14);
-        for (let i = 0; i < 3; i++) this.box(g, X + 30 + i * 50, Y + 30, 20, 16, i === 1 ? 0xff9f43 : 0xffffff, 6, 2.5);
-        break;
-      }
-      case 'sofa': {
-        this.box(g, X + 2, Y - 8, W - 4, H + 4, 0x4d7cc7, 12);
-        this.box(g, X + 10, Y + 6, W / 2 - 14, H - 14, 0x6a96dc, 8, 2.5);
-        this.box(g, X + W / 2 + 4, Y + 6, W / 2 - 14, H - 14, 0x6a96dc, 8, 2.5);
-        break;
-      }
-      case 'plant': {
-        this.box(g, X + 12, Y + 22, W - 24, H - 24, 0xd97b4a, 4);
-        for (const [dx, dy, r] of [[24, 14, 12], [14, 6, 9], [34, 6, 9], [24, -2, 9]]) {
-          g.fillStyle(0x3fa66b, 1); g.fillCircle(X + dx, Y + dy, r); g.lineStyle(3, INK, 1); g.strokeCircle(X + dx, Y + dy, r);
-        }
-        break;
-      }
-      case 'counter': {
-        this.box(g, X + 2, Y - 10, W - 4, H + 6, 0xe8d3b0, 8);
-        g.fillStyle(0xd1b78d, 1); g.fillRect(X + 8, Y + H - 12, W - 16, 6);
-        this.box(g, X + W - 80, Y - 26, 40, 26, 0x2d3142, 4, 3);
-        g.fillStyle(0x5fb8ff, 1); g.fillRect(X + W - 76, Y - 22, 32, 17);
-        this.box(g, X + 20, Y - 6, 26, 14, 0xffd23f, 3, 2.5);
-        break;
-      }
-      case 'scanner': {
-        this.box(g, X + 10, Y - 20, W - 20, H + 12, 0x3b3f4a, 6);
-        this.box(g, X + 16, Y - 12, W - 32, 18, 0x9fe6b5, 4, 2.5);
-        g.fillStyle(0x4ee1a0, 1); g.fillCircle(X + W / 2, Y + 18, 5);
-        break;
-      }
-      case 'boxes': {
-        this.box(g, X + 4, Y + 30, 46, 40, 0xc79a62, 3);
-        this.box(g, X + 44, Y + 40, 44, 34, 0xd4a970, 3);
-        this.box(g, X + 14, Y + 2, 40, 30, 0xd4a970, 3);
-        g.lineStyle(2.5, 0xffffff, 0.8); g.lineBetween(X + 34, Y + 2, X + 34, Y + 32);
-        break;
-      }
-      case 'bigplant': {
-        this.box(g, X + 10, Y + 22, W - 20, H - 24, 0xffffff, 6);
-        for (const [dx, dy, r] of [[24, 6, 14], [12, -4, 10], [36, -4, 10], [24, -16, 11]]) {
-          g.fillStyle(0x2f9e5e, 1); g.fillCircle(X + dx, Y + dy, r); g.lineStyle(3, INK, 1); g.strokeCircle(X + dx, Y + dy, r);
-        }
-        break;
-      }
-      case 'easel': {
-        g.lineStyle(4, INK, 1); g.lineBetween(X + 10, Y + H - 2, X + W / 2, Y - 20); g.lineBetween(X + W - 10, Y + H - 2, X + W / 2, Y - 20);
-        this.box(g, X + 4, Y - 14, W - 8, 34, 0xffffff, 3, 3);
-        g.fillStyle(0xff6b4a, 1); g.fillCircle(X + 18, Y + 2, 6); g.fillStyle(0x2e9cf0, 1); g.fillRect(X + 26, Y - 6, 12, 12);
-        break;
-      }
-      case 'kanban': {
-        this.box(g, X + 4, Y - 30, W - 8, H + 16, 0xffffff, 4);
-        for (let c = 0; c < 3; c++) {
-          g.lineStyle(2, 0xc9c4b5, 1); if (c) g.lineBetween(X + 4 + c * (W - 8) / 3, Y - 26, X + 4 + c * (W - 8) / 3, Y + H - 18);
-          for (let r = 0; r < 3 - c; r++) { g.fillStyle([0xffe36e, 0xff9ec4, 0x9fe0ff][(c + r) % 3], 1); g.fillRect(X + 14 + c * (W - 8) / 3, Y - 22 + r * 18, 26, 14); }
-        }
-        break;
-      }
-      case 'projector': {
-        this.box(g, X + 6, Y + 8, W - 12, 22, 0xe9edf5, 6);
-        g.fillStyle(0x2d3142, 1); g.fillCircle(X + W / 2, Y + 19, 7);
-        break;
-      }
-      case 'whiteboard': {
-        this.box(g, X + 2, Y - 30, W - 4, H + 14, 0xffffff, 3);
-        g.lineStyle(3, 0x2e9cf0, 1); g.lineBetween(X + 12, Y - 4, X + 40, Y - 16); g.lineBetween(X + 40, Y - 16, X + 60, Y - 10);
-        g.lineStyle(3, 0xe2412f, 1); g.lineBetween(X + 12, Y + 2, X + 70, Y + 2);
-        break;
-      }
-      case 'printer': {
-        this.box(g, X + 6, Y - 10, W - 12, H + 4, 0xf0f1f5, 6);
-        this.box(g, X + 16, Y - 20, W - 32, 12, 0xffffff, 2, 2.5);
-        this.box(g, X + 20, Y + 18, W - 40, 10, 0xffffff, 2, 2);
-        g.fillStyle(0x4ee1a0, 1); g.fillCircle(X + W - 20, Y + 2, 4);
-        break;
-      }
-      case 'monitors': {
-        this.box(g, X + 2, Y + 6, W - 4, H - 8, 0x4b5068, 6);
-        for (let i = 0; i < 4; i++) {
-          this.box(g, X + 10 + i * (W - 20) / 4, Y - 24, (W - 20) / 4 - 8, 30, 0x1d1a2b, 3, 3);
-          g.fillStyle(0x3fbf6a, 0.55); g.fillRect(X + 14 + i * (W - 20) / 4, Y - 20, (W - 20) / 4 - 16, 22);
-        }
-        break;
-      }
-      case 'shelf': {
-        this.box(g, X + 2, Y - 12, W - 4, H + 8, 0xa9805a, 4);
-        for (let i = 0; i < W / 14 - 1; i++) { g.fillStyle([0xe2412f, 0x2e9cf0, 0xf2b705, 0x3fbf6a][i % 4], 1); g.fillRect(X + 8 + i * 14, Y - 8, 10, H - 4); }
-        break;
-      }
-      case 'paper': {
-        this.box(g, X + 14, Y + 6, W - 28, 20, 0xb9c0cf, 6, 3);
-        g.fillStyle(0xffffff, 1); g.fillCircle(X + W / 2, Y + 16, 9); g.lineStyle(2.5, INK, 1); g.strokeCircle(X + W / 2, Y + 16, 9);
-        break;
-      }
-      case 'hrdesk': {
-        this.box(g, X + 3, Y + 4, W - 6, H - 6, 0xf4f6fb, 6);
-        this.box(g, X + 20, Y + 10, 34, 24, 0xffffff, 2, 2.5);
-        this.box(g, X + W - 60, Y - 14, 40, 28, 0x2d3142, 4, 3);
-        g.fillStyle(0xff9ec4, 1); g.fillRect(X + W - 56, Y - 10, 32, 18);
-        break;
-      }
-      case 'tap': {
-        this.box(g, X + 2, Y + 8, W - 4, H - 10, 0xe9edf5, 6);
-        g.fillStyle(0xbfe6f2, 1); g.fillEllipse(X + W / 2, Y + 26, 50, 18); g.lineStyle(2.5, INK, 1); g.strokeEllipse(X + W / 2, Y + 26, 50, 18);
-        g.lineStyle(5, 0x8a90b4, 1); g.lineBetween(X + W / 2, Y + 10, X + W / 2, Y - 8); g.lineBetween(X + W / 2, Y - 8, X + W / 2 + 14, Y - 8);
-        break;
-      }
-      case 'faceid': {
-        this.box(g, X + 8, Y - 22, W - 16, H + 16, 0xe9edf5, 8);
-        this.box(g, X + 14, Y - 14, W - 28, 22, 0x2d3142, 4, 2.5);
-        g.lineStyle(2.5, 0xff5abe, 1); g.strokeCircle(X + W / 2, Y - 3, 7);
-        g.fillStyle(0xff5abe, 1); g.fillCircle(X + W / 2, Y + 18, 4);
-        break;
-      }
-      case 'colorcheck': {
-        // Máy so màu: thân máy trắng, màn hình bảng màu, đèn cầu vồng
-        this.box(g, X + 6, Y - 22, W - 12, H + 18, 0xe9edf5, 8);
-        this.box(g, X + 12, Y - 15, W - 24, 22, 0x2d3142, 4, 2.5);
-        const cols = [0xe2412f, 0xf2b705, 0x4fb86b, 0x2e9cf0, 0x8a4fd8];
-        cols.forEach((c, i) => { g.fillStyle(c, 1); g.fillRect(X + 15 + i * 4, Y - 11, 3, 14); });
-        g.fillStyle(0xff5fa2, 1); g.fillCircle(X + W / 2, Y + 16, 4);
-        break;
-      }
-      case 'dartboard': {
-        g.fillStyle(0xe2412f, 1); g.fillCircle(X + W / 2, Y + 20, 18); g.lineStyle(3, INK, 1); g.strokeCircle(X + W / 2, Y + 20, 18);
-        g.fillStyle(0xffffff, 1); g.fillCircle(X + W / 2, Y + 20, 11); g.fillStyle(0xe2412f, 1); g.fillCircle(X + W / 2, Y + 20, 5);
-        break;
-      }
-      case 'claw': {
-        this.box(g, X + 4, Y - 14, W - 8, H + 8, 0xff9ec4, 8);
-        this.box(g, X + 12, Y - 4, W - 24, H - 34, 0xd8f3ff, 4, 2.5);
-        for (const [cx, cy, col] of [[X + 26, Y + H - 44, 0xffe36e], [X + 44, Y + H - 40, 0x9fe0ff], [X + 62, Y + H - 46, 0xc8eec0]] as const) { g.fillStyle(col, 1); g.fillCircle(cx, cy, 8); }
-        g.lineStyle(3, INK, 1); g.lineBetween(X + W / 2, Y - 2, X + W / 2, Y + 18);
-        break;
-      }
-      case 'fishtank': {
-        this.box(g, X + 4, Y - 10, W - 8, H + 4, 0x7fc4ff, 6);
-        g.fillStyle(0xff7a2f, 1); g.fillEllipse(X + 40, Y + 10, 16, 9); g.fillStyle(0xffe36e, 1); g.fillEllipse(X + 90, Y + 4, 14, 8);
-        g.fillStyle(0x3fa66b, 1); g.fillRect(X + 16, Y + 6, 4, 20); g.fillRect(X + W - 26, Y + 2, 4, 24);
-        break;
-      }
-      case 'gardenbed': {
-        this.box(g, X + 2, Y + 4, W - 4, H - 6, 0x8a5a35, 6);
-        for (let i = 0; i < 6; i++) { g.fillStyle(i % 2 ? 0x3fa66b : 0x5fbf5a, 1); g.fillCircle(X + 20 + i * 28, Y + H / 2, 12); }
-        break;
-      }
-      case 'acunit': {
-        this.box(g, X + 4, Y + 4, W - 8, H - 8, 0xe9edf5, 6);
-        g.lineStyle(3, INK, 1); g.strokeCircle(X + W / 2, Y + H / 2, 24);
-        g.lineBetween(X + W / 2 - 18, Y + H / 2, X + W / 2 + 18, Y + H / 2); g.lineBetween(X + W / 2, Y + H / 2 - 18, X + W / 2, Y + H / 2 + 18);
-        break;
-      }
-      case 'watertank': {
-        this.box(g, X + 6, Y + 6, W - 12, H - 12, 0x7fa8d8, 12);
-        g.lineStyle(3, 0x5b7fb0, 1); for (let i = 1; i < 4; i++) g.lineBetween(X + 10, Y + i * H / 4, X + W - 10, Y + i * H / 4);
-        break;
-      }
-      case 'liftpanel': {
-        this.box(g, X + 8, Y + 4, W - 16, H - 8, 0x2d3142, 4);
-        for (let i = 0; i < 3; i++) { g.fillStyle(0xffe36e, 1); g.fillCircle(X + W / 2, Y + 14 + i * 10, 3.5); }
-        break;
-      }
-      case 'watercooler': {
-        this.box(g, X + 12, Y + 12, W - 24, H - 14, 0xe9edf5, 4);
-        this.box(g, X + 14, Y - 14, W - 28, 28, 0x8fd3ff, 10);
-        break;
-      }
-    }
-  }
-
-  private drawHideSpots(g: Phaser.GameObjects.Graphics) {
-    for (const h of HIDE_SPOTS) {
-      const X = h.x * TILE, Y = h.y * TILE;
-      if (h.id.startsWith('gam_ban')) {
-        this.box(g, X - 10, Y + 4, TILE + 20, 16, 0xd6a46c, 4);
-        g.lineStyle(3, INK, 1); g.lineBetween(X - 4, Y + 20, X - 4, Y + 44); g.lineBetween(X + TILE + 4, Y + 20, X + TILE + 4, Y + 44);
-      } else if (h.id.startsWith('tu_do')) {
-        this.box(g, X + 6, Y - 20, TILE - 12, TILE + 14, 0x8c93a8, 4);
-        for (let i = 0; i < 3; i++) { g.lineStyle(2.5, INK, 1); g.strokeRect(X + 12, Y - 14 + i * 18, TILE - 24, 14); g.fillStyle(INK, 1); g.fillRect(X + TILE / 2 - 4, Y - 9 + i * 18, 8, 3); }
-      } else if (h.id.startsWith('ong_cap') || h.id.startsWith('ong_gio')) {
-        // miệng ống: lưới tản nhiệt
-        g.fillStyle(0x3b425e, 1); g.fillRect(X + 4, Y + 4, TILE - 8, TILE - 8);
-        g.lineStyle(2.5, INK, 1); g.strokeRect(X + 4, Y + 4, TILE - 8, TILE - 8);
-        g.lineStyle(1.5, h.id.startsWith('ong_gio') ? 0x9fd6ff : 0xf2b705, 1); for (let i = 1; i < 4; i++) g.lineBetween(X + 6, Y + 4 + i * 10, X + TILE - 6, Y + 4 + i * 10);
-      } else if (h.id.startsWith('tran')) {
-        // ô trần thạch cao lỏng
-        g.fillStyle(0xffffff, 0.5); g.fillRect(X + 4, Y + 4, TILE - 8, TILE - 8);
-        g.lineStyle(2, INK, 0.5); g.strokeRect(X + 4, Y + 4, TILE - 8, TILE - 8);
-      } else if (h.id.startsWith('tm_shaft')) {
-        // cửa kỹ thuật giếng thang máy (cửa nhỏ màu xám trên tường)
-        this.box(g, X + 8, Y + TILE - 14, TILE - 16, 12, 0x9aa1b4, 2, 2.5);
-      } else if (h.id === 'tm_hatch') {
-        g.lineStyle(2.5, INK, 0.7); g.strokeRect(X + 8, Y + 8, TILE - 16, TILE - 16);
-        g.lineBetween(X + 8, Y + 8, X + TILE - 8, Y + TILE - 8);
-      }
-    }
-  }
-
   // ---------- Vòng lặp ----------
   update(_time: number, deltaMs: number) {
     const world = session.world;
@@ -565,6 +369,7 @@ export class GameScene extends Phaser.Scene {
       if (a.hidden !== null) show = false;
       else if (!a.alive && pAlive && !a.isPlayer) show = false;
       else if (!a.isPlayer && pAlive && !world.sees(p, a, 20)) show = false;
+      else if (!a.isPlayer && !pAlive && levelAt(a.x, a.y) !== levelAt(p.x, p.y)) show = false; // hồn ma chỉ thấy người cùng tầng
       if (world.phase === 'meeting') show = show && a.alive;
       v.sprite.setVisible(show); v.shadow.setVisible(show && a.alive); v.tag.setVisible(show);
       if (!show) continue;
@@ -589,7 +394,7 @@ export class GameScene extends Phaser.Scene {
     this.bodyViews.forEach((img, i) => {
       const b = world.bodies[i];
       if (!b || world.phase === 'meeting') { img.setVisible(false); return; }
-      const visible = !pAlive || world.sees(p, b, 20);
+      const visible = !pAlive ? levelAt(b.x, b.y) === levelAt(p.x, p.y) : world.sees(p, b, 20);
       img.setVisible(visible).setPosition(b.x, b.y + 8).setDepth(b.y - 2);
     });
 
@@ -727,6 +532,7 @@ export class GameScene extends Phaser.Scene {
       if (on) { this.camLeds.fillStyle(0xff2a2a, 0.35); this.camLeds.fillCircle(X, Y, 9); }
     }
     this.drawLift(world);
+    this.animateFurniture(world);
     this.updateEmotes(world);
 
     // Mũi tên chỉ đường tới việc gấp (sự cố, sếp đi tuần), giống Among Us
@@ -863,6 +669,11 @@ export class GameScene extends Phaser.Scene {
         this.killPoof(world, e.victim, e.x, e.y);
       }
       if (e.type === 'meeting') this.emotes.forEach(m => m.t.setVisible(false));
+      if (e.type === 'vent') {
+        const h = HIDE_SPOTS[e.spot], c = { x: (h.x + 0.5) * TILE, y: (h.y + 0.5) * TILE };
+        const seen = p.alive ? world.sees(p, c, 30) : levelAt(c.x, c.y) === levelAt(p.x, p.y);
+        if (seen) { this.ventPop.set(e.spot, this.time.now); if (Math.hypot(p.x - c.x, p.y - c.y) < 7 * TILE) sfx.clank(); }
+      }
     }
   }
 
@@ -980,9 +791,9 @@ export class GameScene extends Phaser.Scene {
     this.deskLabels.forEach(t => t.destroy());
     this.deskLabels = world.agents.map(a => {
       const d = DESKS[a.desk];
-      return this.add.text((d.x + 1) * TILE, d.y * TILE + 1, `#${a.empId}`, {
-        fontFamily: '"Baloo 2", "Trebuchet MS", sans-serif', fontSize: '15px', fontStyle: '800', color: '#ffffff', stroke: '#1d4f8a', strokeThickness: 3,
-      }).setOrigin(0.5).setDepth(-60);
+      return this.add.text((d.x + 1) * TILE, d.y * TILE + 38, `#${a.empId}`, {
+        fontFamily: '"Baloo 2", "Trebuchet MS", sans-serif', fontSize: '14px', fontStyle: '800', color: '#ffffff', stroke: '#1d4f8a', strokeThickness: 3,
+      }).setOrigin(0.5).setDepth((d.y + 1) * TILE + 1);
     });
     this.camX = world.player.x; this.camY = world.player.y;
   }

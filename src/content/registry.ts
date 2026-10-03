@@ -1,6 +1,6 @@
 // Sổ đăng ký nội dung: mọi câu chữ của game đều đăng ký ở đây để Công cụ nội dung xuất ra Excel, nhập lại và áp dụng.
 // Mỗi mục biết cách đọc và ghi giá trị vào đúng chỗ trong dữ liệu game, nên sửa ở đây là game đổi theo.
-import { ROLE_INFO, BOT_NAMES, PLAYER_NAMES, FILLER_LINES, DEFENSE_LINES, IMPOSTOR_ALIBIS, TASK_VERBS, COLOR_GROUPS, type RoleDept } from '../game/data';
+import { ROLE_INFO, BOT_NAMES, PLAYER_NAMES, FILLER_LINES, DEFENSE_LINES, IMPOSTOR_ALIBIS, TASK_VERBS, COLOR_GROUPS, LOBBY_LINES, LOBBY_REPLIES, BUS_JOKES, type RoleDept } from '../game/data';
 import { TASKS, STATIONS, ROOMS, FLOORS, HIDE_SPOTS, CAMERAS } from '../game/map';
 import { BODIES, HAIR_STYLES, MARKS, ITEMS, SLOT_NAMES, SLOTS } from '../game/look';
 import { TITLES } from '../ui/minigames';
@@ -74,6 +74,9 @@ function build(): Entry[] {
   list('list.filler', FILLER_LINES, 'Câu nói vu vơ của bot trong họp', 140);
   list('list.defense', DEFENSE_LINES, 'Câu bot tự bào chữa khi bị buộc tội', 140);
   list('list.alibis', IMPOSTOR_ALIBIS, 'Chứng cứ ngoại phạm Nội gián bot bịa ra', 140);
+  list('list.lobbyLines', LOBBY_LINES, 'Sảnh chờ: bot nói vu vơ', 100);
+  list('list.lobbyReplies', LOBBY_REPLIES, 'Sảnh chờ: bot đáp lại khi được nhắc tên', 100);
+  list('list.busJokes', BUS_JOKES, 'Sảnh chờ: câu đùa trên bảng giờ xe buýt', 100);
   return out;
 }
 

@@ -6,14 +6,17 @@ export type { MiniKind };
 
 const MT_HINT = 'Siết chặt cả 4 con ốc: mỗi con bấm 3 lần cho tới khi chuyển xanh.';
 export const TITLES: Record<MiniKind, { title: string; hint: string }> = {
+  solar: { title: 'Lau tấm pin mặt trời', hint: 'Bấm vào ô pin còn bẩn để lau, mỗi ô 2 lần. Lau sạch hết là xong.' },
+  antenna: { title: 'Chỉnh ăng-ten', hint: 'Xoay chảo sang trái hoặc phải cho tới khi đủ 5 vạch sóng, rồi bấm Khóa sóng.' },
+  acpanel: { title: 'Kiểm tra cục nóng điều hòa', hint: 'Gạt 3 công tắc theo đúng thứ tự ghi trên bảng. Gạt sai là phải làm lại.' },
   darts: { title: '🎯 Ném phi tiêu xả stress', hint: 'Tâm ngắm đung đưa liên tục. Bấm "Ném" đúng lúc tâm nằm trong vòng đỏ ở giữa. Cần 3 phi tiêu trúng.' },
   claw: { title: '🧸 Gắp thú bông tặng sếp', hint: 'Cần gắp chạy qua lại. Bấm "Thả" khi cần gắp nằm ngay trên con gấu vàng.' },
   fishfeed: { title: '🐠 Cho cá ăn', hint: 'Bấm vào từng con cá để rắc thức ăn, mỗi con ăn đúng 3 hạt. Rắc quá tay là nước đục, phải làm lại.' },
   mt_lift: { title: '🔧 Bảo trì nóc thang máy', hint: MT_HINT },
-  mt_cab: { title: '🔧 Sửa khóa tủ hồ sơ', hint: MT_HINT },
-  mt_desk: { title: '🔧 Gia cố gầm bàn dài', hint: MT_HINT },
-  mt_floor: { title: '🔧 Thay tấm sàn kỹ thuật', hint: MT_HINT },
-  mt_wc: { title: '🔧 Thông cống buồng vệ sinh', hint: MT_HINT },
+  mt_cab: { title: '🔧 Sửa khóa tủ đồ', hint: MT_HINT },
+  mt_desk: { title: '🔧 Gia cố gầm bàn họp', hint: MT_HINT },
+  mt_floor: { title: '🔧 Sửa ống cáp', hint: MT_HINT },
+  mt_wc: { title: '🔧 Sửa ống gió', hint: MT_HINT },
   excel: { title: 'Nhập liệu Excel', hint: 'Bấm đúng ô đang sáng. Sai một ô là phải làm lại từ đầu, như ngoài đời.' },
   wires: { title: 'Nối lại dây cáp server', hint: 'Cầm đầu dây bên trái, kéo sang đúng cổng cùng màu bên phải rồi thả tay.' },
   fridge: { title: 'Dọn đồ mốc trong tủ lạnh chung', hint: 'Vứt hết đồ đã mốc. Đồ còn tươi là của sếp, đừng đụng vào.' },
@@ -24,7 +27,7 @@ export const TITLES: Record<MiniKind, { title: string; hint: string }> = {
   power: { title: 'Bật lại cầu dao', hint: 'Gạt tất cả cầu dao lên vị trí BẬT.' },
   fingerprint: { title: 'Chấm công vân tay', hint: 'Đặt ngón tay lên máy quét và giữ 3 giây. Ai đứng gần cũng thấy đèn xanh.' },
   delivery: { title: 'Ký nhận hàng', hint: 'Ký vào ô chữ ký. Phải ký đủ dài, ký một chấm là shipper không chịu.' },
-  waterplant: { title: 'Tưới cây ở sảnh', hint: 'Giữ nút tưới cho đến khi nước lên tới vạch xanh, đừng để tràn.' },
+  waterplant: { title: 'Tưới cây trên sân thượng', hint: 'Giữ nút tưới cho đến khi nước lên tới vạch xanh, đừng để tràn.' },
   backlog: { title: 'Sắp xếp backlog', hint: 'Bấm các thẻ theo thứ tự ưu tiên: P1 trước, P4 sau cùng.' },
   sprite: { title: 'Tô màu sprite', hint: 'Tô lưới bên phải cho giống hệt mẫu bên trái.' },
   bug: { title: 'Tái hiện bug', hint: 'Xem các bước gây lỗi rồi bấm lại đúng thứ tự.' },
@@ -132,6 +135,69 @@ export function openMini(root: HTMLElement, kind: MiniKind, onDone: () => void, 
   };
   const builders: Record<MiniKind, () => void> = {
     mt_lift: maint, mt_cab: maint, mt_desk: maint, mt_floor: maint, mt_wc: maint,
+    solar() {
+      // lưới 4x3 ô pin, một số ô bẩn (bụi hoặc lá), mỗi ô bẩn cần lau 2 lần
+      const cells = Array.from({ length: 12 }, () => 0);
+      const dirty = [...Array(12).keys()].sort(() => Math.random() - 0.5).slice(0, 6);
+      for (const i of dirty) cells[i] = 2;
+      body.innerHTML = `<div class="solar"><div class="sp-grid">${cells.map((c, i) => `<button type="button" class="sp-cell${c ? ' dirty' : ''}" data-i="${i}" aria-label="Ô pin ${i + 1}">${c ? (i % 3 === 0 ? '<i class="leaf"></i>' : '<i class="dust"></i>') : ''}</button>`).join('')}</div><p class="claw-msg sp-msg">Còn ${dirty.length} ô bẩn</p></div>`;
+      const msg = body.querySelector('.sp-msg') as HTMLElement;
+      body.querySelectorAll<HTMLButtonElement>('.sp-cell').forEach(b => b.onclick = () => {
+        if (finished) return;
+        const i = Number(b.dataset.i);
+        if (cells[i] <= 0) { fail(); return; }
+        cells[i]--;
+        sfx.click();
+        b.classList.add('wipe'); timers.push(window.setTimeout(() => b.classList.remove('wipe'), 250));
+        if (cells[i] === 1) b.classList.add('half');
+        if (cells[i] === 0) { b.classList.remove('dirty', 'half'); b.innerHTML = ''; b.classList.add('clean'); sfx.ting(); }
+        const left = cells.filter(c => c > 0).length;
+        msg.textContent = left ? `Còn ${left} ô bẩn` : 'Sạch bóng, pin hút nắng ngon lành!';
+        if (!left) done();
+      });
+    },
+    antenna() {
+      // góc chảo 0..180 độ, sóng tốt nhất ở một góc ngẫu nhiên; đủ 5 vạch thì mới khóa được
+      const target = 30 + Math.floor(Math.random() * 5) * 30;
+      let ang = target > 90 ? 15 : 165;
+      body.innerHTML = `<div class="antenna"><div class="an-sky"><div class="an-dish"><i></i></div></div>
+        <div class="an-bars">${[1, 2, 3, 4, 5].map(i => `<span style="--h:${i * 8 + 6}px"></span>`).join('')}</div>
+        <div class="dart-row"><button type="button" class="ghost-btn an-l">◀ Xoay trái</button><button type="button" class="primary an-lock" disabled>Khóa sóng</button><button type="button" class="ghost-btn an-r">Xoay phải ▶</button></div></div>`;
+      const dish = body.querySelector('.an-dish') as HTMLElement, lock = body.querySelector('.an-lock') as HTMLButtonElement;
+      const bars = [...body.querySelectorAll<HTMLElement>('.an-bars span')];
+      const render = () => {
+        dish.style.transform = `rotate(${ang - 90}deg)`;
+        const n = Math.max(0, 5 - Math.round(Math.abs(ang - target) / 15));
+        bars.forEach((b, i) => b.classList.toggle('on', i < n));
+        lock.disabled = n < 5;
+      };
+      const turn = (d: number) => { if (finished) return; ang = Math.max(0, Math.min(180, ang + d)); sfx.click(); render(); };
+      (body.querySelector('.an-l') as HTMLButtonElement).onclick = () => turn(-15);
+      (body.querySelector('.an-r') as HTMLButtonElement).onclick = () => turn(15);
+      lock.onclick = () => { if (!finished && !lock.disabled) done(); };
+      render();
+    },
+    acpanel() {
+      // bảng hướng dẫn ghi thứ tự 3 công tắc; gạt sai là tắt hết, làm lại
+      const order = ['A', 'B', 'C'].sort(() => Math.random() - 0.5);
+      body.innerHTML = `<div class="acp"><div class="acp-note">Thứ tự gạt: <b>${order.join(' → ')}</b></div>
+        <div class="acp-row">${['A', 'B', 'C'].map(k => `<button type="button" class="acp-sw" data-k="${k}"><i></i><span>${k}</span></button>`).join('')}</div>
+        <p class="claw-msg acp-msg">Gạt công tắc đầu tiên</p></div>`;
+      let step = 0;
+      const msg = body.querySelector('.acp-msg') as HTMLElement;
+      const sws = [...body.querySelectorAll<HTMLButtonElement>('.acp-sw')];
+      sws.forEach(b => b.onclick = () => {
+        if (finished || b.classList.contains('on')) return;
+        if (b.dataset.k !== order[step]) {
+          fail(); msg.textContent = 'Sai thứ tự! Tắt hết, gạt lại từ đầu.';
+          step = 0; sws.forEach(x => x.classList.remove('on'));
+          return;
+        }
+        b.classList.add('on'); sfx.click(); step++;
+        msg.textContent = step < 3 ? `Đúng rồi, công tắc tiếp theo (${step}/3)` : 'Cục nóng chạy êm rồi!';
+        if (step === 3) done();
+      });
+    },
     darts() {
       body.innerHTML = `<div class="darts"><div class="board"><i class="r1"></i><i class="r2"></i><i class="r3"></i><span class="aim"></span></div>
         <div class="dart-row"><span class="dart-hits">Trúng: 0/3</span><button class="primary" type="button">🎯 Ném</button></div></div>`;
