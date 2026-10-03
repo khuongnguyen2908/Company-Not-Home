@@ -184,11 +184,12 @@ export const MINI_DIFF: Record<string, MiniDiff> = {
 };
 /** Thời gian làm trung bình của từng mini-game (giây), đo bằng phòng thử; bot trong mô phỏng làm mất chừng đó (±20%) */
 export const MINI_TIME: Record<string, number> = {
-  fingerprint: 4.5, delivery: 3.5, copier: 4, projector: 6, backlog: 8,
-  mt_lift: 5, mt_cab: 6, mt_desk: 5, mt_floor: 5, mt_wc: 8,
-  getwater: 4, waterplant: 4.5, fridge: 6, minutes: 10, wires: 8, testbuild: 5, antenna: 5.5,
-  interview: 9, coffee: 9, printdoc: 8, pushbuild: 9, fishfeed: 8, solar: 8, acpanel: 6, claw: 8,
-  excel: 12, stamp: 13, balance: 10, sprite: 13, bug: 14, darts: 11,
+  // Cập nhật theo phản hồi lần 3 (đo bằng phòng thử; lần chơi đầu có thời gian làm quen nên lấy khoảng giữa số đo và ước tính)
+  fingerprint: 4, delivery: 3, copier: 4, projector: 5, backlog: 8,
+  mt_lift: 5, mt_cab: 7, mt_desk: 6.5, mt_floor: 10, mt_wc: 7.5,
+  getwater: 3, waterplant: 3.5, fridge: 4, minutes: 6, wires: 7.5, testbuild: 5, antenna: 5.5,
+  interview: 13, coffee: 9.5, printdoc: 6, pushbuild: 15, fishfeed: 8.5, solar: 9, acpanel: 8, claw: 7,
+  excel: 16, stamp: 17, balance: 8.5, sprite: 13, bug: 14, darts: 8,
 };
 /** Độ khó của một việc = độ khó của bước khó nhất */
 export function taskDiff(t: { steps: readonly string[] }): MiniDiff {

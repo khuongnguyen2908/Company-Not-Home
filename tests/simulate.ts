@@ -30,7 +30,7 @@ for (let g = 0; g < N; g++) {
   const w = new World({ playerName: 'Test', playerLook: randomLook(), roles, maxSpecial: ROLES === 'all' ? 7 : 3, playerRole: 'random', bots: 7, impostors: g % 3 === 0 ? 2 : 1, seed: g + 1, headless: true });
   const dt = 1 / 30;
   let steps = 0;
-  while (w.phase !== 'ended' && steps < 30 * 60 * 20) {
+  while (w.phase !== "ended" && steps < 30 * 60 * 40) { // 40 phút tính cả họp; quá mức này mới là kẹt thật
     w.update(dt);
     if (w.phase === 'meeting' && w.meeting?.result) { ab.hrClaims += w.meeting.hrClaims.length; if (w.meeting.result.saved !== undefined) ab.producerSaves++; w.finishMeeting(); }
     for (const e of w.drainEvents()) {

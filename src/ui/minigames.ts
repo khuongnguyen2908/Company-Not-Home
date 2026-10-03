@@ -24,7 +24,7 @@ export const TITLES: Record<MiniKind, { title: string; hint: string }> = {
   fridge: { title: 'Dọn đồ mốc trong tủ lạnh chung', hint: 'Vứt hết đồ đã mốc. Đồ còn tươi là của sếp, đừng đụng vào.' },
   coffee: { title: 'Pha cà phê cho sếp', hint: 'Giữ cần chiết espresso và đánh sữa tới vạch xanh, thêm đường và đá đủ số, rồi mang lên.' },
   copier: { title: 'Gỡ kẹt máy photocopy', hint: 'Đập liên tục vào máy cho đến khi giấy chạy lại. Ngừng tay là kẹt lại.' },
-  stamp: { title: 'Ký duyệt hồ sơ', hint: 'Đối chiếu sổ quy định: đúng hết thì DUYỆT, sai một điều thì TRẢ VỀ. Có 3 hồ sơ.' },
+  stamp: { title: 'Ký duyệt hồ sơ', hint: 'Đối chiếu sổ quy định: đúng hết thì DUYỆT, sai một điều thì TRẢ VỀ. Có 2 hồ sơ.' },
   router: { title: 'Khởi động lại Router', hint: 'Rút cả 3 dây, chờ đèn tắt hết, rồi cắm lại theo thứ tự ghi trên nhãn.' },
   power: { title: 'Bật lại cầu dao', hint: 'Gạt tất cả cầu dao lên vị trí BẬT.' },
   fingerprint: { title: 'Chấm công vân tay', hint: 'Giữ ngón tay và kéo vào khung xanh đang trôi, giữ trong khung cho đầy thanh. Ai đứng gần cũng thấy đèn.' },
@@ -38,7 +38,7 @@ export const TITLES: Record<MiniKind, { title: string; hint: string }> = {
   balance: { title: 'Cân bằng chỉ số game', hint: 'Kéo cả 3 chỉ số vào vùng xanh. Tăng một chỉ số thì chỉ số kế tiếp tụt theo.' },
   projector: { title: 'Bật máy chiếu', hint: 'Bấm nút Nguồn vào cho tới khi màn hình hiện đúng cổng laptop.' },
   getwater: { title: 'Lấy nước tưới cây', hint: 'Giữ vòi nước, thả tay khi nước nằm trong vạch xanh.' },
-  printdoc: { title: 'In tài liệu', hint: 'Chỉnh máy in đúng như tin nhắn của sếp rồi bấm IN. Để ý tin nhắn mới nhất.' },
+  printdoc: { title: 'In tài liệu', hint: 'Chỉnh máy in đúng như phiếu yêu cầu dán trên máy rồi bấm IN.' },
   minutes: { title: 'Lấy biên bản họp', hint: 'Tìm đúng biên bản cuộc họp sáng nay trong chồng giấy.' },
   pushbuild: { title: 'Đẩy bản build', hint: 'Chờ thanh tải lên chạy. Khi có xung đột code, chọn dòng đúng theo quy ước nhóm.' },
 };

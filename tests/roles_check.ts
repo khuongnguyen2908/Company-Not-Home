@@ -1,4 +1,4 @@
-import { SPAWN_POINTS, levelAt as __lv, canStand as __cs, HIDE_SPOTS as HIDE_SPOTS_T, PORTALS as PORTALS_T } from '../src/game/map';
+import { SPAWN_POINTS, levelAt as __lv, canStand as __cs, HIDE_SPOTS as HIDE_SPOTS_T, PORTALS as PORTALS_T, TASKS as TASKS_T, taskDiff as taskDiff_T } from '../src/game/map';
 // Kiểm tra nhanh luật của các vai mới
 import { World, slotStation } from '../src/game/sim';
 import { randomLook } from '../src/game/look';
@@ -223,4 +223,21 @@ const mk3 = (seed = 11) => new World({ playerName: 'T', playerLook: randomLook()
   ok(SPAWN_POINTS[w.spawnOffer![0]].id === 'meeting', 'Phòng họp luôn là lựa chọn đầu tiên');
   w.chooseSpawn(-1);
   ok(__lv(w.player.x, w.player.y) === 2 && w.spawnOffer === null, 'hết giờ không chọn: ở lại Phòng họp (tầng 2)');
+}
+
+// ---- Chia việc: mỗi người tối đa 1 việc khó, vẫn đủ số việc ----
+{
+  let over = 0, short = 0, ppl = 0;
+  for (let seed = 1; seed <= 60; seed++) {
+    const w = new World({ playerName: 'T', playerLook: randomLook(), roles: {}, maxSpecial: 0, playerRole: 'crew', bots: 8, impostors: 1, seed, headless: true });
+    for (const a of w.agents) {
+      ppl++;
+      const defs = a.tasks.map(t => TASKS_T.find(d => d.id === t.taskId)!);
+      if (defs.filter(d => taskDiff_T(d) === 'kho').length > 1) over++;
+      const nShort = defs.filter(d => d.type === 'short').length, nLong = defs.filter(d => d.type === 'long').length, nCommon = defs.filter(d => d.type === 'common').length;
+      if (nShort !== 3 || nLong !== 1 || nCommon !== 1) short++;
+    }
+  }
+  ok(over === 0, `chia việc cho ${ppl} người: không ai nhận quá 1 việc khó`);
+  ok(short === 0, 'ai cũng đủ 1 việc chung, 3 việc ngắn, 1 việc dài');
 }

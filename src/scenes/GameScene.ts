@@ -10,6 +10,7 @@ import { GRID as MAP_GRID } from '../game/map';
 import { DOOR_BLOCK, CAMERAS, FLOORS, PORTALS, LIFT_DOORS, CABIN, CABIN_DOOR, levelAt, levelName, ELEV_BLOCK, STAIRWELL, STAIRS_LEVEL, LANDINGS, STAIR_FLIGHTS } from '../game/map';
 import { STICKERS } from '../game/data';
 import { session } from '../session';
+import { net } from '../net/room';
 import { sfx } from '../audio';
 import { slotStation, type Agent } from '../game/sim';
 
@@ -338,13 +339,24 @@ export class GameScene extends Phaser.Scene {
     if (!world) return;
     if (this.gameId !== session.newGameId) this.resetViews();
 
-    if (!session.paused) {
+    if (net.role === 'client' && net.client) {
+      // Người vào phòng: không chạy mô phỏng (chủ phòng chạy). Dự đoán di chuyển của mình cho mượt, gửi điều khiển, làm mượt người khác.
+      const c = net.client, me = world.player;
+      const moving = !session.paused && world.phase === 'play' && me.hidden === null;
+      const ix = moving ? session.input.x : 0, iy = moving ? session.input.y : 0;
+      if (moving) world.moveBy(me, ix, iy, dt); else me.moving = false;
+      c.sendInput(ix, iy, deltaMs);
+      c.smooth(deltaMs);
+      const ev = world.drainEvents();
+      if (ev.length) { this.worldFx(world, ev); session.onEvents(ev); }
+    } else if (!session.paused) {
       world.playerInput = session.input;
       world.update(dt);
       const ev = world.drainEvents();
       if (ev.length) this.worldFx(world, ev);
       if (ev.length) session.onEvents(ev);
-    }
+      net.host?.tick(deltaMs, ev);
+    } else net.host?.tick(deltaMs, []); // đang tạm dừng (tờ phân công, chọn nơi bắt đầu): vẫn gửi trạng thái
 
     const p = world.player;
     const w = this.scale.width, h = this.scale.height;

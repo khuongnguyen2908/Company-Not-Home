@@ -1,6 +1,6 @@
 // Đợt C: bảo trì của Engineer, cạy / mở cửa thang máy, giả vờ gõ phím (kiểu Typer Shark), router, chấm công vân tay.
 import { sfx } from '../audio';
-import type { MiniCtx } from './minigames2';
+import { TOOL_SVG, type MiniCtx } from './minigames2';
 
 type Builder = (c: MiniCtx & { hold?: (on: boolean) => void }) => void;
 const rnd = (n: number) => Math.floor(Math.random() * n);
@@ -145,8 +145,8 @@ const mt_wc: Builder = (c) => {
 // ---------------------------------------------------------------------------------------------
 const pry: Builder = (c) => {
   let stage = 0, gap = 0, last = 0;
-  c.body.innerHTML = `<div class="py3"><div class="py3-doors"><i class="dl"></i><i class="dr"></i><i class="py3-gap"></i><i class="py3-bar"></i></div>
-    <div class="py3-tool">Xà beng</div>
+  c.body.innerHTML = `<div class="py3"><div class="py3-doors"><i class="dl"></i><i class="dr"></i><i class="py3-gap"></i><i class="py3-bar">${TOOL_SVG.crowbar}</i></div>
+    <div class="py3-tool"><span class="py3-ic">${TOOL_SVG.crowbar}</span>Kéo xà beng vào khe</div>
     <div class="py3-ctrl" hidden><button type="button" data-d="-1">◀ Bẩy trái</button><div class="py3-meter"><i></i></div><button type="button" data-d="1">Bẩy phải ▶</button></div>
     <p class="py3-msg">Kéo xà beng vào khe giữa hai cánh cửa</p></div>`;
   const doors = $(c.body, '.py3-doors'), tool = $(c.body, '.py3-tool'), ctrl = $(c.body, '.py3-ctrl'), msg = $(c.body, '.py3-msg'), meter = $(c.body, '.py3-meter i'), bar = $(c.body, '.py3-bar');

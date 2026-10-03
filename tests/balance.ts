@@ -12,7 +12,8 @@ let total = 0, stuck = 0, kpi = 0, ejectImp = 0, firstKill = 0;
 for (let g = 0; g < N; g++) {
   const w = new World({ playerName: 'T', playerLook: randomLook(), roles, maxSpecial: 3, playerRole: 'random', bots: players - 1, impostors: imps, seed: seed0 + g, headless: true, killCd: cdArg });
   let steps = 0, first = -1;
-  while (w.phase !== 'ended' && steps < 30 * 60 * 15) {
+  // Giới hạn 40 phút tính cả họp (ván nhiều cuộc họp có thể dài 15 phút trở lên mà vẫn bình thường); quá mức này mới là kẹt thật
+  while (w.phase !== 'ended' && steps < 30 * 60 * 40) {
     w.update(1 / 30);
     if (w.phase === 'meeting' && w.meeting?.result) w.finishMeeting();
     for (const e of w.drainEvents()) if (e.type === 'kill' && first < 0) first = w.time;

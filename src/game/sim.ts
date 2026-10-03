@@ -30,7 +30,7 @@ export const LIFT_FLOOR_TIME = 1;   // thang máy: 1 giây mỗi tầng
 export const LIFT_DOOR_TIME = 3;    // cửa mở 3 giây mỗi điểm dừng
 export const PRY_AFTER = 20;        // kẹt thang 20 giây thì được cạy cửa
 export const PRY_TIME = 8;
-export const RESCUE_TIME = 4;       // Engineer mở cửa thang kẹt từ bên ngoài
+export const RESCUE_TIME = 5;       // Engineer mở cửa thang kẹt từ bên ngoài
 export const NOISE_TIME = 15;     // Sound Engineer: cảnh báo tồn tại 15 giây (tòa nhiều tầng cần thêm thời gian lần theo)
 export const ADMIN_BATTERY = 10;  // Admin: pin xem tối đa 10 giây
 export const ADMIN_CD = 20;
@@ -110,7 +110,8 @@ export interface Agent {
   color: string;        // màu thẻ tên (màu áo)
   empId: string;        // mã số nhân viên: 111, 222, ... (không trùng trong ván)
   dept: RoleDept | null; // phòng ban bí mật; Nội gián không có
-  isPlayer: boolean;
+  isPlayer: boolean;     // người chơi trên máy này (giao diện điều khiển)
+  human: boolean;        // người thật (máy này hoặc máy khác trong phòng); bot thì false
   role: Role;
   alive: boolean;
   ejected: boolean;
@@ -225,6 +226,7 @@ export interface Meeting {
   votes: Map<number, number | 'skip'>;
   voteAt: Map<number, number>;
   result: null | { ejected: number | null; tie: boolean; tally: Map<number | 'skip', number[]>; saved?: number };
+  readyVote?: number[]; // người thật đã bấm Sẵn sàng bỏ phiếu
 }
 
 export interface WorldOptions {
@@ -310,6 +312,8 @@ export class World {
   visionMul = 1;
   /** Danh sách phòng ban có năng lực trong ván (công khai) */
   roleList: RoleDept[] = [];
+  /** Số Nội gián trong ván (thông tin công khai, máy người vào phòng dùng để hiện đúng) */
+  impostorTotal = 1;
 
   constructor(opts: WorldOptions) {
     this.rng = mulberry32(opts.seed ?? Math.floor(Math.random() * 1e9));
@@ -338,7 +342,7 @@ export class World {
         name: i === 0 ? (opts.playerName || 'Bạn') : (opts.botProfiles?.[i - 1]?.name ?? names[i - 1]),
         look: i === 0 ? opts.playerLook : (opts.botProfiles?.[i - 1]?.look ?? randomLook(this.rng)),
         color: '', dept: null, empId: '',
-        isPlayer: i === 0,
+        isPlayer: i === 0, human: i === 0 && !opts.headless,
         role: 'crew', alive: true, ejected: false,
         x: sp.x, y: sp.y, facing: 1, moving: false, walkT: 0,
         tasks: [], desk: deskOrder[i % DESKS.length], hidden: null,
@@ -359,6 +363,7 @@ export class World {
     const others = pool.filter(id => !(opts.playerRole !== 'random' && id === 0)).sort(() => this.rng() - 0.5);
     for (const id of others) { if (chosen.length >= nImp) break; if (!chosen.includes(id)) chosen.push(id); }
     for (const id of chosen) this.agents[id].role = 'impostor';
+    this.impostorTotal = chosen.length;
     // 2 Nội gián trong ván ít người rất mạnh: kéo dài hồi chiêu để bù
     // Hồi chiêu gài bẫy tự cân theo số Nội gián (đã chạy thử hàng trăm ván để chọn số)
     if (opts.killCd) for (const a of this.agents) a.killCd = opts.killFirst ?? Math.round(opts.killCd / 2);
@@ -395,7 +400,7 @@ export class World {
     // Developer bot chọn ngẫu nhiên một đồng nghiệp để backup (người chơi tự chọn ở màn phân vai)
     // Intern tham vọng hồi chiêu gài bẫy riêng
     for (const a of crew) if (a.dept === 'climber') a.killCd = 20;
-    for (const a of crew) if (a.dept === 'developer' && (!a.isPlayer || this.headless)) {
+    for (const a of crew) if (a.dept === 'developer' && !a.human) {
       const others = this.agents.filter(o => o !== a);
       a.devBackup = pick(others, this.rng).id;
     }
@@ -425,7 +430,13 @@ export class World {
     }
   }
 
-  get player() { return this.agents[0]; }
+  /** Nhân vật của máy này (chủ phòng: 0; bản sao trên máy người vào phòng: nhân vật của họ) */
+  meId = 0;
+  get player() { return this.agents[this.meId]; }
+  /** Điều khiển di chuyển của người thật ở máy khác (chủ phòng nhận qua mạng) */
+  inputs = new Map<number, { x: number; y: number }>();
+  /** Biến một nhân vật thành người thật (điều khiển qua mạng) hoặc trả lại cho bot */
+  setHuman(id: number, on: boolean) { const a = this.agents[id]; if (a) { a.human = on; if (!on) this.inputs.delete(id); } }
 
   // ---------- Truy vấn ----------
   crewTasksDone() {
@@ -610,7 +621,7 @@ export class World {
     this.events.push({ type: 'kill', killer: killer.id, victim: victim.id, x: victim.x, y: victim.y });
     // Nhân chứng
     for (const o of this.agents) {
-      if (!o.alive || o === killer || o.role !== 'crew' || o.isPlayer && !this.headless) continue;
+      if (!o.alive || o === killer || o.role !== 'crew' || o.human) continue;
       const viaCam = o.dept === 'it' && o.itCamT > 0 && this.inCamera(killer.x, killer.y);
       if (this.sees(o, killer) || viaCam) {
         o.brain.witnessed = killer.id;
@@ -658,7 +669,7 @@ export class World {
     if (kind !== 'boss') {
       const st = station(kind === 'wifi' ? 'router' : 'power');
       const c = tileCenter(st.stand.x, st.stand.y);
-      const crewBots = this.agents.filter(a => !a.isPlayer && a.alive && a.role === 'crew')
+      const crewBots = this.agents.filter(a => !(a.isPlayer || a.human) && a.alive && a.role === 'crew')
         .sort((p, q) => dist(p, c) - dist(q, c));
       crewBots.forEach((b, i) => { b.brain.fixer = i < (kind === 'power' ? 2 : 1); if (b.brain.fixer) b.brain.path = []; });
     } else {
@@ -1202,7 +1213,7 @@ export class World {
     t.stickerMsg = { stickers: [...stickers], until: this.time + 5 };
     this.events.push({ type: 'media_msg', from: a.id, to, stickers: [...stickers] });
     // Người nhận là bot: suy luận từ hình
-    if (!t.isPlayer || this.headless) {
+    if (!t.human) {
       const rooms = stickers.map(i => STICKERS[i]).filter(x => x.room).map(x => x.room);
       const bad = stickers.some(i => ['🐍', '⚠️', '🤥', '🎭', '🕵️', '👀', '📂'].includes(STICKERS[i].e));
       for (const [id, seen] of t.brain.lastSeen) {
@@ -1229,11 +1240,14 @@ export class World {
   }
 
   /** Người chơi đang xem camera (giao diện cập nhật) */
-  playerWatching = false;
+  /** Những người thật đang xem camera an ninh */
+  watching = new Set<number>();
+  get playerWatching() { return this.watching.has(this.meId); }
+  set playerWatching(on: boolean) { if (on) this.watching.add(this.meId); else this.watching.delete(this.meId); }
   /** Có ai đang xem camera không: đèn đỏ trên mọi camera sẽ nhấp nháy */
   camsInUse(): boolean {
     if (this.sabotage?.kind === 'wifi' || this.sabotage?.kind === 'power') return false;
-    return (this.playerWatching && this.player.alive) || this.agents.some(a => a.alive && a.itCamT > 0);
+    return [...this.watching].some(id => this.agents[id]?.alive) || this.agents.some(a => a.alive && a.itCamT > 0);
   }
 
   inCamera(x: number, y: number) {
@@ -1306,15 +1320,16 @@ export class World {
       }
     }
 
-    // Người chơi
-    const p = this.player;
-    if (!this.headless) {
-      if (p.hidden === null) this.moveBy(p, this.playerInput.x, this.playerInput.y, dt);
-      else p.moving = false;
+    // Người thật: người chơi trên máy này dùng playerInput, người ở máy khác dùng inputs (nhận qua mạng)
+    for (const h of this.agents) {
+      if (!h.human) continue;
+      const inp = h.id === this.meId ? this.playerInput : (this.inputs.get(h.id) ?? { x: 0, y: 0 });
+      if (h.hidden === null) this.moveBy(h, inp.x, inp.y, dt);
+      else h.moving = false;
     }
     // Bot
     for (const a of this.agents) {
-      if (a.isPlayer && !this.headless) continue;
+      if (a.human) continue;
       this.botUpdate(a, dt);
       if (this.phase !== 'play') return;
     }
@@ -1625,7 +1640,7 @@ export class World {
     if (a.alive && this.sabotage?.kind === 'boss' && !a.bossDone) {
       const seat = DESKS[a.desk].seat;
       const c = tileCenter(seat.x, seat.y);
-      if (dist(a, c) < 6) { b.goal = 'desk'; b.workT = 5 * (0.8 + this.rng() * 0.4); return; } // giả vờ gõ phím ~5 giây
+      if (dist(a, c) < 6) { b.goal = 'desk'; b.workT = 6.5 * (0.8 + this.rng() * 0.4); return; } // giả vờ gõ phím ~6,5 giây
       if (b.goal !== 'desk' || !b.path.length) this.goTo(a, seat, 'desk');
       this.followPath(a, dt);
       return;
@@ -1742,7 +1757,7 @@ export class World {
     if (a.alive && b.fixer && this.sabotage && this.sabotage.kind !== 'boss') {
       const st = station(this.sabotage!.kind === 'wifi' ? 'router' : 'power');
       const c = tileCenter(st.stand.x, st.stand.y);
-      if (dist(a, c) < 8) { b.goal = 'fix'; b.workT = (this.sabotage?.kind === 'wifi' ? 4.5 : 2.5) * (0.8 + this.rng() * 0.4); return; } // router: rút, chờ, cắm lại; cầu dao: gạt
+      if (dist(a, c) < 8) { b.goal = 'fix'; b.workT = (this.sabotage?.kind === 'wifi' ? 5.4 : 2.8) * (0.8 + this.rng() * 0.4); return; } // router: rút, chờ, cắm lại; cầu dao: gạt (đo bằng phòng thử)
       if (b.goal !== 'fix' || !b.path.length) this.goTo(a, st.stand, 'fix');
       this.followPath(a, dt);
       return;
@@ -2013,7 +2028,7 @@ export class World {
     this.events.push({ type: 'meeting', reporter, victim });
     this.planStatements(m);
     for (const a of this.agents) {
-      if (a.isPlayer && !this.headless) continue;
+      if (a.human) continue;
       if (!a.alive) continue;
       m.voteAt.set(a.id, 3 + this.rng() * 22); // tính từ lúc mở bỏ phiếu
     }
@@ -2032,11 +2047,11 @@ export class World {
   private planStatements(m: Meeting) {
     const A = this.agents;
     const nm = (id: number) => A[id].name;
-    const speakers = A.filter(a => a.alive && (!a.isPlayer || this.headless));
+    const speakers = A.filter(a => a.alive && !a.human);
     const recent = this.time - 35;
     // Người báo cáo nói trước
     const rep = A[m.reporter];
-    if (!rep.isPlayer || this.headless) {
+    if (!rep.human) {
       if (m.victim !== null) {
         this.say(m, rep.id, fmt('bot.report.body', { victim: nm(m.victim), room: roomName(m.room) }));
       } else if (rep.brain.witnessed !== null) {
@@ -2184,7 +2199,7 @@ export class World {
   }
 
   private botReact(m: Meeting, from: number, emoji: string, delay: number) {
-    if (this.agents[from].isPlayer && !this.headless) return;
+    if (this.agents[from].human) return;
     m.reactQueue.push({ at: m.t + delay, from, emoji });
   }
 
@@ -2218,7 +2233,7 @@ export class World {
     // Nội gián ghi nhớ: người tự nhận HR (nếu là nhân viên thật) cần bị xử lý sớm
     for (const l of A) if (l.role === 'impostor' && A[by].role === 'crew') l.brain.hrTarget = by;
     for (const l of A) {
-      if (!l.alive || l.id === by || l.role !== 'crew' || (l.isPlayer && !this.headless)) continue;
+      if (!l.alive || l.id === by || l.role !== 'crew' || (l.human)) continue;
       const b = l.brain;
       // Bị tố là Nội gián trong khi mình biết mình trong sạch: người tố chắc chắn nói dối
       if (target === l.id && imp) { b.sus.set(by, (b.sus.get(by) ?? 0) + 150); continue; }
@@ -2235,13 +2250,13 @@ export class World {
     if (target >= 0 && imp && A[target].alive) this.botReact(m, target, '😡', 0.5);
     // Phản bác
     const T = target >= 0 ? A[target] : null;
-    if (T && imp && T.role === 'impostor' && (!T.isPlayer || this.headless) && !T.brain.claimedHr && this.rng() < 0.8) {
+    if (T && imp && T.role === 'impostor' && !T.human && !T.brain.claimedHr && this.rng() < 0.8) {
       T.brain.claimedHr = true;
       this.say(m, T.id, fmt('bot.hr.counterFake', { liar: A[by].name }), [], m.t + 2.2, { claim: { target: by, imp: true } });
-    } else if (T && imp && T.role === 'crew' && (!T.isPlayer || this.headless)) {
+    } else if (T && imp && T.role === 'crew' && !T.human) {
       this.say(m, T.id, fmt('bot.hr.deny', { liar: A[by].name }), [{ target: by, delta: 25 }], m.t + 2.2);
     }
-    const realHr = A.find(o => o.alive && o.role === 'crew' && o.dept === 'hr' && o.id !== by && (!o.isPlayer || this.headless));
+    const realHr = A.find(o => o.alive && o.role === 'crew' && o.dept === 'hr' && o.id !== by && !o.human);
     if (realHr && !m.hrClaims.some(c => c.by === realHr.id) && A[by].dept !== 'hr' && this.rng() < 0.9) {
       const r = realHr.hrResult;
       if (r && A[r.target].alive) {
@@ -2255,7 +2270,7 @@ export class World {
 
   private applyEffects(from: number, effects: Effect[]) {
     for (const l of this.agents) {
-      if (l.isPlayer && !this.headless) continue;
+      if (l.human) continue;
       if (!l.alive || l.id === from) continue;
       const trustSpeaker = (l.brain.sus.get(from) ?? 0) < 40;
       for (const e of effects) {
@@ -2267,10 +2282,11 @@ export class World {
   }
 
   /** Người chơi gõ chat trong phòng họp */
-  playerChat(text: string) {
+  playerChat(text: string) { this.chatFrom(this.player, text); }
+  /** Một người thật nhắn trong cuộc họp (bot đọc và phản ứng) */
+  chatFrom(p: Agent, text: string) {
     const m = this.meeting;
     if (!m || m.result) return;
-    const p = this.player;
     m.chat.push({ from: p.id, text, t: m.t });
     if (!p.alive) return; // hồn ma nói không ai nghe
     const n = normalize(text);
@@ -2306,7 +2322,7 @@ export class World {
       }
     }
     if (!mentioned.length && this.rng() < 0.4) {
-      const s = this.agents.filter(a => a.alive && !a.isPlayer);
+      const s = this.agents.filter(a => a.alive && !(a.isPlayer || a.human));
       if (s.length) this.say(m, pick(s, this.rng).id, pick(FILLER_LINES, this.rng), [], m.t + 2 + this.rng() * 2);
     }
   }
@@ -2330,7 +2346,7 @@ export class World {
       return best && bs >= 24 + b.skipBias ? best.id : 'skip';
     }
     // Nội gián: hùa theo người bị nghi nhiều nhất (không phải đồng bọn)
-    const crewBots = this.agents.filter(o => o.alive && o.role === 'crew' && !o.isPlayer);
+    const crewBots = this.agents.filter(o => o.alive && o.role === 'crew' && !(o.isPlayer || o.human));
     let best: Agent | null = null, bs = -1e9;
     for (const o of alive) {
       if (o.role === 'impostor') continue;
@@ -2376,6 +2392,13 @@ export class World {
   }
 
   /** Người chơi bấm "Sẵn sàng bỏ phiếu": mở bỏ phiếu ngay */
+  /** Một người thật bấm "Sẵn sàng bỏ phiếu": đủ mọi người thật còn sống thì mới mở bỏ phiếu sớm */
+  readyToVote(a: Agent) {
+    const m = this.meeting;
+    if (!m || m.result || m.t >= m.discussEnd || !a.human || !a.alive) return;
+    (m.readyVote ??= []).includes(a.id) || m.readyVote.push(a.id);
+    if (this.agents.filter(h => h.human && h.alive).every(h => m.readyVote!.includes(h.id))) this.skipDiscussion();
+  }
   skipDiscussion() {
     const m = this.meeting;
     if (!m || m.result || m.t >= m.discussEnd) return;
@@ -2396,7 +2419,7 @@ export class World {
     const m = this.meeting!;
     // Producer bot bảo lãnh người đang bị dồn phiếu mà mình tin là trong sạch (hoặc chính mình)
     for (const a of this.agents) {
-      if (a.dept !== 'producer' || a.role !== 'crew' || !a.alive || (a.isPlayer && !this.headless)) continue;
+      if (a.dept !== 'producer' || a.role !== 'crew' || !a.alive || (a.human)) continue;
       const count = new Map<number, number>();
       for (const [, t] of m.votes) if (t !== 'skip') count.set(t, (count.get(t) ?? 0) + 1);
       const ranked = [...count.entries()].sort((p, q) => q[1] - p[1]).map(([id]) => id);
@@ -2464,7 +2487,7 @@ export class World {
       }
     }
     // Chọn nơi xuất hiện (kiểu Airship): mỗi người 3 lựa chọn ngẫu nhiên riêng, không ai biết người khác chọn gì
-    this.spawnOffer = null;
+    this.spawnOffers.clear();
     if (this.spawnChoice) {
       this.spawnUsed = new Map();
       for (const a of this.agents) {
@@ -2473,7 +2496,7 @@ export class World {
         const meet = SPAWN_POINTS.findIndex(sp => sp.id === 'meeting');
         const others = [...SPAWN_POINTS.keys()].filter(i => i !== meet).sort(() => this.rng() - 0.5).slice(0, 2);
         const offers = [meet, ...others];
-        if (a.isPlayer && !this.headless) { this.spawnOffer = offers; continue; } // người chơi chọn trên màn hình
+        if (a.human) { this.spawnOffers.set(a.id, offers); continue; } // người thật tự chọn trên màn hình của mình
         this.placeAtSpawn(a, this.botSpawnPick(a, offers));
       }
     }
@@ -2487,17 +2510,20 @@ export class World {
   stepTime(kind: string) { return (MINI_TIME[kind] ?? 7) * (0.8 + this.rng() * 0.4); }
 
   /** Lựa chọn nơi xuất hiện đang chờ người chơi (chỉ số trong SPAWN_POINTS), null nếu không có */
-  spawnOffer: number[] | null = null;
+  spawnOffers = new Map<number, number[]>();
+  /** Lựa chọn của người chơi trên máy này */
+  get spawnOffer(): number[] | null { return this.spawnOffers.get(this.meId) ?? null; }
   /** Bật/tắt luật chọn nơi xuất hiện (để so sánh cân bằng) */
   spawnChoice = true;
   private spawnUsed = new Map<number, number>();
   /** Người chơi chọn nơi xuất hiện (i: vị trí trong 3 lựa chọn; -1 = hết giờ, ở lại Phòng họp) */
-  chooseSpawn(i: number) {
-    const offer = this.spawnOffer;
+  chooseSpawn(i: number) { this.chooseSpawnFor(this.player, i); }
+  chooseSpawnFor(a: Agent, i: number) {
+    const offer = this.spawnOffers.get(a.id);
     if (!offer) return;
-    this.spawnOffer = null;
+    this.spawnOffers.delete(a.id);
     const pick = offer[i >= 0 && i < offer.length ? i : 0];
-    this.placeAtSpawn(this.player, pick);
+    this.placeAtSpawn(a, pick);
   }
   /** Bot chọn điểm cùng tầng với việc kế tiếp; không có thì chọn ngẫu nhiên */
   private botSpawnPick(a: Agent, offers: number[]): number {

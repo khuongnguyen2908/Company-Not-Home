@@ -67,6 +67,16 @@ Kiểm tra: `python3 tests/lobby_reentry.py` (về sảnh nhiều lần vẫn đ
 - **Chọn nơi bắt đầu** (kiểu Airship): Phòng họp luôn có, cộng 2 điểm ngẫu nhiên riêng của mỗi người trong 5 điểm còn lại (Lễ tân, Pantry, Hành lang tầng 3, Studio Art, Vườn mái). 10 giây để chọn, hết giờ thì ở lại Phòng họp. Không ai biết ai chọn gì; bot chọn điểm cùng tầng với việc kế tiếp.
 - **Hồn ma** chỉ bay xuyên tường trong tầng đang ở; cửa thang bộ và thang máy không có tác dụng với hồn ma; đổi tầng bằng nút Lên/Xuống tầng (PageUp/PageDown); chỉ thấy người cùng tầng.
 
+## Chơi nhiều người (giai đoạn 1: nhiều tab trên cùng trình duyệt)
+
+- Màn hình chính → **Chơi nhiều người** → Tạo phòng mới (mã 6 ký tự, ví dụ `KPI-482`, kèm link mời) hoặc nhập mã để vào phòng. Mở link mời (`?room=MÃ`) là vào thẳng phòng.
+- **Màn hình phòng:** danh sách người, chủ phòng chỉnh bot điền ghế trống (bật/tắt), số ghế, số Nội gián; tối đa 10 người, ván cần ít nhất 4 người.
+- **Chủ phòng chạy game**, người vào phòng gửi điều khiển và nhận trạng thái đã lọc (không lộ vai, phòng ban, việc, hồi chiêu, kết quả kỹ năng của người khác). Rời giữa ván thì bot chơi thay; chủ phòng rời thì phòng đóng.
+- **Thử một mình:** mở game với `?multitest=4` (2–6 ô): mỗi ô là một người chơi; thanh công cụ có Bắt đầu ván, Cả phòng sẵn sàng, Gọi họp ngay, Chơi ván mới, Ép một người làm Nội gián. Bấm vào ô nào thì điều khiển người đó.
+- Mã nguồn: `src/net/` (truyền tin, ảnh chụp có lọc, cửa lệnh, chủ phòng / người vào phòng), `src/devtools/multitest.ts`.
+- Kiểm tra: `npx tsx tests/net_test.ts` (mạng giả có độ trễ và mất gói: không lộ bí mật, bản sao khớp chủ phòng, ván kết thúc đúng), `tests/multitest_e2e.py` (trình duyệt thật).
+- Giai đoạn sau: kết nối P2P qua mạng thật, sảnh chung, vào lại khi rớt mạng.
+
 ## Phòng thử mini-game
 
 Mở game với `?minigames` ở cuối địa chỉ: danh sách đủ 39 mini-game (việc thường theo tầng, bảo trì, khu giải trí, sân thượng, sửa sự cố, các màn đặc biệt). Mỗi mini-game có nút Chơi thử và Chơi bản Nội gián, tự ghi thời gian chơi, đánh dấu Ổn / Cần sửa kèm ghi chú (lưu trên máy). Nút Sao chép phản hồi / Tải file phản hồi xuất toàn bộ thành văn bản để gửi lại.
@@ -89,16 +99,18 @@ Tầm nhìn Nhân viên 3,8 ô (Nội gián gấp rưỡi). Hồi chiêu gài b�
 
 | Số người | Nội gián | Hồi chiêu | Nội gián thắng (300 ván) |
 |---|---|---|---|
-| 5 | 1 | 57s | 52% |
+| 5 | 1 | 57s | 49% |
 | 6 | 1 | 35s | 48% |
-| 7 | 1 | 23s | 54% |
-| 7 | 2 | 128s | 44% |
-| 8 | 1 | 18s | 46% |
-| 8 | 2 | 80s | 46% |
-| 9 | 1 | 12s | 46% |
-| 9 | 2 | 60s | 51% |
-| 10 | 1 | 8s | 48% |
-| 10 | 2 | 50s | 44% |
+| 7 | 1 | 23s | 52% |
+| 7 | 2 | 128s | 48% |
+| 8 | 1 | 18s | 52% |
+| 8 | 2 | 80s | 48% |
+| 9 | 1 | 12s | 39% |
+| 9 | 2 | 60s | 47% |
+| 10 | 1 | 8s | 41% |
+| 10 | 2 | 50s | 46% |
+
+9–10 người với 1 Nội gián hơi nghiêng về Nhân viên; không rút hồi chiêu thêm vì ván sẽ bị nén (xem `tests/pace5.ts` để đo nhịp ván). Cỡ này nên chơi 2 Nội gián.
 
 Bot trong mô phỏng làm mỗi việc mất đúng thời gian thật của mini-game đó (bảng `MINI_TIME` trong `src/game/map.ts`, đo bằng phòng thử). Đổi mini-game thì cập nhật số này rồi chạy lại cân bằng. Mỗi người nhận tối đa 1 việc khó (`MINI_DIFF`).
 

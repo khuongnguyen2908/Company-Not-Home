@@ -18,6 +18,14 @@ const shuffle = <T,>(a: T[]) => { const b = [...a]; for (let i = b.length - 1; i
 const pick = <T,>(a: T[]) => a[rnd(a.length)];
 const $ = <T extends Element = HTMLElement>(el: Element, s: string) => el.querySelector(s) as T;
 const $$ = <T extends Element = HTMLElement>(el: Element, s: string) => [...el.querySelectorAll(s)] as T[];
+
+// Hình vẽ công cụ (không dùng emoji vì tùy máy có thể không hiện)
+export const TOOL_SVG = {
+  spray: `<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="13" y="19" width="19" height="25" rx="5" fill="#2e9cf0" stroke="#1d1a2b" stroke-width="3"/><path d="M17 19v-6h11v6" fill="#e9edf5" stroke="#1d1a2b" stroke-width="3" stroke-linejoin="round"/><path d="M28 9h11l-4 6h-7z" fill="#e2412f" stroke="#1d1a2b" stroke-width="3" stroke-linejoin="round"/><path d="M42 8h4M42 12h4M41 4l3-2" stroke="#5fb8ff" stroke-width="2.5" stroke-linecap="round"/><path d="M17 27h8" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".6"/></svg>`,
+  broom: `<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M37 3L24 25" stroke="#1d1a2b" stroke-width="7" stroke-linecap="round"/><path d="M37 3L24 25" stroke="#a26f47" stroke-width="3.5" stroke-linecap="round"/><path d="M16 24l13 6-6 15-15-7z" fill="#ffd23f" stroke="#1d1a2b" stroke-width="3" stroke-linejoin="round"/><path d="M11 37l5 3M14 31l-3 8M19 33l-3 9M24 34l-3 9" stroke="#b8860b" stroke-width="2"/><path d="M17 23l12 6" stroke="#e2412f" stroke-width="5" stroke-linecap="round"/></svg>`,
+  crowbar: `<svg viewBox="0 0 64 26" aria-hidden="true"><path d="M7 20L49 7q9-3 10 4q1 5-5 6" fill="none" stroke="#1d1a2b" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 20L49 7q9-3 10 4q1 5-5 6" fill="none" stroke="#e2412f" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 20l-4 4" stroke="#1d1a2b" stroke-width="6" stroke-linecap="round"/><path d="M14 16l30-8" stroke="#fff" stroke-width="1.6" stroke-linecap="round" opacity=".6"/></svg>`,
+};
+
 const NAMES = ['Hưng', 'Diệp', 'Kha', 'Tú', 'Ngân', 'Phát', 'Linh', 'Quý', 'Thư', 'Bảo'];
 
 // ---------------------------------------------------------------------------------------------
@@ -38,8 +46,9 @@ const stamp: Builder = (c) => {
     }
     return d;
   };
-  const docs = [make(), make(), make()];
-  if (docs.every(d => !d.bad)) { docs[rnd(3)].signed = false; docs.forEach(d => { if (!d.signed) d.bad = 'thiếu chữ ký'; }); }
+  // 2 hồ sơ mỗi lượt; luôn có ít nhất 1 hồ sơ sai để phải đọc kỹ
+  const docs = [make(), make()];
+  if (docs.every(d => !d.bad)) { docs[rnd(2)].signed = false; docs.forEach(d => { if (!d.signed) d.bad = 'thiếu chữ ký'; }); }
   let i = 0;
   c.body.innerHTML = `<div class="st2">
     <div class="st2-book"><b>SỔ QUY ĐỊNH</b><small>Hôm nay: 0${TODAY}/10</small>
@@ -204,12 +213,12 @@ const coffee: Builder = (c) => {
 // In tài liệu: chỉnh máy in theo email của sếp; giữa chừng sếp gửi email sửa yêu cầu
 // ---------------------------------------------------------------------------------------------
 const printdoc: Builder = (c) => {
-  const want = { size: pick(['A4', 'A3']), copies: 1 + rnd(5), duplex: Math.random() < 0.5, color: Math.random() < 0.5 };
-  const set = { size: 'A4', copies: 1, duplex: false, color: true };
-  const desc = (w: typeof want) => `khổ ${w.size}, ${w.copies} bản, ${w.duplex ? 'in 2 mặt' : 'in 1 mặt'}, ${w.color ? 'in màu' : 'đen trắng'}`;
+  // Phiếu yêu cầu in dán trên máy: chỉnh đúng 4 mục rồi bấm IN
+  const want = { size: Math.random() < 0.5 ? 'A4' : 'A3', copies: 2 + rnd(4), duplex: Math.random() < 0.5, color: Math.random() < 0.5 };
+  const set = { size: want.size === 'A4' ? 'A3' : 'A4', copies: 1, duplex: !want.duplex, color: !want.color };
   c.body.innerHTML = `<div class="pr2">
-    <div class="pr2-mail"><b>Sếp</b><p>In giúp anh báo cáo nhé: ${desc(want)}.</p></div>
-    <div class="pr2-mail2" hidden></div>
+    <div class="pr2-ticket"><b>PHIẾU YÊU CẦU IN</b><span>Báo cáo quý</span>
+      <ul><li>Khổ <b>${want.size}</b></li><li><b>${want.copies}</b> bản</li><li><b>${want.duplex ? 'In 2 mặt' : 'In 1 mặt'}</b></li><li><b>${want.color ? 'In màu' : 'Đen trắng'}</b></li></ul></div>
     <div class="pr2-panel"><div class="pr2-lcd"></div>
       <div class="pr2-ctrls">
         <div><span>Khổ giấy</span><button type="button" data-c="size">A4</button></div>
@@ -218,23 +227,11 @@ const printdoc: Builder = (c) => {
         <div><span>Màu</span><button type="button" data-c="color">Màu</button></div>
       </div><button type="button" class="primary pr2-go">IN</button></div>
   </div>`;
-  let changes = 0, revised = false;
   const lcd = $(c.body, '.pr2-lcd');
   const render = () => {
     ($(c.body, '[data-c="size"]')).textContent = set.size; ($(c.body, '.pr2-n')).textContent = String(set.copies);
     ($(c.body, '[data-c="duplex"]')).textContent = set.duplex ? 'Bật' : 'Tắt'; ($(c.body, '[data-c="color"]')).textContent = set.color ? 'Màu' : 'Đen trắng';
     lcd.textContent = `${set.size} · ${set.copies} bản · ${set.duplex ? '2 mặt' : '1 mặt'} · ${set.color ? 'MÀU' : 'Đ/T'}`;
-  };
-  const revise = () => {
-    // sếp đổi ý một mục
-    revised = true;
-    const k = pick(['size', 'copies', 'duplex', 'color'] as const);
-    let note = '';
-    if (k === 'size') { want.size = want.size === 'A4' ? 'A3' : 'A4'; note = `in khổ ${want.size} nhé`; }
-    if (k === 'copies') { want.copies = want.copies >= 5 ? want.copies - 2 : want.copies + 2; note = `in ${want.copies} bản thôi`; }
-    if (k === 'duplex') { want.duplex = !want.duplex; note = want.duplex ? 'in 2 mặt cho đỡ tốn giấy' : 'in 1 mặt thôi'; }
-    if (k === 'color') { want.color = !want.color; note = want.color ? 'in màu cho đẹp' : 'in đen trắng thôi, tiết kiệm mực'; }
-    const m2 = $(c.body, '.pr2-mail2'); m2.hidden = false; m2.innerHTML = `<b>Sếp</b><p>À sửa lại: ${note}!</p>`; sfx.ting();
   };
   $$(c.body, '[data-c]').forEach(b => (b as HTMLButtonElement).onclick = () => {
     if (c.isDone()) return;
@@ -245,13 +242,11 @@ const printdoc: Builder = (c) => {
     if (k === 'duplex') set.duplex = !set.duplex;
     if (k === 'color') set.color = !set.color;
     sfx.click(); render();
-    if (!revised && ++changes >= 2) c.timers.push(window.setTimeout(revise, 400));
   });
   $<HTMLButtonElement>(c.body, '.pr2-go').onclick = () => {
     if (c.isDone()) return;
-    if (!revised) { revise(); c.toast('Khoan, sếp vừa nhắn thêm!'); return; }
     const bad = [set.size !== want.size && 'khổ giấy', set.copies !== want.copies && 'số bản', set.duplex !== want.duplex && 'in 2 mặt', set.color !== want.color && 'màu'].filter(Boolean);
-    if (!bad.length) c.done(); else { c.fail(); c.toast(`Sai: ${bad.join(', ')}. Đọc lại tin nhắn của sếp.`); }
+    if (!bad.length) c.done(); else { c.fail(); c.toast(`Sai: ${bad.join(', ')}. Xem lại phiếu yêu cầu.`); }
   };
   render();
 };
@@ -347,10 +342,16 @@ const solar: Builder = (c) => {
   dirty.forEach((k, j) => { kinds[k] = j % 2 ? 'leaf' : 'dust'; });
   const left: number[] = kinds.map(k => (k === "clean" ? 0 : 100));
   let tool: 'spray' | 'broom' = 'spray', down = false, lastX = 0, lastY = 0, warned = -1;
-  c.body.innerHTML = `<div class="so2"><div class="so2-tools"><button type="button" class="on" data-t="spray">💦 Bình xịt<small>vết bẩn</small></button><button type="button" data-t="broom">🧹 Chổi<small>lá cây</small></button></div>
+  c.body.innerHTML = `<div class="so2"><div class="so2-tools"><button type="button" class="on" data-t="spray"><span class="so2-ic">${TOOL_SVG.spray}</span>Bình xịt<small>vết bẩn</small></button><button type="button" data-t="broom"><span class="so2-ic">${TOOL_SVG.broom}</span>Chổi<small>lá cây</small></button></div>
+    <div class="so2-cursor">${TOOL_SVG.spray}</div>
     <div class="so2-grid">${kinds.map((k, i) => `<div class="so2-cell" data-i="${i}">${k === 'clean' ? '' : `<i class="${k}"></i>`}</div>`).join('')}</div><p class="so2-msg">Chọn công cụ rồi giữ chuột kéo qua lại trên ô bẩn</p></div>`;
-  const msg = $(c.body, '.so2-msg'), grid = $(c.body, '.so2-grid');
-  $$(c.body, '.so2-tools button').forEach(b => (b as HTMLButtonElement).onclick = () => { tool = (b as HTMLElement).dataset.t as typeof tool; $$(c.body, '.so2-tools button').forEach(x => x.classList.toggle('on', x === b)); sfx.click(); });
+  const msg = $(c.body, '.so2-msg'), grid = $(c.body, '.so2-grid'), cursor = $(c.body, '.so2-cursor'), wrapEl = $(c.body, '.so2');
+  $$(c.body, '.so2-tools button').forEach(b => (b as HTMLButtonElement).onclick = () => { tool = (b as HTMLElement).dataset.t as typeof tool; $$(c.body, '.so2-tools button').forEach(x => x.classList.toggle('on', x === b)); cursor.innerHTML = TOOL_SVG[tool]; sfx.click(); });
+  // Con trỏ hình công cụ đi theo tay khi ở trên dàn pin; lắc lư khi đang lau
+  const follow = (e: PointerEvent) => { const r = wrapEl.getBoundingClientRect(); cursor.style.transform = `translate(${e.clientX - r.left - 8}px, ${e.clientY - r.top - 40}px) rotate(${down ? Math.sin(e.clientX / 9) * 14 : 0}deg)`; };
+  grid.addEventListener('pointerenter', (e) => { cursor.classList.add('on'); follow(e); });
+  grid.addEventListener('pointerleave', () => { if (!down) cursor.classList.remove('on'); });
+  grid.addEventListener('pointermove', follow);
   const scrub = (e: PointerEvent) => {
     if (!down || c.isDone()) return;
     const d = Math.hypot(e.clientX - lastX, e.clientY - lastY); lastX = e.clientX; lastY = e.clientY;
