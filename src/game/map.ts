@@ -170,6 +170,32 @@ export type MiniKind =
   | 'darts' | 'claw' | 'fishfeed'
   | 'solar' | 'antenna' | 'acpanel';
 
+/**
+ * Độ khó của từng mini-game (dùng chung cho chia việc và phòng thử ?minigames):
+ * de = một thao tác hoặc giữ nút; tb = đọc, đếm, kéo thả, canh thời điểm; kho = phản xạ, chính xác, trí nhớ.
+ */
+export type MiniDiff = 'de' | 'tb' | 'kho';
+export const MINI_DIFF: Record<string, MiniDiff> = {
+  fingerprint: 'de', delivery: 'de', copier: 'de', projector: 'de', backlog: 'de', router: 'de', power: 'de',
+  mt_lift: 'de', mt_cab: 'tb', mt_desk: 'tb', mt_floor: 'de', mt_wc: 'tb',
+  getwater: 'tb', waterplant: 'tb', fridge: 'tb', minutes: 'tb', wires: 'tb', testbuild: 'tb', antenna: 'tb',
+  interview: 'tb', coffee: 'tb', printdoc: 'tb', pushbuild: 'tb', fishfeed: 'tb', solar: 'tb', acpanel: 'tb', claw: 'tb',
+  excel: 'kho', stamp: 'kho', balance: 'kho', sprite: 'kho', bug: 'kho', darts: 'kho',
+};
+/** Thời gian làm trung bình của từng mini-game (giây), đo bằng phòng thử; bot trong mô phỏng làm mất chừng đó (±20%) */
+export const MINI_TIME: Record<string, number> = {
+  fingerprint: 4.5, delivery: 3.5, copier: 4, projector: 6, backlog: 8,
+  mt_lift: 5, mt_cab: 6, mt_desk: 5, mt_floor: 5, mt_wc: 8,
+  getwater: 4, waterplant: 4.5, fridge: 6, minutes: 10, wires: 8, testbuild: 5, antenna: 5.5,
+  interview: 9, coffee: 9, printdoc: 8, pushbuild: 9, fishfeed: 8, solar: 8, acpanel: 6, claw: 8,
+  excel: 12, stamp: 13, balance: 10, sprite: 13, bug: 14, darts: 11,
+};
+/** Độ khó của một việc = độ khó của bước khó nhất */
+export function taskDiff(t: { steps: readonly string[] }): MiniDiff {
+  const r = { de: 0, tb: 1, kho: 2 } as const;
+  return t.steps.reduce<MiniDiff>((m, k) => (r[MINI_DIFF[k] ?? 'tb'] > r[m] ? (MINI_DIFF[k] ?? 'tb') : m), 'de');
+}
+
 export interface Station {
   id: MiniKind | 'camera' | 'faceid' | 'colorcheck';
   name: string;

@@ -7,7 +7,7 @@ import { ROOMS, TILE, MAP_W, MAP_H, DESKS, HIDE_SPOTS, CAMERAS, BELL, LOCKABLE_R
 import { slotStation, IT_CAM_TIME, IT_CD, SAB_CD, ENG_CD, ADMIN_CD, MEDIA_CD, CLIMBER_CD, PRY_AFTER } from '../game/sim';
 import { avatarURL, avatarImage, chairURL, characterCanvas, tagText, nameInk, GUARD_LOOK, randomLook, lookKey, lookColor, normalizeLook, DEFAULT_LOOK, SKIN_TONES, CHAR_H, CHAR_ORIGIN_Y, SKINS, HAIR_COLORS, HAIR_STYLES, PALETTE, BODIES, MARKS, ITEMS, SLOT_NAMES, itemDef, bodyDef, colors2, defaultColor, type Look, type Slot, type ItemDef } from '../render/chars';
 import { sfx } from '../audio';
-import { openMini, closeMini, miniOpen, openFaceId, openCardSwipe, openColorCheck, openHold } from './minigames';
+import { openMini, closeMini, miniOpen, openFaceId, openCardSwipe, openColorCheck, openV3 } from './minigames';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector(sel) as T;
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
@@ -894,7 +894,7 @@ export class UI {
     sfx.unlock();
     if (ctx.use.kind === 'bell') { const err = w.callEmergency(p, 'bell'); if (err) this.toast(err); return; }
     if (ctx.use.kind === 'desk') {
-      openMiniDesk(this.root, () => w.bossCheckIn(p));
+      openV3(this.root, 'desk', 'Giả vờ gõ phím', 'Sếp đi tuần! Gõ đúng các chữ đang bay tới trước khi chúng chạm vào bạn.', () => w.bossCheckIn(p));
       return;
     }
     if (ctx.use.kind === 'camera') { this.camFromRoom = true; this.toggleCams(true); return; }
@@ -905,11 +905,11 @@ export class UI {
     if (ctx.use.kind === 'liftpanel') { this.openLiftPanel(); return; }
     if (ctx.use.kind === 'pry') {
       const err = w.pryBlocked(p); if (err) { this.toast(err); return; }
-      openHold(this.root, 'Cạy cửa thang máy', 'Thang kẹt vì mất điện. Giữ nút để cạy cửa, chui ra tầng gần nhất.', 'Giữ để cạy', 8, () => { const e2 = w.pryOut(p); if (e2) this.toast(e2); });
+      openV3(this.root, 'pry', 'Cạy cửa thang máy', 'Thang kẹt vì mất điện. Đưa xà beng vào khe cửa rồi bẩy trái, phải xen kẽ.', () => { const e2 = w.pryOut(p); if (e2) this.toast(e2); });
       return;
     }
     if (ctx.use.kind === 'rescue') {
-      openHold(this.root, 'Mở cửa thang máy', 'Bạn là Engineer: giữ nút để mở cửa thang đang kẹt, người bên trong ra được.', 'Giữ để mở', 3, () => { const e2 = w.liftRescue(p); if (e2) this.toast(e2); else this.toast('Đã mở cửa thang máy!', 2000); });
+      openV3(this.root, 'rescue', 'Mở cửa thang máy', 'Bạn là Engineer: tra chìa khóa cứu hộ, xoay đúng chiều, rồi kéo cửa sang hai bên.', () => { const e2 = w.liftRescue(p); if (e2) this.toast(e2); else this.toast('Đã mở cửa thang máy!', 2000); });
       return;
     }
     if (ctx.use.kind === 'colorcheck') { this.openColorCheck(); return; }
@@ -2424,25 +2424,6 @@ function fmtTime(s: number) {
   return `${m}:${String(r).padStart(2, '0')}`;
 }
 
-/** Sếp đi tuần: bấm liên tục để "giả vờ gõ phím" */
-export function openMiniDesk(root: HTMLElement, onDone: () => void) {
-  closeMini();
-  const wrap = document.createElement('div');
-  wrap.className = 'modal';
-  wrap.innerHTML = `<div class="sheet mini"><div class="sheet-head"><div><h2>Giả vờ gõ phím</h2><p class="hint">Gõ thật nhanh trước khi sếp đi ngang qua!</p></div></div>
-    <div class="mini-body"><div class="typing"><pre class="screen"></pre><button class="primary big type-btn">Gõ lạch cạch</button></div></div></div>`;
-  root.appendChild(wrap);
-  const scr = wrap.querySelector('.screen') as HTMLElement;
-  const text = 'Kính gửi anh/chị, em xin phép cập nhật tiến độ dự án theo đúng kế hoạch đã đề ra ạ...';
-  let i = 0;
-  (wrap.querySelector('.type-btn') as HTMLElement).onpointerdown = (e) => {
-    e.preventDefault();
-    for (let k = 0; k < 6; k++) setTimeout(() => sfx.key(), k * 40);
-    i = Math.min(text.length, i + 9);
-    scr.textContent = text.slice(0, i) + '▌';
-    if (i >= text.length) { sfx.taskDone(); setTimeout(() => { wrap.remove(); onDone(); }, 300); }
-  };
-}
 
 const howtoHtml = () => `
   <div class="rules">

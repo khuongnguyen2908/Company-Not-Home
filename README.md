@@ -87,18 +87,20 @@ Bước build (`scripts/content-build.mjs`) đọc `content/content.xlsx` thành
 
 Tầm nhìn Nhân viên 3,8 ô (Nội gián gấp rưỡi). Hồi chiêu gài bẫy tự chỉnh theo số người và số Nội gián (`killCooldownFor` trong `sim.ts`). Ván 6 người trở xuống chỉ có 1 Nội gián. Mỗi người nhận việc ở 2 tầng liền kề (việc chấm công vẫn ở Lễ tân tầng 1). Kiểm chứng bằng 150 ván bot mỗi cỡ (`tests/balance.ts`):
 
-| Số người | Nội gián | Hồi chiêu | Nội gián thắng |
+| Số người | Nội gián | Hồi chiêu | Nội gián thắng (300 ván) |
 |---|---|---|---|
-| 5 | 1 | 51s | 53% |
-| 6 | 1 | 33s | 53% |
-| 7 | 1 | 22s | 53% |
-| 7 | 2 | 118s | 42% |
-| 8 | 1 | 18s | 40% |
-| 8 | 2 | 74s | 43% |
-| 9 | 1 | 12s | 43% |
-| 9 | 2 | 57s | 44% |
-| 10 | 1 | 9s | 46% |
-| 10 | 2 | 43s | 51% (300 ván) |
+| 5 | 1 | 57s | 52% |
+| 6 | 1 | 35s | 48% |
+| 7 | 1 | 23s | 54% |
+| 7 | 2 | 128s | 44% |
+| 8 | 1 | 18s | 46% |
+| 8 | 2 | 80s | 46% |
+| 9 | 1 | 12s | 46% |
+| 9 | 2 | 60s | 51% |
+| 10 | 1 | 8s | 48% |
+| 10 | 2 | 50s | 44% |
+
+Bot trong mô phỏng làm mỗi việc mất đúng thời gian thật của mini-game đó (bảng `MINI_TIME` trong `src/game/map.ts`, đo bằng phòng thử). Đổi mini-game thì cập nhật số này rồi chạy lại cân bằng. Mỗi người nhận tối đa 1 việc khó (`MINI_DIFF`).
 
 ## Phòng ban bí mật
 

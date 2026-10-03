@@ -1,44 +1,46 @@
 // Các mini-game "chạy KPI" và sửa sự cố, dựng bằng HTML
 import { sfx } from '../audio';
+import { MINI_V2 } from './minigames2';
+import { MINI_V3 } from './minigames3';
 
 import type { MiniKind } from '../game/map';
 export type { MiniKind };
 
 const MT_HINT = 'Siết chặt cả 4 con ốc: mỗi con bấm 3 lần cho tới khi chuyển xanh.';
 export const TITLES: Record<MiniKind, { title: string; hint: string }> = {
-  solar: { title: 'Lau tấm pin mặt trời', hint: 'Bấm vào ô pin còn bẩn để lau, mỗi ô 2 lần. Lau sạch hết là xong.' },
+  solar: { title: 'Lau tấm pin mặt trời', hint: 'Chọn bình xịt cho vết bẩn, chổi cho lá cây, rồi giữ và kéo qua lại trên ô để lau.' },
   antenna: { title: 'Chỉnh ăng-ten', hint: 'Xoay chảo sang trái hoặc phải cho tới khi đủ 5 vạch sóng, rồi bấm Khóa sóng.' },
-  acpanel: { title: 'Kiểm tra cục nóng điều hòa', hint: 'Gạt 3 công tắc theo đúng thứ tự ghi trên bảng. Gạt sai là phải làm lại.' },
+  acpanel: { title: 'Kiểm tra cục nóng điều hòa', hint: 'Gạt 5 công tắc theo đúng thứ tự ghi trên bảng. Gạt sai là phải làm lại.' },
   darts: { title: '🎯 Ném phi tiêu xả stress', hint: 'Tâm ngắm đung đưa liên tục. Bấm "Ném" đúng lúc tâm nằm trong vòng đỏ ở giữa. Cần 3 phi tiêu trúng.' },
-  claw: { title: '🧸 Gắp thú bông tặng sếp', hint: 'Cần gắp chạy qua lại. Bấm "Thả" khi cần gắp nằm ngay trên con gấu vàng.' },
-  fishfeed: { title: '🐠 Cho cá ăn', hint: 'Bấm vào từng con cá để rắc thức ăn, mỗi con ăn đúng 3 hạt. Rắc quá tay là nước đục, phải làm lại.' },
-  mt_lift: { title: '🔧 Bảo trì nóc thang máy', hint: MT_HINT },
-  mt_cab: { title: '🔧 Sửa khóa tủ đồ', hint: MT_HINT },
-  mt_desk: { title: '🔧 Gia cố gầm bàn họp', hint: MT_HINT },
-  mt_floor: { title: '🔧 Sửa ống cáp', hint: MT_HINT },
-  mt_wc: { title: '🔧 Sửa ống gió', hint: MT_HINT },
-  excel: { title: 'Nhập liệu Excel', hint: 'Bấm đúng ô đang sáng. Sai một ô là phải làm lại từ đầu, như ngoài đời.' },
+  claw: { title: '🧸 Gắp thú bông tặng sếp', hint: 'Gắp đúng 2 con thú trong danh sách. Mỗi lần gắp xong thú đổi chỗ và cần gắp chạy nhanh hơn.' },
+  fishfeed: { title: '🐠 Cho cá ăn', hint: 'Rê chuột hoặc kéo ngón tay để điều khiển cá nhỏ ăn 8 hạt. Né con cá to!' },
+  mt_lift: { title: '🔧 Bảo trì nóc thang máy', hint: 'Bấm vào từng con ốc để xoay 90°, cho chấm đỏ trùng với mũi tên vàng.' },
+  mt_cab: { title: '🔧 Sửa khóa tủ đồ', hint: 'Xoay 3 chữ số của ổ khóa. Đèn xanh là đúng, vàng là gần đúng, đỏ là còn xa.' },
+  mt_desk: { title: '🔧 Gia cố gầm bàn họp', hint: 'Gõ từng cây đinh cho bằng mặt gỗ. Gõ thêm vào đinh đã bằng là đinh cong.' },
+  mt_floor: { title: '🔧 Sửa ống cáp', hint: 'Bấm 2 đầu cáp bên phải để đổi chỗ, cho các dây cùng màu hết bắt chéo.' },
+  mt_wc: { title: '🔧 Sửa ống gió', hint: 'Tháo 4 con ốc, lau sạch bụi trong ống, rồi kéo lưới lọc mới vào khung.' },
+  excel: { title: 'Nhập liệu Excel', hint: 'Chép số trên phiếu chi vào bảng tính rồi bấm ↵ (gõ phím số cũng được). Sai thì gõ lại ô đó.' },
   wires: { title: 'Nối lại dây cáp server', hint: 'Cầm đầu dây bên trái, kéo sang đúng cổng cùng màu bên phải rồi thả tay.' },
   fridge: { title: 'Dọn đồ mốc trong tủ lạnh chung', hint: 'Vứt hết đồ đã mốc. Đồ còn tươi là của sếp, đừng đụng vào.' },
-  coffee: { title: 'Pha cà phê cho sếp', hint: 'Pha đúng công thức trên tờ giấy note rồi mang lên.' },
+  coffee: { title: 'Pha cà phê cho sếp', hint: 'Giữ cần chiết espresso và đánh sữa tới vạch xanh, thêm đường và đá đủ số, rồi mang lên.' },
   copier: { title: 'Gỡ kẹt máy photocopy', hint: 'Đập liên tục vào máy cho đến khi giấy chạy lại. Ngừng tay là kẹt lại.' },
-  stamp: { title: 'Ký duyệt hồ sơ', hint: 'Duyệt hồ sơ có chữ ký và số tiền trong hạn mức. Còn lại trả về.' },
-  router: { title: 'Khởi động lại Router', hint: 'Giữ nút nguồn 3 giây. Thả tay ra là phải giữ lại từ đầu.' },
+  stamp: { title: 'Ký duyệt hồ sơ', hint: 'Đối chiếu sổ quy định: đúng hết thì DUYỆT, sai một điều thì TRẢ VỀ. Có 3 hồ sơ.' },
+  router: { title: 'Khởi động lại Router', hint: 'Rút cả 3 dây, chờ đèn tắt hết, rồi cắm lại theo thứ tự ghi trên nhãn.' },
   power: { title: 'Bật lại cầu dao', hint: 'Gạt tất cả cầu dao lên vị trí BẬT.' },
-  fingerprint: { title: 'Chấm công vân tay', hint: 'Đặt ngón tay lên máy quét và giữ 3 giây. Ai đứng gần cũng thấy đèn xanh.' },
+  fingerprint: { title: 'Chấm công vân tay', hint: 'Giữ ngón tay và kéo vào khung xanh đang trôi, giữ trong khung cho đầy thanh. Ai đứng gần cũng thấy đèn.' },
   delivery: { title: 'Ký nhận hàng', hint: 'Ký vào ô chữ ký. Phải ký đủ dài, ký một chấm là shipper không chịu.' },
   waterplant: { title: 'Tưới cây trên sân thượng', hint: 'Giữ nút tưới cho đến khi nước lên tới vạch xanh, đừng để tràn.' },
   backlog: { title: 'Sắp xếp backlog', hint: 'Bấm các thẻ theo thứ tự ưu tiên: P1 trước, P4 sau cùng.' },
   sprite: { title: 'Tô màu sprite', hint: 'Tô lưới bên phải cho giống hệt mẫu bên trái.' },
   bug: { title: 'Tái hiện bug', hint: 'Xem các bước gây lỗi rồi bấm lại đúng thứ tự.' },
   testbuild: { title: 'Test bản build', hint: 'Bắt hết 6 con bug đang bò trên màn hình.' },
-  interview: { title: 'Xếp lịch phỏng vấn', hint: 'Chọn một ứng viên rồi bấm vào khung giờ người đó rảnh.' },
-  balance: { title: 'Cân bằng chỉ số game', hint: 'Kéo ba thanh chỉ số vào đúng vùng xanh trên bảng trắng.' },
+  interview: { title: 'Xếp lịch phỏng vấn', hint: 'Kéo chấm bên trái của ứng viên sang giờ họ rảnh, chấm bên phải sang phòng ban họ ứng tuyển.' },
+  balance: { title: 'Cân bằng chỉ số game', hint: 'Kéo cả 3 chỉ số vào vùng xanh. Tăng một chỉ số thì chỉ số kế tiếp tụt theo.' },
   projector: { title: 'Bật máy chiếu', hint: 'Bấm nút Nguồn vào cho tới khi màn hình hiện đúng cổng laptop.' },
   getwater: { title: 'Lấy nước tưới cây', hint: 'Giữ vòi nước, thả tay khi nước nằm trong vạch xanh.' },
-  printdoc: { title: 'In tài liệu', hint: 'Chọn đúng cài đặt in như trong yêu cầu rồi bấm In.' },
+  printdoc: { title: 'In tài liệu', hint: 'Chỉnh máy in đúng như tin nhắn của sếp rồi bấm IN. Để ý tin nhắn mới nhất.' },
   minutes: { title: 'Lấy biên bản họp', hint: 'Tìm đúng biên bản cuộc họp sáng nay trong chồng giấy.' },
-  pushbuild: { title: 'Đẩy bản build', hint: 'Bấm đẩy build rồi chờ thanh tải lên chạy xong. Đi chỗ khác là phải làm lại.' },
+  pushbuild: { title: 'Đẩy bản build', hint: 'Chờ thanh tải lên chạy. Khi có xung đột code, chọn dòng đúng theo quy ước nhóm.' },
 };
 
 let current: { el: HTMLElement; cleanup: () => void } | null = null;
@@ -48,6 +50,23 @@ if (typeof document !== 'undefined') {
   const inMini = (e: Event) => !!(e.target as HTMLElement | null)?.closest?.('.modal .sheet.mini, .modal .sheet.faceid-sheet');
   document.addEventListener('contextmenu', (e) => { if (inMini(e)) e.preventDefault(); });
   document.addEventListener('selectstart', (e) => { if (inMini(e)) e.preventDefault(); });
+}
+
+/** Màn đặc biệt đợt C (cạy cửa thang, Engineer mở cửa thang, giả vờ gõ phím): cùng khung và cách đóng như mini-game */
+export function openV3(root: HTMLElement, key: 'pry' | 'rescue' | 'desk', title: string, hint: string, onDone: () => void) {
+  closeMini();
+  const wrap = document.createElement('div');
+  wrap.className = 'modal';
+  wrap.innerHTML = `<div class="sheet mini mini-${key}" role="dialog" aria-label="${title}"><div class="sheet-head"><div><h2>${title}</h2><p class="hint">${hint}</p></div><button class="x" aria-label="Đóng">✕</button></div><div class="mini-body"></div></div>`;
+  root.appendChild(wrap);
+  const body = wrap.querySelector('.mini-body') as HTMLElement;
+  const timers: number[] = [], cleanups: (() => void)[] = [];
+  let finished = false;
+  const fail = () => { sfx.fail(); const sh = wrap.querySelector('.sheet') as HTMLElement; sh.classList.remove('shake'); void sh.offsetWidth; sh.classList.add('shake'); };
+  const done = () => { if (finished) return; finished = true; sfx.taskDone(); body.classList.add('mini-done'); timers.push(window.setTimeout(() => { closeMini(); onDone(); }, 550)); };
+  current = { el: wrap, cleanup: () => { timers.forEach(clearTimeout); cleanups.forEach(f => f()); } };
+  (wrap.querySelector('.x') as HTMLElement).onclick = () => closeMini();
+  MINI_V3[key]({ body, done, fail, isDone: () => finished, timers, cleanups, toast: (m) => toastIn(body, m) });
 }
 
 export function closeMini() {
@@ -641,7 +660,10 @@ export function openMini(root: HTMLElement, kind: MiniKind, onDone: () => void, 
       });
     },
   };
-  builders[kind]();
+  // Đợt B: mini-game làm lại (nếu có) thay cho bản cũ
+  const ctx = { body, done, fail, isDone: () => finished, timers, cleanups, toast: (m: string) => toastIn(body, m), hold: opts.onHold };
+  const v3 = MINI_V3[kind], v2 = MINI_V2[kind];
+  if (v3) v3(ctx); else if (v2) v2(ctx); else builders[kind]();
 }
 
 function toastIn(el: HTMLElement, msg: string) {

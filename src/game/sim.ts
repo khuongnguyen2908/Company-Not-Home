@@ -9,7 +9,7 @@ import {
 import { findPath, type Pt } from './path';
 import { fmt } from '../content/text';
 import { type Look, randomLook, lookColor, colors2, itemDef, bodyDef, SLOTS } from './look';
-import { CAMERAS, levelName, FLOORS, STAIRWELL, SPAWN_POINTS } from './map';
+import { CAMERAS, levelName, FLOORS, STAIRWELL, SPAWN_POINTS, MINI_TIME, taskDiff } from './map';
 import {
   type RoleDept, SPECIAL_ROLES, NEUTRAL_ROLES, COLOR_GROUPS, colorGroupOf, STICKERS, BOT_NAMES, FILLER_LINES, DEFENSE_LINES, IMPOSTOR_ALIBIS, pick, normalize,
 } from './data';
@@ -30,7 +30,7 @@ export const LIFT_FLOOR_TIME = 1;   // thang máy: 1 giây mỗi tầng
 export const LIFT_DOOR_TIME = 3;    // cửa mở 3 giây mỗi điểm dừng
 export const PRY_AFTER = 20;        // kẹt thang 20 giây thì được cạy cửa
 export const PRY_TIME = 8;
-export const RESCUE_TIME = 3;       // Engineer mở cửa thang kẹt từ bên ngoài
+export const RESCUE_TIME = 4;       // Engineer mở cửa thang kẹt từ bên ngoài
 export const NOISE_TIME = 15;     // Sound Engineer: cảnh báo tồn tại 15 giây (tòa nhiều tầng cần thêm thời gian lần theo)
 export const ADMIN_BATTERY = 10;  // Admin: pin xem tối đa 10 giây
 export const ADMIN_CD = 20;
@@ -52,8 +52,8 @@ export const BOSS_TIME = 45; // tòa nhiều tầng: cần thêm thời gian đ�
  * Chọn bằng cách chạy 150 ván bot cho từng cỡ, nhắm tỉ lệ Nội gián thắng khoảng 40–52%.
  */
 export function killCooldownFor(players: number, imps: number): number {
-  if (imps <= 1) return ({ 5: 51, 6: 33, 7: 22, 8: 18, 9: 12 } as Record<number, number>)[players] ?? (players < 5 ? 55 : 9);
-  return ({ 7: 118, 8: 74, 9: 57 } as Record<number, number>)[players] ?? (players < 7 ? 118 : 43);
+  if (imps <= 1) return ({ 5: 57, 6: 35, 7: 23, 8: 18, 9: 12 } as Record<number, number>)[players] ?? (players < 5 ? 60 : 8);
+  return ({ 7: 128, 8: 80, 9: 60 } as Record<number, number>)[players] ?? (players < 7 ? 128 : 50);
 }
 export const USE_RANGE = 1.15 * TILE;
 export const REPORT_RANGE = 1.7 * TILE;
@@ -408,11 +408,17 @@ export class World {
       const zone = this.rng() < 0.5 ? [1, 2] : [2, 3, 4];
       const floorOfStep = (k: string) => { const st = station(k); return levelAt((st.stand.x + 0.5) * TILE, (st.stand.y + 0.5) * TILE); };
       const inZone = (t: (typeof TASKS)[number]) => t.steps.every(k => zone.includes(floorOfStep(k)));
-      const shortAll = shuffle(TASKS.filter(t => t.type === 'short'));
-      const shortZ = shortAll.filter(inZone);
-      const short = [...shortZ, ...shortAll.filter(t => !inZone(t))].slice(0, this.shortTasks);
+      // Mỗi người tối đa 1 việc khó (tính cả việc ngắn lẫn việc dài): ưu tiên việc trong khu, bỏ qua việc khó thứ hai
+      let hard = 0;
+      const take = (list: (typeof TASKS)[number][], n: number) => {
+        const out: (typeof TASKS)[number][] = [];
+        for (const t of list) { if (out.length >= n) break; const h = taskDiff(t) === 'kho'; if (h && hard >= 1) continue; if (h) hard++; out.push(t); }
+        return out;
+      };
       const longAll = shuffle(TASKS.filter(t => t.type === 'long'));
-      const long = [...longAll.filter(inZone), ...longAll.filter(t => !inZone(t))].slice(0, 1);
+      const long = take([...longAll.filter(inZone), ...longAll.filter(t => !inZone(t))], 1);
+      const shortAll = shuffle(TASKS.filter(t => t.type === 'short'));
+      const short = take([...shortAll.filter(inZone), ...shortAll.filter(t => !inZone(t))], this.shortTasks);
       const maint = a.role === 'crew' && a.dept === 'engineer' ? shuffle(TASKS.filter(t => t.type === 'maint')).slice(0, 2) : [];
       a.tasks = [...common, ...short, ...long, ...maint].map(t => ({ taskId: t.id, step: 0, done: false }));
       a.brain.thinkT = this.rng() * 1.5;
@@ -1619,7 +1625,7 @@ export class World {
     if (a.alive && this.sabotage?.kind === 'boss' && !a.bossDone) {
       const seat = DESKS[a.desk].seat;
       const c = tileCenter(seat.x, seat.y);
-      if (dist(a, c) < 6) { b.goal = 'desk'; b.workT = 0.6; return; }
+      if (dist(a, c) < 6) { b.goal = 'desk'; b.workT = 5 * (0.8 + this.rng() * 0.4); return; } // giả vờ gõ phím ~5 giây
       if (b.goal !== 'desk' || !b.path.length) this.goTo(a, seat, 'desk');
       this.followPath(a, dt);
       return;
@@ -1736,7 +1742,7 @@ export class World {
     if (a.alive && b.fixer && this.sabotage && this.sabotage.kind !== 'boss') {
       const st = station(this.sabotage!.kind === 'wifi' ? 'router' : 'power');
       const c = tileCenter(st.stand.x, st.stand.y);
-      if (dist(a, c) < 8) { b.goal = 'fix'; b.workT = 2 + this.rng() * 1.5; return; }
+      if (dist(a, c) < 8) { b.goal = 'fix'; b.workT = (this.sabotage?.kind === 'wifi' ? 4.5 : 2.5) * (0.8 + this.rng() * 0.4); return; } // router: rút, chờ, cắm lại; cầu dao: gạt
       if (b.goal !== 'fix' || !b.path.length) this.goTo(a, st.stand, 'fix');
       this.followPath(a, dt);
       return;
@@ -1762,7 +1768,7 @@ export class World {
     // 4. Làm task
     if (b.path.length) {
       const arrived = this.followPath(a, dt);
-      if (arrived && b.goal?.startsWith('task:')) b.workT = (b.goal === 'task:fingerprint' ? 3.5 : 4.5 + this.rng() * 4.5);
+      if (arrived && b.goal?.startsWith('task:')) b.workT = this.stepTime(b.goal.slice(5));
       else if (arrived) { b.goal = null; b.thinkT = 1 + this.rng() * 3; }
       return;
     }
@@ -1790,7 +1796,7 @@ export class World {
       }
       const st = station(slotStation(t));
       const c = tileCenter(st.stand.x, st.stand.y);
-      if (dist(a, c) < 8) { b.goal = 'task:' + st.id; b.workT = st.id === 'fingerprint' ? 3.5 : 4.5 + this.rng() * 4.5; return; }
+      if (dist(a, c) < 8) { b.goal = 'task:' + st.id; b.workT = this.stepTime(st.id); return; }
       if (!this.goTo(a, st.stand, 'task:' + st.id)) b.thinkT = 1;
     } else {
       this.goTo(a, this.randomFloorTile(), 'wander');
@@ -2476,6 +2482,9 @@ export class World {
     this.phase = 'play';
     this.checkWin();
   }
+
+  /** Thời gian bot làm một bước việc: theo thời gian thật của mini-game (đo bằng phòng thử), ±20% */
+  stepTime(kind: string) { return (MINI_TIME[kind] ?? 7) * (0.8 + this.rng() * 0.4); }
 
   /** Lựa chọn nơi xuất hiện đang chờ người chơi (chỉ số trong SPAWN_POINTS), null nếu không có */
   spawnOffer: number[] | null = null;

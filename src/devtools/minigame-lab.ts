@@ -1,8 +1,7 @@
 // Phòng thử mini-game: mở bằng ?minigames. Chơi thử từng mini-game (bản thật và bản Nội gián làm giả),
 // bấm giờ, đánh dấu Ổn / Cần sửa, ghi chú, rồi sao chép hoặc tải toàn bộ phản hồi để gửi lại.
-import { openMini, closeMini, openFaceId, openCardSwipe, openColorCheck, openHold, TITLES } from '../ui/minigames';
-import { openMiniDesk } from '../ui/ui';
-import { STATIONS, TASKS, levelAt, levelName, roomName, TILE, type MiniKind } from '../game/map';
+import { openMini, closeMini, openFaceId, openCardSwipe, openColorCheck, openV3, TITLES } from '../ui/minigames';
+import { STATIONS, TASKS, levelAt, levelName, roomName, TILE, MINI_DIFF, type MiniKind, type MiniDiff } from '../game/map';
 import { COLOR_GROUPS } from '../game/data';
 import { avatarURL } from '../render/chars';
 import { randomLook, lookColor } from '../game/look';
@@ -23,15 +22,8 @@ const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;
  * - Trung bình: phải đọc hiểu, đếm, kéo thả hoặc canh thời điểm; làm sai thì làm lại phần đó.
  * - Khó: cần phản xạ, độ chính xác hoặc trí nhớ; sai một bước là mất hết tiến độ.
  */
-type Diff = 'de' | 'tb' | 'kho';
-const DIFF: Record<string, Diff> = {
-  fingerprint: 'de', router: 'de', power: 'de', delivery: 'de', copier: 'de', pushbuild: 'de', projector: 'de', backlog: 'de', solar: 'de', acpanel: 'de',
-  mt_lift: 'de', mt_cab: 'de', mt_desk: 'de', mt_floor: 'de', mt_wc: 'de',
-  sp_colorcheck: 'de', sp_faceid: 'de', sp_pry: 'de', sp_rescue: 'de', sp_desk: 'de',
-  getwater: 'tb', waterplant: 'tb', fishfeed: 'tb', antenna: 'tb', wires: 'tb', coffee: 'tb', fridge: 'tb', stamp: 'tb', interview: 'tb', printdoc: 'tb',
-  minutes: 'tb', balance: 'tb', testbuild: 'tb', claw: 'tb',
-  excel: 'kho', sprite: 'kho', bug: 'kho', darts: 'kho', sp_swipe: 'kho',
-};
+type Diff = MiniDiff;
+const DIFF: Record<string, Diff> = { ...MINI_DIFF, sp_colorcheck: 'de', sp_faceid: 'de', sp_pry: 'tb', sp_rescue: 'tb', sp_desk: 'tb', sp_swipe: 'tb' };
 const DIFF_LABEL: Record<Diff, string> = { de: 'Dễ', tb: 'Trung bình', kho: 'Khó' };
 /** Việc người khác nhìn thấy được khi bạn đang làm (chứng minh trong sạch, như "việc có hình ảnh" của Among Us) */
 const VISIBLE = new Set(['fingerprint', 'sp_faceid', 'sp_colorcheck']);
@@ -63,12 +55,12 @@ function buildItems(): Item[] {
       run: (root, done) => openColorCheck(root, COLOR_GROUPS.map(g => ({ id: g.id, name: g.name, hex: g.hex })), [], () => undefined, () => { done(); return Math.random() < 0.5; }) },
     { id: 'sp_swipe', title: 'Quẹt thẻ mở cửa bị khóa', hint: 'Quẹt thẻ đúng tốc độ để mở cửa.', group: 'Màn đặc biệt', where: 'Cửa các phòng khi Nội gián khóa cửa', icon: 'keycard', fake: false,
       run: (root, done) => openCardSwipe(root, done) },
-    { id: 'sp_pry', title: 'Cạy cửa thang máy', hint: 'Giữ nút 8 giây để cạy cửa thang đang kẹt.', group: 'Màn đặc biệt', where: 'Trong buồng thang máy khi mất điện', icon: 'crowbar', fake: false,
-      run: (root, done) => openHold(root, 'Cạy cửa thang máy', 'Thang kẹt vì mất điện. Giữ nút để cạy cửa, chui ra tầng gần nhất.', 'Giữ để cạy', 8, done) },
-    { id: 'sp_rescue', title: 'Mở cửa thang máy (Engineer)', hint: 'Giữ nút 3 giây để mở cửa cho người bị kẹt.', group: 'Màn đặc biệt', where: 'Cửa thang máy khi mất điện · chỉ Engineer', icon: 'wrench', fake: false,
-      run: (root, done) => openHold(root, 'Mở cửa thang máy', 'Bạn là Engineer: giữ nút để mở cửa thang đang kẹt, người bên trong ra được.', 'Giữ để mở', 3, done) },
-    { id: 'sp_desk', title: 'Giả vờ gõ phím (Sếp đi tuần)', hint: 'Bấm liên tục cho tới khi đầy thanh.', group: 'Màn đặc biệt', where: 'Bàn của bạn, Phòng làm việc Tầng 2 · khi Sếp đi tuần', icon: 'desk', fake: false,
-      run: (root, done) => openMiniDesk(root, done) },
+    { id: 'sp_pry', title: 'Cạy cửa thang máy', hint: 'Đưa xà beng vào khe cửa rồi bẩy trái, phải xen kẽ cho khe mở rộng.', group: 'Màn đặc biệt', where: 'Trong buồng thang máy khi mất điện', icon: 'crowbar', fake: false,
+      run: (root, done) => openV3(root, 'pry', 'Cạy cửa thang máy', 'Thang kẹt vì mất điện. Đưa xà beng vào khe cửa rồi bẩy trái, phải xen kẽ.', done) },
+    { id: 'sp_rescue', title: 'Mở cửa thang máy (Engineer)', hint: 'Tra chìa cứu hộ, xoay đúng chiều, kéo cửa sang hai bên.', group: 'Màn đặc biệt', where: 'Cửa thang máy khi mất điện · chỉ Engineer', icon: 'wrench', fake: false,
+      run: (root, done) => openV3(root, 'rescue', 'Mở cửa thang máy', 'Bạn là Engineer: tra chìa khóa cứu hộ, xoay đúng chiều, rồi kéo cửa sang hai bên.', done) },
+    { id: 'sp_desk', title: 'Giả vờ gõ phím (Sếp đi tuần)', hint: 'Gõ đúng các chữ đang bay tới trước khi chúng chạm vào bạn.', group: 'Màn đặc biệt', where: 'Bàn của bạn, Phòng làm việc Tầng 2 · khi Sếp đi tuần', icon: 'desk', fake: false,
+      run: (root, done) => openV3(root, 'desk', 'Giả vờ gõ phím', 'Sếp đi tuần! Gõ đúng các chữ đang bay tới trước khi chúng chạm vào bạn.', done) },
   );
   return items;
 }
