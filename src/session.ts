@@ -6,7 +6,9 @@ export const session = {
   contentTest: 0,
   world: null as World | null,
   input: { x: 0, y: 0 },
-  paused: false, // tạm dừng khi đang mở mini-game? (không: văn phòng không bao giờ dừng)
+  paused: false,
+  /** thời điểm khung hình gần nhất của cảnh vẽ (máy bơm nhịp dùng để biết tab có đang bị ẩn không) */
+  lastFrameAt: 0, // tạm dừng khi đang mở mini-game? (không: văn phòng không bao giờ dừng)
   onEvents: (_e: GameEvent[]) => {},
   onFrame: (_dt: number) => {},
   newGameId: 0,

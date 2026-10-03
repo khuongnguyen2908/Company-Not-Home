@@ -1967,3 +1967,16 @@ body.mt-mode { overflow: hidden; }
 .net-lost { position: fixed; left: 50%; top: 12px; transform: translateX(-50%); z-index: 100; background: #e2412f; color: #fff; font-weight: 800; padding: 8px 16px; border-radius: 10px; border: 3px solid var(--ink); box-shadow: 0 4px 0 var(--ink); animation: blink 1.2s steps(2) infinite; }
 .sp-here { margin: 0 0 4px; font-weight: 700; }
 .sp-same { font-style: normal; background: #c8f0d2; border: 1.5px solid var(--ink); border-radius: 999px; padding: 0 6px; font-size: .68rem; margin-left: 4px; }
+/* Mã phòng trong ván, nút vào lại phòng, popup kết nối */
+.room-chip { border: 3px solid var(--ink); border-radius: 999px; background: #fffdf6; padding: 4px 12px; font-weight: 700; font-size: .8rem; box-shadow: 0 3px 0 var(--ink); cursor: pointer; margin-right: 8px; align-self: center; }
+.room-chip b { font-family: var(--display); letter-spacing: 1px; }
+.top-right { display: flex; align-items: center; }
+.rejoin-btn small { display: block; font-size: .72rem; font-weight: 700; opacity: .75; }
+.net-pop { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; background: rgba(13, 14, 31, .6); }
+.np-card { background: #fffdf6; border: 4px solid var(--ink); border-radius: 16px; box-shadow: 0 6px 0 var(--ink); padding: 18px 24px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 90vw; }
+.np-card h3 { margin: 0; font-family: var(--display); }
+.np-card p { margin: 0; }
+.np-spin { width: 34px; height: 34px; border: 5px solid #e9edf5; border-top-color: var(--ink); border-radius: 50%; animation: npSpin .8s linear infinite; }
+@keyframes npSpin { to { transform: rotate(360deg); } }
+.room-p2p { margin: 0; font-weight: 700; font-size: .85rem; color: #1f6feb; }
+.room-p2p.offline { color: #b0261c; }

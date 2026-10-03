@@ -8,14 +8,26 @@ import { slotStation, IT_CAM_TIME, IT_CD, SAB_CD, ENG_CD, ADMIN_CD, MEDIA_CD, CL
 import { avatarURL, avatarImage, chairURL, characterCanvas, tagText, nameInk, GUARD_LOOK, randomLook, lookKey, lookColor, normalizeLook, DEFAULT_LOOK, SKIN_TONES, CHAR_H, CHAR_ORIGIN_Y, SKINS, HAIR_COLORS, HAIR_STYLES, PALETTE, BODIES, MARKS, ITEMS, SLOT_NAMES, itemDef, bodyDef, colors2, defaultColor, type Look, type Slot, type ItemDef } from '../render/chars';
 import { sfx } from '../audio';
 import { openMini, closeMini, miniOpen, openFaceId, openCardSwipe, openColorCheck, openV3 } from './minigames';
-import { act, net, NetHost, NetClient, newRoomCode, normalizeCode, MAX_PLAYERS, type Profile } from '../net/room';
-import { TabTransport, newPeerId } from '../net/transport';
+import { act, net, NetHost, NetClient, newRoomCode, normalizeCode, MAX_PLAYERS, HOST_GONE_MS, HOST_LOST_MS, type Profile } from '../net/room';
+import { TabTransport, MultiTransport, newPeerId } from '../net/transport';
+import { PeerTransport, type PeerCtor, type P2PStatus } from '../net/peer';
+import { Peer } from 'peerjs';
+/** Màn chia ô chỉ dùng kênh nội bộ (chạy cả khi không có mạng); bình thường thêm P2P để máy khác vào được */
+const USE_P2P = !new URLSearchParams(location.search).get('mt');
+import { startPump } from '../net/pump';
 
 /** Mã máy cố định cho từng tab (giữ nguyên khi tải lại trang) để vào lại đúng nhân vật; mỗi ô ?multitest một mã riêng */
 const NET_SUFFIX = MT_SLOT_RAW() ? ':mt' + MT_SLOT_RAW() : '';
 function MT_SLOT_RAW() { return new URLSearchParams(location.search).get('mt'); }
 function stablePeerId() { const k = 'ngvp-peer' + NET_SUFFIX; let id = sessionStorage.getItem(k); if (!id) { id = newPeerId(); sessionStorage.setItem(k, id); } return id; }
 const ROOM_KEY = 'ngvp-room' + NET_SUFFIX;
+/** Phòng vừa ở (nhớ cả khi đóng tab, trong 10 phút) để hiện nút "Vào lại phòng"; kèm mã máy cũ để nhận lại đúng nhân vật */
+const LAST_KEY = 'ngvp-last' + NET_SUFFIX;
+function lastRoom(): { code: string; peer: string; at: number } | null {
+  try { const v = JSON.parse(localStorage.getItem(LAST_KEY) ?? 'null'); return v && Date.now() - v.at < 10 * 60000 ? v : null; } catch { return null; }
+}
+function rememberRoom(code: string, peer: string) { try { localStorage.setItem(LAST_KEY, JSON.stringify({ code, peer, at: Date.now() })); } catch { /* bỏ qua */ } }
+function forgetRoom() { try { localStorage.removeItem(LAST_KEY); } catch { /* bỏ qua */ } sessionStorage.removeItem(ROOM_KEY); }
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector(sel) as T;
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
@@ -236,6 +248,15 @@ export class UI {
     $('#go-howto', el).onclick = () => this.openRules();
     $('#go-keys', el).onclick = () => this.openControls();
     // Link mời (?room=MÃ): có tên rồi thì vào thẳng phòng; chưa có tên thì điền sẵn mã vào menu chơi nhiều người
+    // Vừa rời một phòng (kể cả đã đóng tab): nút vào lại phòng, nhận lại đúng nhân vật nếu còn trong 60 giây
+    const lr = lastRoom();
+    if (lr && !MT_SLOT && net.role === 'solo') {
+      const b = document.createElement('button');
+      b.className = 'ghost-btn big rejoin-btn'; b.type = 'button';
+      b.innerHTML = `↩ Vào lại phòng ${esc(lr.code)}<small>Bạn vừa rời phòng lúc ${new Date(lr.at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</small>`;
+      $('#go-online', el).insertAdjacentElement('afterend', b);
+      b.onclick = () => { if (profileOk()) this.joinRoom(lr.code, lr.peer); };
+    }
     // link mời, hoặc vừa tải lại trang khi đang ở trong phòng (vào lại đúng nhân vật cũ)
     const invite = new URLSearchParams(location.search).get('room') ?? sessionStorage.getItem(ROOM_KEY);
     if (invite && !MT_SLOT && !this.inviteUsed) {
@@ -685,6 +706,18 @@ export class UI {
 
   // ================= CHƠI NHIỀU NGƯỜI =================
   private titleProfileOk: () => boolean = () => false;
+  /** trạng thái đường P2P (null: không dùng / chưa bật) */
+  private p2pStatus: P2PStatus | null = null;
+  private p2pText(): string {
+    const host = !!net.host;
+    switch (this.p2pStatus) {
+      case 'ready': return host ? '🌐 Bạn bè ở máy khác vào được bằng mã hoặc link mời' : '🌐 Đã kết nối qua mạng';
+      case 'connecting': return host ? '🌐 Đang mở cổng cho máy khác vào…' : '🌐 Đang kết nối tới chủ phòng qua mạng…';
+      case 'notfound': return '🌐 Chưa thấy chủ phòng, đang thử lại…';
+      case 'offline': return host ? '⚠️ Không kết nối được máy giới thiệu: chỉ chơi được các tab trong trình duyệt này' : '⚠️ Không kết nối được máy giới thiệu, kiểm tra mạng của bạn';
+      default: return '';
+    }
+  }
   private inviteUsed = false;
   private mtStarted = false;
 
@@ -737,13 +770,26 @@ export class UI {
     if (net.client) { net.client.leave(); session.world = null; } // bản sao không bao giờ được tự chạy như ván chơi một mình
     net.host = null; net.client = null; net.role = 'solo';
     sessionStorage.removeItem(ROOM_KEY);
+    this.rejoinPop(null);
     this.roomEl?.remove(); this.roomEl = null;
     this.netBanner(false);
   }
 
   createRoom(code = newRoomCode()) {
     this.leaveNet();
-    const h = new NetHost(new TabTransport(code), code, this.myProfile());
+    startPump();
+    const tab = new TabTransport(code);
+    const multi = new MultiTransport([tab]);
+    this.p2pStatus = USE_P2P ? 'connecting' : null;
+    if (USE_P2P) {
+      const p2p = new PeerTransport(tab.peerId, 'host', code, Peer as unknown as PeerCtor);
+      multi.add(p2p);
+      p2p.onStatus = (st) => {
+        if (st === 'taken' && net.host?.code === code && net.host.players.length === 1) { this.createRoom(newRoomCode()); return; } // mã trùng phòng khác: đổi mã
+        this.p2pStatus = st; this.renderRoom();
+      };
+    }
+    const h = new NetHost(multi, code, this.myProfile(), { timers: false });
     net.host = h; net.role = 'host';
     h.onRoomChange = () => this.renderRoom();
     h.onNote = (t) => this.notify(t);
@@ -754,25 +800,49 @@ export class UI {
     h.broadcastRoom();
   }
 
-  joinRoom(code: string) {
+  /** Vào phòng. peer: mã máy cũ (vào lại để nhận đúng nhân vật cũ) */
+  joinRoom(code: string, peer?: string) {
+    const resuming = !!peer || sessionStorage.getItem(ROOM_KEY) === code || lastRoom()?.code === code;
     this.leaveNet();
-    const c = new NetClient(new TabTransport(code, stablePeerId()), code, this.myProfile());
+    startPump();
+    const myPeer = peer ?? (lastRoom()?.code === code && !sessionStorage.getItem('ngvp-peer' + NET_SUFFIX) ? lastRoom()!.peer : stablePeerId());
+    sessionStorage.setItem('ngvp-peer' + NET_SUFFIX, myPeer);
+    const multi = new MultiTransport([new TabTransport(code, myPeer)]);
+    const c = new NetClient(multi, code, this.myProfile(), { timers: false });
     net.client = c; net.role = 'client';
+    // kênh nội bộ không thấy chủ phòng trong 1,2 giây (chủ phòng ở máy khác): bật P2P
+    this.p2pStatus = null;
+    if (USE_P2P) window.setTimeout(() => {
+      if (net.client !== c || c.room) return;
+      const p2p = new PeerTransport(myPeer, 'client', code, Peer as unknown as PeerCtor);
+      multi.add(p2p);
+      this.p2pStatus = 'connecting';
+      p2p.onStatus = (st) => { this.p2pStatus = st; this.renderRoom(); };
+      c.join();
+    }, 1200);
     sessionStorage.setItem(ROOM_KEY, code);
+    rememberRoom(code, myPeer);
+    if (resuming && !MT_SLOT) this.rejoinPop(code);
     c.onNote = (t) => this.notify(t);
     c.onHostLost = (lost) => this.netBanner(lost);
     net.onError = (m) => this.toast(m);
-    c.onRoom = () => { if (!session.world || session.world.phase === 'ended' || !c.replica) this.showRoom(); };
-    c.onReject = (r) => { this.leaveNet(); this.showMainMenu(); this.infoModal('Không vào được phòng', `<p>${esc(r)}</p>`); };
-    c.onStart = (rep) => this.startClientGame(rep);
+    c.onRoom = () => { rememberRoom(code, myPeer); if (!c.replica) window.setTimeout(() => { if (!c.replica) this.rejoinPop(null); }, 1200); if (!session.world || session.world.phase === 'ended' || !c.replica) this.showRoom(); };
+    c.onReject = (r) => { forgetRoom(); this.leaveNet(); this.showMainMenu(); this.infoModal('Không vào được phòng', `<p>${esc(r)}</p>`); };
+    c.onStart = (rep) => { this.rejoinPop(null); this.startClientGame(rep); };
     c.onEnd = () => this.showRoom();
-    c.onClosed = () => { this.leaveNet(); closeMini(); this.showMainMenu(); this.infoModal('Phòng đã đóng', '<p>Chủ phòng đã đóng phòng hoặc mất kết nối quá lâu.</p>'); };
+    c.onClosed = () => { forgetRoom(); this.leaveNet(); closeMini(); this.showMainMenu(); this.infoModal('Phòng đã đóng', '<p>Chủ phòng đã đóng phòng hoặc mất kết nối quá lâu.</p>'); };
     this.showRoom();
     // gõ cửa vài lần (chủ phòng có thể chưa sẵn sàng); không thấy phòng thì báo
     let tries = 0;
     const knock = () => {
       if (net.client !== c || c.room) return;
-      if (++tries > 10) { this.leaveNet(); this.showMainMenu(); this.infoModal('Không tìm thấy phòng', `<p>Không thấy phòng <b>${esc(code)}</b>. Kiểm tra lại mã, hoặc phòng đã đóng.</p>`); return; }
+      if (++tries > 20) {
+        const offline = this.p2pStatus === 'offline';
+        forgetRoom(); this.leaveNet(); this.showMainMenu();
+        if (offline) this.infoModal('Không kết nối được', `<p>Máy của bạn không kết nối được máy giới thiệu để vào phòng <b>${esc(code)}</b> ở máy khác. Kiểm tra mạng (một số mạng công ty chặn kết nối này), rồi thử lại.</p>`);
+        else this.infoModal('Không tìm thấy phòng', `<p>Không thấy phòng <b>${esc(code)}</b>. Kiểm tra lại mã, hoặc phòng đã đóng.</p>`);
+        return;
+      }
       c.join(); window.setTimeout(knock, 700);
     };
     knock();
@@ -797,7 +867,7 @@ export class UI {
     if (!el || !el.isConnected) return;
     const host = net.host, cl = net.client;
     const room = host ? { code: host.code, players: host.players, settings: host.settings, inGame: host.inGame } : cl?.room;
-    if (!room) { el.innerHTML = `<div class="room-card"><h2>Đang tìm phòng…</h2><p class="small">${esc(cl?.code ?? '')}</p><div class="room-foot"><button class="ghost-btn" id="rm-leave" type="button">Hủy</button></div></div>`; (el.querySelector('#rm-leave') as HTMLButtonElement).onclick = () => { this.leaveNet(); this.showMainMenu(); }; return; }
+    if (!room) { el.innerHTML = `<div class="room-card"><h2>Đang tìm phòng…</h2><p class="small">${esc(cl?.code ?? '')}</p><p class="room-p2p">${esc(this.p2pText())}</p><div class="room-foot"><button class="ghost-btn" id="rm-leave" type="button">Hủy</button></div></div>`; (el.querySelector('#rm-leave') as HTMLButtonElement).onclick = () => { forgetRoom(); this.leaveNet(); this.showMainMenu(); }; return; }
     const me = host ? host.tr.peerId : cl!.tr.peerId;
     const st = room.settings;
     const total = st.fillBots ? Math.max(st.seats, room.players.length) : room.players.length;
@@ -817,6 +887,7 @@ export class UI {
         <label>Nội gián <select id="rm-imps" ${host && total > 6 ? '' : 'disabled'}><option value="1" ${imps === 1 ? 'selected' : ''}>1</option><option value="2" ${imps === 2 ? 'selected' : ''}>2</option></select></label>
       </div>
       <p class="room-note">${room.players.length}/${cap} người · ván ${total} người, ${imps} Nội gián${canStart ? '' : ' · cần ít nhất 4 người (bật bot để chơi ngay)'}</p>
+      ${this.p2pText() ? `<p class="room-p2p ${this.p2pStatus}">${esc(this.p2pText())}</p>` : ''}
       <p class="room-flash" hidden></p>
       <div class="room-foot"><button class="ghost-btn" id="rm-leave" type="button">Rời phòng</button>
         ${host ? `<button class="primary big" id="rm-start" type="button" ${canStart ? '' : 'disabled'}>Bắt đầu ván</button>` : `<span class="room-wait">Chờ chủ phòng bắt đầu…</span>`}</div>
@@ -824,7 +895,7 @@ export class UI {
     const copy = (txt: string, btn: HTMLElement) => { navigator.clipboard?.writeText(txt).then(() => { btn.textContent = 'Đã sao chép!'; window.setTimeout(() => this.renderRoom(), 1200); }).catch(() => undefined); };
     (el.querySelector('#rm-code') as HTMLButtonElement).onclick = (e) => copy(room.code, e.currentTarget as HTMLElement);
     (el.querySelector('#rm-link') as HTMLButtonElement).onclick = (e) => copy(link, e.currentTarget as HTMLElement);
-    (el.querySelector('#rm-leave') as HTMLButtonElement).onclick = () => { this.leaveNet(); this.showMainMenu(); };
+    (el.querySelector('#rm-leave') as HTMLButtonElement).onclick = () => { forgetRoom(); this.leaveNet(); this.showMainMenu(); };
     if (host) {
       (el.querySelector('#rm-bots') as HTMLInputElement).onchange = (e) => { host.settings.fillBots = (e.target as HTMLInputElement).checked; host.broadcastRoom(); };
       (el.querySelector('#rm-seats') as HTMLSelectElement).onchange = (e) => { host.settings.seats = Number((e.target as HTMLSelectElement).value); host.broadcastRoom(); };
@@ -875,11 +946,26 @@ export class UI {
     const f = this.roomEl?.querySelector('.room-flash') as HTMLElement | null;
     if (f) { f.hidden = false; f.textContent = text; window.setTimeout(() => { if (f.textContent === text) f.hidden = true; }, 4000); }
   }
-  /** Người vào phòng: dải báo mất kết nối với chủ phòng */
+  /** Người vào phòng: popup mất kết nối với chủ phòng, đếm ngược tới lúc coi như phòng đóng */
   private netBanner(on: boolean) {
-    let b = document.querySelector('.net-lost') as HTMLElement | null;
+    let b = document.querySelector('.net-pop') as HTMLElement | null;
     if (!on) { b?.remove(); return; }
-    if (!b) { b = document.createElement('div'); b.className = 'net-lost'; b.textContent = 'Mất kết nối với chủ phòng… đang chờ kết nối lại'; document.body.appendChild(b); }
+    if (b) return;
+    b = document.createElement('div'); b.className = 'net-pop';
+    b.innerHTML = `<div class="np-card"><i class="np-spin"></i><h3>Mất kết nối với chủ phòng</h3><p>Đang chờ kết nối lại… <b class="np-left">10</b> giây</p><button type="button" class="ghost-btn">Về màn hình chính</button></div>`;
+    document.body.appendChild(b);
+    (b.querySelector('button') as HTMLButtonElement).onclick = () => { this.leaveNet(); closeMini(); this.showMainMenu(); };
+    const t0 = performance.now(), el = b;
+    const tick = () => { if (!el.isConnected) return; const left = Math.max(0, Math.ceil((HOST_GONE_MS - HOST_LOST_MS - (performance.now() - t0)) / 1000)); (el.querySelector('.np-left') as HTMLElement).textContent = String(left); window.setTimeout(tick, 250); };
+    tick();
+  }
+  /** Popup "Đang vào lại phòng làm việc…" (tải lại trang, mở lại link, bấm Vào lại phòng) */
+  private rejoinPop(code: string | null) {
+    document.querySelector('.rejoin-pop')?.remove();
+    if (!code) return;
+    const b = document.createElement('div'); b.className = 'net-pop rejoin-pop';
+    b.innerHTML = `<div class="np-card"><i class="np-spin"></i><h3>Đang vào lại phòng làm việc</h3><p>Phòng <b>${esc(code)}</b> · đang kết nối với chủ phòng…</p></div>`;
+    document.body.appendChild(b);
   }
 
   /** Phần giao diện chung khi vào ván (một mình, chủ phòng, người vào phòng) */
@@ -910,6 +996,7 @@ export class UI {
         <ul class="task-list"></ul>
       </div>
       <div class="top-right">
+        ${net.role !== 'solo' ? `<button class="room-chip" id="b-room" type="button" title="Bấm để sao chép link mời / vào lại phòng">Phòng <b>${esc(net.host?.code ?? net.client?.code ?? '')}</b></button>` : ''}
         <button class="icon-btn art" id="b-menu" aria-label="Menu" aria-expanded="false">${iconSvg('menu')}</button>
       </div>
       <div class="menu-pop card-lite" hidden>
@@ -974,6 +1061,11 @@ export class UI {
       this.prefs.muted = !this.prefs.muted; savePrefs(this.prefs); sfx.setMuted(this.prefs.muted); muteLabel();
     };
     $('#b-menu', hud).onclick = () => this.toggleMenu();
+    const chip = hud.querySelector('#b-room') as HTMLButtonElement | null;
+    if (chip) chip.onclick = () => {
+      const code = net.host?.code ?? net.client?.code ?? '';
+      navigator.clipboard?.writeText(`${location.origin}${location.pathname}?room=${code}`).then(() => this.toast(`Đã sao chép link phòng ${code}`, 1800)).catch(() => this.toast(`Mã phòng: ${code}`, 2500));
+    };
     // Hồn ma đổi tầng
     const ghostHop = (dir: 1 | -1) => { const w = session.world; if (!w) return; const err = act('ghostFloor', dir); if (err) this.toast(err); else sfx.whoosh(); };
     $('#a-gup', hud).onclick = () => ghostHop(1);
@@ -998,7 +1090,7 @@ export class UI {
       const ok = await this.confirmBox('Rời ca làm việc?', msg, 'Rời ca', 'Ở lại làm tiếp');
       if (!ok) return;
       sfx.stopBossSteps();
-      if (net.role !== 'solo') { this.leaveNet(); this.showMainMenu(); } else this.enterLobby();
+      if (net.role !== 'solo') { forgetRoom(); this.leaveNet(); this.showMainMenu(); } else this.enterLobby();
     };
     $('#a-use', hud).onclick = () => this.doUse();
     $('#a-laptop', hud).onclick = () => this.doLaptop();
@@ -2213,7 +2305,7 @@ export class UI {
     } else if (net.role === 'client') {
       ($('#again', el)).hidden = true;
       ($('#lobby', el)).textContent = 'Rời phòng';
-      $('#lobby', el).onclick = () => { this.leaveNet(); this.showMainMenu(); };
+      $('#lobby', el).onclick = () => { forgetRoom(); this.leaveNet(); this.showMainMenu(); };
       el.querySelector('.row')!.insertAdjacentHTML('beforeend', '<span class="room-wait">Chờ chủ phòng bắt đầu ván mới…</span>');
     } else {
       $('#again', el).onclick = () => this.startGame();
@@ -2672,7 +2764,10 @@ export class UI {
       else if (k === K.laptop) this.doLaptop();
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
-    window.addEventListener('blur', () => this.keys.clear());
+    // rời cửa sổ hoặc chuyển tab: trình duyệt không gửi "thả phím", nên xóa sạch phím đang giữ và cần điều khiển (không để nhân vật trôi)
+    const releaseAll = () => { this.keys.clear(); this.joy.x = 0; this.joy.y = 0; this.joy.active = false; session.input = { x: 0, y: 0 }; };
+    window.addEventListener('blur', releaseAll);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); });
   }
 
   private bindJoystick(el: HTMLElement) {

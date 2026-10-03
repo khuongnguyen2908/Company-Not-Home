@@ -11,6 +11,7 @@ import { DOOR_BLOCK, CAMERAS, FLOORS, PORTALS, LIFT_DOORS, CABIN, CABIN_DOOR, le
 import { STICKERS } from '../game/data';
 import { session } from '../session';
 import { net } from '../net/room';
+import { markFrame } from '../net/pump';
 import { sfx } from '../audio';
 import { slotStation, type Agent } from '../game/sim';
 
@@ -336,6 +337,7 @@ export class GameScene extends Phaser.Scene {
     const world = session.world;
     const dt = Math.min(0.05, deltaMs / 1000);
     session.onFrame(dt);
+    markFrame();
     if (!world) return;
     if (this.gameId !== session.newGameId) this.resetViews();
 

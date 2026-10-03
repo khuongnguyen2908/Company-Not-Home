@@ -12,6 +12,7 @@
     "content": "node scripts/content-build.mjs"
   },
   "dependencies": {
+    "peerjs": "^1.5.4",
     "phaser": "^3.90.0"
   },
   "devDependencies": {

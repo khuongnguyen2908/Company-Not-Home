@@ -79,3 +79,40 @@ export class MemoryTransport implements Transport {
   deliver(from: string, msg: unknown) { for (const h of this.handlers) h(from, msg); }
   close() { this.hub.leave(this.peerId); this.handlers = []; }
 }
+
+/**
+ * Gộp nhiều đường truyền (kênh nội bộ các tab + P2P): mọi đường dùng chung một mã máy logic.
+ * Gửi cho một người thì đi đúng đường người đó đã dùng; gửi cả phòng thì đi mọi đường; chưa biết thì thử mọi đường.
+ * Một tin có thể tới qua hai đường (khi người đó ở cùng trình duyệt VÀ nối P2P): bỏ bản trùng nhận sau.
+ */
+export class MultiTransport implements Transport {
+  readonly peerId: string;
+  private route = new Map<string, Transport>();
+  private heard = new Map<string, number>();
+  private handlers: ((from: string, msg: unknown) => void)[] = [];
+  private subs: Transport[] = [];
+  constructor(first: Transport[]) {
+    this.peerId = first[0].peerId;
+    for (const t of first) this.add(t);
+  }
+  /** Thêm một đường truyền (ví dụ bật P2P sau khi kênh nội bộ không thấy chủ phòng) */
+  add(t: Transport) {
+    this.subs.push(t);
+    t.onMessage((from, msg) => {
+      const now = Date.now();
+      const cur = this.route.get(from);
+      // người này đang dùng đường khác: bỏ bản trùng; trừ khi đường cũ đã im quá 3 giây (đường cũ chết) thì chuyển sang đường mới
+      if (cur && cur !== t && now - (this.heard.get(from) ?? 0) < 3000) return;
+      this.route.set(from, t); this.heard.set(from, now);
+      for (const h of this.handlers) h(from, msg);
+    });
+  }
+  send(to: string | '*', msg: unknown) {
+    if (to === '*') { for (const t of this.subs) t.send('*', msg); return; }
+    const t = this.route.get(to);
+    if (t) t.send(to, msg); else for (const s of this.subs) s.send(to, msg);
+  }
+  forget(id: string) { this.route.delete(id); this.heard.delete(id); }
+  onMessage(fn: (from: string, msg: unknown) => void) { this.handlers.push(fn); }
+  close() { for (const t of this.subs) t.close(); this.handlers = []; }
+}

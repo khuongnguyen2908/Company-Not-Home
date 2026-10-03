@@ -67,17 +67,21 @@ Kiểm tra: `python3 tests/lobby_reentry.py` (về sảnh nhiều lần vẫn đ
 - **Chọn nơi bắt đầu** (kiểu Airship): Phòng họp luôn có, cộng 2 điểm ngẫu nhiên riêng của mỗi người trong 5 điểm còn lại (Lễ tân, Pantry, Hành lang tầng 3, Studio Art, Vườn mái). 10 giây để chọn, hết giờ thì ở lại Phòng họp. Không ai biết ai chọn gì; bot chọn điểm cùng tầng với việc kế tiếp.
 - **Hồn ma** chỉ bay xuyên tường trong tầng đang ở; cửa thang bộ và thang máy không có tác dụng với hồn ma; đổi tầng bằng nút Lên/Xuống tầng (PageUp/PageDown); chỉ thấy người cùng tầng.
 
-## Chơi nhiều người (giai đoạn 1: nhiều tab trên cùng trình duyệt)
+## Chơi nhiều người
 
 - Màn hình chính → **Chơi nhiều người** → Tạo phòng mới (mã 6 ký tự, ví dụ `KPI-482`, kèm link mời) hoặc nhập mã để vào phòng. Mở link mời (`?room=MÃ`) là vào thẳng phòng.
 - **Màn hình phòng:** danh sách người, chủ phòng chỉnh bot điền ghế trống (bật/tắt), số ghế, số Nội gián; tối đa 10 người, ván cần ít nhất 4 người.
 - **Chủ phòng chạy game**, người vào phòng gửi điều khiển và nhận trạng thái đã lọc (không lộ vai, phòng ban, việc, hồi chiêu, kết quả kỹ năng của người khác). Tin nhắn của người đã nghỉ việc / bị sa thải chỉ người đã chết đọc được.
 - **Sức chứa phòng = số ghế** chủ phòng chọn; đủ ghế thì người mới bị từ chối.
 - **Kết nối:** im lặng quá 4 giây là "mất kết nối" (hiện trên danh sách phòng, thẻ tên, cả phòng nhận thông báo); trong ván quá 60 giây thì bot chơi thay hẳn, ở phòng chờ quá 12 giây thì rời phòng. **Tải lại trang hoặc mở lại link trong 60 giây là vào lại đúng nhân vật cũ.** Người vào phòng không nghe thấy chủ phòng 5 giây thì thấy dải báo, 15 giây thì về màn hình chính. Chủ phòng tắt tab thì phòng đóng ngay.
+- **Tab bị ẩn:** trình duyệt dừng vòng lặp vẽ của tab ẩn, nên chủ phòng chạy mô phỏng và gửi trạng thái bằng một luồng nền (`src/net/pump.ts`) khi tab của mình bị ẩn; nhịp kiểm tra kết nối cũng chạy ở đó. Chuyển tab thì phím đang giữ được thả ra (nhân vật không trôi).
+- **Mã phòng trong ván:** nhãn "Phòng ABC-123" ở góc trên, bấm để sao chép link mời. **Vào lại:** tải lại trang, mở lại link, hoặc bấm nút "Vào lại phòng" ở màn hình chính (hiện trong 10 phút sau khi rời, kể cả đã đóng tab); popup "Đang vào lại phòng làm việc…" trong lúc kết nối. Mất chủ phòng thì có popup đếm ngược.
 - **Thử một mình:** mở game với `?multitest=4` (2–6 ô): mỗi ô là một người chơi; thanh công cụ có Bắt đầu ván, Cả phòng sẵn sàng, Gọi họp ngay, Chơi ván mới, Ép một người làm Nội gián. Bấm vào ô nào thì điều khiển người đó.
 - Mã nguồn: `src/net/` (truyền tin, ảnh chụp có lọc, cửa lệnh, chủ phòng / người vào phòng), `src/devtools/multitest.ts`.
 - Kiểm tra: `npx tsx tests/net_conn_test.ts` (kết nối: sức chứa, tin hồn ma, mất kết nối, vào lại, bot thay, mất chủ phòng), `npx tsx tests/net_test.ts` (mạng giả có độ trễ và mất gói: không lộ bí mật, bản sao khớp chủ phòng, ván kết thúc đúng), `tests/multitest_e2e.py` (trình duyệt thật).
-- Giai đoạn sau: kết nối P2P qua mạng thật, sảnh chung, vào lại khi rớt mạng.
+- **Máy khác, mạng khác (P2P):** dùng WebRTC qua PeerJS (`src/net/peer.ts`): chủ phòng đăng ký tên `ngvp-<mã phòng>` trên máy giới thiệu công cộng `0.peerjs.com`, người vào phòng nối tới đó; có máy chuyển tiếp TURN dự phòng của PeerJS cho mạng chặn kết nối thẳng. Chủ phòng nhận người vào qua cả kênh nội bộ (các tab cùng trình duyệt) lẫn P2P; người vào phòng thử kênh nội bộ trước, 1,2 giây không thấy chủ phòng mới bật P2P. Mỗi tin mang mã máy logic nên vào lại đúng nhân vật dù đi đường khác. Mã phòng trùng phòng khác thì tự đổi mã; mất mạng thì báo rõ. Màn chia ô `?multitest` chỉ dùng kênh nội bộ.
+- **Thử P2P:** cần chạy trên trang GitHub Pages (link chơi thử trên claude.ai chặn kết nối ra ngoài). Kiểm tra tự động: `npx tsx tests/p2p_test.ts` (PeerJS giả).
+- Giai đoạn sau: rà đủ tính năng với nhiều người thật, sảnh chung.
 
 ## Phòng thử mini-game
 
