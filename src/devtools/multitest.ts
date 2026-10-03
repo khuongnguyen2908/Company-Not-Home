@@ -26,7 +26,7 @@ export function openMultitest(root: HTMLElement, n: number) {
   root.querySelectorAll<HTMLButtonElement>('.mt-bar button').forEach(b => b.onclick = () => {
     const c = b.dataset.c!;
     if (c === 'ready') frames.forEach((_, k) => send(k, 'ready'));
-    else send(0, c); // các lệnh điều khiển ván gửi cho chủ phòng (ô 1)
+    else send(0, c, c === 'start' ? n : undefined); // các lệnh điều khiển ván gửi cho chủ phòng (ô 1); bắt đầu thì chờ đủ n ô
   });
   (root.querySelector('#mt-imp') as HTMLSelectElement).onchange = (e) => send(0, 'imp', Number((e.target as HTMLSelectElement).value));
   window.addEventListener('message', (e) => {

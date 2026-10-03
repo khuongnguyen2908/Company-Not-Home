@@ -71,10 +71,12 @@ Kiểm tra: `python3 tests/lobby_reentry.py` (về sảnh nhiều lần vẫn đ
 
 - Màn hình chính → **Chơi nhiều người** → Tạo phòng mới (mã 6 ký tự, ví dụ `KPI-482`, kèm link mời) hoặc nhập mã để vào phòng. Mở link mời (`?room=MÃ`) là vào thẳng phòng.
 - **Màn hình phòng:** danh sách người, chủ phòng chỉnh bot điền ghế trống (bật/tắt), số ghế, số Nội gián; tối đa 10 người, ván cần ít nhất 4 người.
-- **Chủ phòng chạy game**, người vào phòng gửi điều khiển và nhận trạng thái đã lọc (không lộ vai, phòng ban, việc, hồi chiêu, kết quả kỹ năng của người khác). Rời giữa ván thì bot chơi thay; chủ phòng rời thì phòng đóng.
+- **Chủ phòng chạy game**, người vào phòng gửi điều khiển và nhận trạng thái đã lọc (không lộ vai, phòng ban, việc, hồi chiêu, kết quả kỹ năng của người khác). Tin nhắn của người đã nghỉ việc / bị sa thải chỉ người đã chết đọc được.
+- **Sức chứa phòng = số ghế** chủ phòng chọn; đủ ghế thì người mới bị từ chối.
+- **Kết nối:** im lặng quá 4 giây là "mất kết nối" (hiện trên danh sách phòng, thẻ tên, cả phòng nhận thông báo); trong ván quá 60 giây thì bot chơi thay hẳn, ở phòng chờ quá 12 giây thì rời phòng. **Tải lại trang hoặc mở lại link trong 60 giây là vào lại đúng nhân vật cũ.** Người vào phòng không nghe thấy chủ phòng 5 giây thì thấy dải báo, 15 giây thì về màn hình chính. Chủ phòng tắt tab thì phòng đóng ngay.
 - **Thử một mình:** mở game với `?multitest=4` (2–6 ô): mỗi ô là một người chơi; thanh công cụ có Bắt đầu ván, Cả phòng sẵn sàng, Gọi họp ngay, Chơi ván mới, Ép một người làm Nội gián. Bấm vào ô nào thì điều khiển người đó.
 - Mã nguồn: `src/net/` (truyền tin, ảnh chụp có lọc, cửa lệnh, chủ phòng / người vào phòng), `src/devtools/multitest.ts`.
-- Kiểm tra: `npx tsx tests/net_test.ts` (mạng giả có độ trễ và mất gói: không lộ bí mật, bản sao khớp chủ phòng, ván kết thúc đúng), `tests/multitest_e2e.py` (trình duyệt thật).
+- Kiểm tra: `npx tsx tests/net_conn_test.ts` (kết nối: sức chứa, tin hồn ma, mất kết nối, vào lại, bot thay, mất chủ phòng), `npx tsx tests/net_test.ts` (mạng giả có độ trễ và mất gói: không lộ bí mật, bản sao khớp chủ phòng, ván kết thúc đúng), `tests/multitest_e2e.py` (trình duyệt thật).
 - Giai đoạn sau: kết nối P2P qua mạng thật, sảnh chung, vào lại khi rớt mạng.
 
 ## Phòng thử mini-game

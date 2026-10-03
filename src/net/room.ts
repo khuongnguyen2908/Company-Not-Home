@@ -9,11 +9,15 @@ import { runAction } from './actions';
 import { session } from '../session';
 
 export const MAX_PLAYERS = 10;
+/** Im lặng quá 4 giây: mất kết nối. Trong ván, quá 60 giây thì bot chơi thay hẳn; ở phòng chờ, quá 12 giây thì rời phòng. */
+export const LOST_MS = 4000, GRACE_GAME_MS = 60000, GRACE_ROOM_MS = 12000;
+/** Người vào phòng: không nghe thấy chủ phòng quá 5 giây là báo mất kết nối, quá 15 giây thì coi như phòng đã đóng. */
+export const HOST_LOST_MS = 5000, HOST_GONE_MS = 15000;
 /** Vị trí chủ phòng gửi (x, y) và vị trí đang vẽ (cx, cy) của một nhân vật khác */
 export interface Target { x: number; y: number; cx?: number; cy?: number }
 export type NetRole = 'solo' | 'host' | 'client';
 export interface Profile { name: string; look: Look; empId: string }
-export interface RoomPlayer extends Profile { peer: string; host: boolean }
+export interface RoomPlayer extends Profile { peer: string; host: boolean; lost?: boolean /* đang mất kết nối */ }
 export interface RoomSettings { fillBots: boolean; seats: number; imps: 1 | 2 }
 
 // ---------- Tin nhắn ----------
@@ -22,6 +26,7 @@ export type ToHost =
   | { t: 'input'; x: number; y: number }
   | { t: 'act'; id: number; name: string; args: unknown[] }
   | { t: 'ready'; on: boolean }
+  | { t: 'hb' }
   | { t: 'leave' };
 export type ToClient =
   | { t: 'room'; code: string; players: RoomPlayer[]; settings: RoomSettings; inGame: boolean }
@@ -33,6 +38,8 @@ export type ToClient =
   | { t: 'ready'; ids: number[] }
   | { t: 'go' }
   | { t: 'end' }
+  | { t: 'hb' }
+  | { t: 'note'; text: string }
   | { t: 'closed' };
 
 /** Mã phòng 6 ký tự dễ đọc (bỏ các ký tự dễ nhầm như O/0, I/1) */
@@ -73,6 +80,11 @@ export class NetHost {
   agentOf = new Map<string, number>();
   inGame = false;
   onRoomChange = () => {};
+  /** thông báo cho cả phòng (chủ phòng cũng hiện) */
+  onNote = (_t: string) => {};
+  /** tờ phân công đã đóng (ván đang chạy): người vào lại không cần chờ sẵn sàng */
+  revealDone = false;
+  private timer = 0;
   /** người vào phòng bấm Sẵn sàng / Hủy ở tờ phân công (giao diện chủ phòng giữ danh sách) */
   onReadyMsg = (_id: number, _on: boolean) => {};
   private posT = 0; private fullT = 0;
@@ -80,26 +92,72 @@ export class NetHost {
   private lastSeen = new Map<string, number>();
   private lastFull = new Map<string, { key: string; at: number }>();
 
-  constructor(public tr: Transport, public code: string, me: Profile) {
+  /** Đồng hồ (ms). Kiểm tra tự động thay bằng đồng hồ giả và tự gọi watch() */
+  clock: () => number = () => performance.now();
+  constructor(public tr: Transport, public code: string, me: Profile, opts: { timers?: boolean } = {}) {
     this.players = [{ ...me, peer: tr.peerId, host: true }];
     tr.onMessage((from, raw) => this.onMsg(from, raw as ToHost));
+    // nhịp kiểm tra kết nối (chạy cả ở phòng chờ lẫn trong ván, không phụ thuộc vòng lặp game)
+    if (opts.timers !== false) this.timer = setInterval(() => this.watch(), 1000) as unknown as number;
   }
+  note(text: string) { this.tr.send('*', { t: 'note', text } satisfies ToClient); this.onNote(text); }
+  /** Mỗi giây: gửi nhịp "còn sống"; ai im lặng quá lâu thì đánh dấu mất kết nối, quá thời gian chờ thì cho rời */
+  watch() {
+    this.tr.send('*', { t: 'hb' } satisfies ToClient);
+    const now = this.clock();
+    let changed = false;
+    for (const p of [...this.players]) {
+      if (p.host) continue;
+      const quiet = now - (this.lastSeen.get(p.peer) ?? now);
+      if (!p.lost && quiet > LOST_MS) {
+        p.lost = true; changed = true;
+        const id = this.agentOf.get(p.peer);
+        if (id !== undefined && session.world) { session.world.agents[id].away = true; session.world.inputs.delete(id); }
+        this.note(`${p.name} #${p.empId} mất kết nối${this.inGame ? ', chờ quay lại trong 60 giây' : ''}`);
+      }
+      if (p.lost && quiet > (this.inGame ? GRACE_GAME_MS : GRACE_ROOM_MS)) {
+        this.note(this.inGame ? `${p.name} #${p.empId} không quay lại, bot làm thay` : `${p.name} #${p.empId} đã rời phòng`);
+        this.dropPeer(p.peer);
+      }
+    }
+    if (changed) this.broadcastRoom();
+  }
+
+  /** Sức chứa phòng = số ghế chủ phòng chọn (tối đa 10) */
+  get capacity() { return Math.min(MAX_PLAYERS, Math.max(4, this.settings.seats)); }
 
   private onMsg(from: string, m: ToHost) {
     if (!m || typeof m !== 'object') return;
-    this.lastSeen.set(from, performance.now());
+    this.lastSeen.set(from, this.clock());
     const pl = this.players.find(p => p.peer === from);
+    // người đang mất kết nối gửi tin lại: đã kết nối lại
+    if (pl?.lost) {
+      pl.lost = false;
+      const id = this.agentOf.get(from);
+      if (id !== undefined && session.world) session.world.agents[id].away = false;
+      this.note(`${pl.name} #${pl.empId} đã kết nối lại`);
+      this.broadcastRoom();
+    }
     switch (m.t) {
       case 'hello': {
         if (this.inGame && !pl) { this.tr.send(from, { t: 'reject', reason: 'Phòng đang chơi, đợi ván sau nhé.' } satisfies ToClient); return; }
-        if (!pl && this.players.length >= MAX_PLAYERS) { this.tr.send(from, { t: 'reject', reason: `Phòng đã đủ ${MAX_PLAYERS} người.` } satisfies ToClient); return; }
+        if (!pl && this.players.length >= this.capacity) { this.tr.send(from, { t: 'reject', reason: `Phòng đã đủ ${this.capacity} người.` } satisfies ToClient); return; }
         const p = sanitizeProfile(m.p);
-        if (pl) Object.assign(pl, p); else this.players.push({ ...p, peer: from, host: false });
+        if (pl) Object.assign(pl, { name: p.name, look: p.look }); else this.players.push({ ...p, peer: from, host: false });
         this.fixEmpIds();
         this.broadcastRoom();
+        // vào lại giữa ván (tải lại trang, rớt mạng): nhận lại đúng nhân vật cũ
+        const id = this.agentOf.get(from), w = session.world;
+        if (this.inGame && id !== undefined && w) {
+          w.setHuman(id, true); w.agents[id].away = false;
+          this.tr.send(from, { t: 'start', full: buildFull(w, id, true) } satisfies ToClient);
+          if (this.revealDone) this.tr.send(from, { t: 'go' } satisfies ToClient);
+          this.lastFull.delete(from);
+        }
         return;
       }
-      case 'leave': this.dropPeer(from); return;
+      case 'hb': return;
+      case 'leave': { const p = this.players.find(x => x.peer === from); if (p) this.note(this.inGame ? `${p.name} #${p.empId} đã rời phòng, bot làm thay` : `${p.name} #${p.empId} đã rời phòng`); this.dropPeer(from); return; }
     }
     if (!pl || !this.inGame) return;
     const id = this.agentOf.get(from);
@@ -128,7 +186,8 @@ export class NetHost {
     if (i < 0) return;
     this.players.splice(i, 1);
     const id = this.agentOf.get(peer);
-    if (id !== undefined && session.world) { session.world.setHuman(id, false); this.agentOf.delete(peer); }
+    if (id !== undefined && session.world) { session.world.setHuman(id, false); session.world.agents[id].away = false; this.agentOf.delete(peer); }
+    this.lastSeen.delete(peer);
     this.broadcastRoom();
   }
 
@@ -149,6 +208,7 @@ export class NetHost {
   /** Bắt đầu ván: World đã được tạo ở chủ phòng; ghép mỗi máy với một nhân vật người thật */
   startGame(w: World, seatOf: Map<string, number>) {
     this.inGame = true;
+    this.revealDone = false;
     this.agentOf = new Map(seatOf);
     this.spawnDeadline.clear();
     for (const [peer, id] of seatOf) {
@@ -198,10 +258,10 @@ export class NetHost {
   /** Danh sách đã sẵn sàng (cả bot) để mọi máy hiện nhãn dưới avatar */
   broadcastReady(ids: number[]) { this.tr.send('*', { t: 'ready', ids } satisfies ToClient); }
   /** Cả phòng sẵn sàng ở tờ phân công: báo mọi máy đóng tờ phân công */
-  go() { this.tr.send('*', { t: 'go' } satisfies ToClient); }
+  go() { this.revealDone = true; this.tr.send('*', { t: 'go' } satisfies ToClient); }
   /** Hết ván: cả phòng về màn hình phòng */
   endGame() { this.inGame = false; this.agentOf.clear(); this.tr.send('*', { t: 'end' } satisfies ToClient); this.broadcastRoom(); }
-  close() { this.tr.send('*', { t: 'closed' } satisfies ToClient); this.tr.close(); }
+  close() { clearInterval(this.timer); this.tr.send('*', { t: 'closed' } satisfies ToClient); this.tr.close(); }
 }
 
 // =============================================================================================
@@ -219,20 +279,39 @@ export class NetClient {
   onGo = () => {};
   onEnd = () => {};
   onClosed = () => {};
+  onNote = (_t: string) => {};
+  /** mất / có lại kết nối với chủ phòng */
+  onHostLost = (_lost: boolean) => {};
+  hostLost = false;
+  private lastHost = 0;
+  private timer = 0;
   private hostPeer: string | null = null;
   private actId = 0;
   private lastInput = { x: 9, y: 9 }; private inputT = 0;
 
-  constructor(public tr: Transport, public code: string, public me: Profile) {
+  clock: () => number = () => performance.now();
+  constructor(public tr: Transport, public code: string, public me: Profile, opts: { timers?: boolean } = {}) {
     tr.onMessage((from, raw) => this.onMsg(from, raw as ToClient));
+    if (opts.timers !== false) this.timer = setInterval(() => this.watch(), 1000) as unknown as number;
+  }
+  private gone = false;
+  /** Mỗi giây: gửi nhịp "còn sống"; lâu không nghe chủ phòng thì báo mất kết nối, quá lâu thì coi như phòng đóng */
+  watch() {
+    if (this.gone) return;
+    if (this.hostPeer) this.tr.send(this.hostPeer, { t: 'hb' } satisfies ToHost);
+    if (!this.room) return; // chưa vào được phòng: việc gõ cửa do giao diện lo
+    const quiet = this.clock() - this.lastHost;
+    if (!this.hostLost && quiet > HOST_LOST_MS) { this.hostLost = true; this.onHostLost(true); }
+    if (quiet > HOST_GONE_MS) { this.gone = true; clearInterval(this.timer); this.onClosed(); }
   }
   /** Gõ cửa phòng (gửi lại vài lần phòng khi chủ phòng chưa sẵn sàng) */
   join() { this.tr.send(this.hostPeer ?? '*', { t: 'hello', p: this.me } satisfies ToHost); }
 
   private onMsg(from: string, m: ToClient) {
     if (!m || typeof m !== 'object') return;
-    if (m.t === 'room') { this.hostPeer = from; this.room = { code: m.code, players: m.players, settings: m.settings, inGame: m.inGame }; this.onRoom(); return; }
+    if (m.t === 'room') { this.hostPeer = from; this.room = { code: m.code, players: m.players, settings: m.settings, inGame: m.inGame }; this.heard(); this.onRoom(); return; }
     if (this.hostPeer && from !== this.hostPeer) return; // chỉ nghe chủ phòng
+    this.heard();
     switch (m.t) {
       case 'reject': this.onReject(m.reason); return;
       case 'start': {
@@ -254,9 +333,12 @@ export class NetClient {
       case 'ready': this.onReady(m.ids); return;
       case 'go': this.onGo(); return;
       case 'end': this.replica = null; this.onEnd(); return;
-      case 'closed': this.onClosed(); return;
+      case 'closed': clearInterval(this.timer); this.onClosed(); return;
+      case 'note': this.onNote(m.text); return;
+      case 'hb': return;
     }
   }
+  private heard() { this.lastHost = this.clock(); if (this.hostLost) { this.hostLost = false; this.onHostLost(false); } }
 
   sendAct(name: string, args: unknown[]) { this.tr.send(this.hostPeer ?? '*', { t: 'act', id: ++this.actId, name, args } satisfies ToHost); }
   sendReady(on = true) { this.tr.send(this.hostPeer ?? '*', { t: 'ready', on } satisfies ToHost); }
@@ -278,7 +360,7 @@ export class NetClient {
       t.cx = a.x; t.cy = a.y;
     }
   }
-  leave() { this.tr.send(this.hostPeer ?? '*', { t: 'leave' } satisfies ToHost); this.tr.close(); }
+  leave() { clearInterval(this.timer); this.tr.send(this.hostPeer ?? '*', { t: 'leave' } satisfies ToHost); this.tr.close(); }
 }
 
 const clamp1 = (v: unknown) => { const n = typeof v === 'number' && Number.isFinite(v) ? v : 0; return Math.max(-1, Math.min(1, n)); };

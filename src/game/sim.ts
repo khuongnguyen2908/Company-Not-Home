@@ -112,6 +112,7 @@ export interface Agent {
   dept: RoleDept | null; // phòng ban bí mật; Nội gián không có
   isPlayer: boolean;     // người chơi trên máy này (giao diện điều khiển)
   human: boolean;        // người thật (máy này hoặc máy khác trong phòng); bot thì false
+  away?: boolean;        // người thật đang mất kết nối (chủ phòng đánh dấu, mọi người thấy)
   role: Role;
   alive: boolean;
   ejected: boolean;
@@ -205,7 +206,7 @@ export function ghostRegion(lv: number): { x0: number; y0: number; x1: number; y
   return { x0: (F.ox + 1) * TILE, y0: (F.oy + 1) * TILE, x1: (F.ox + F.w - 1) * TILE, y1: (F.oy + F.h - 1) * TILE };
 }
 
-export interface ChatMsg { from: number; text: string; t: number; system?: boolean; to?: number; anon?: boolean; alert?: boolean }
+export interface ChatMsg { from: number; text: string; t: number; system?: boolean; to?: number; anon?: boolean; alert?: boolean; ghost?: boolean /* hồn ma nói: chỉ người đã chết đọc được */ }
 
 interface Effect { target: number; delta: number }
 
@@ -2287,7 +2288,7 @@ export class World {
   chatFrom(p: Agent, text: string) {
     const m = this.meeting;
     if (!m || m.result) return;
-    m.chat.push({ from: p.id, text, t: m.t });
+    m.chat.push({ from: p.id, text, t: m.t, ...(p.alive ? {} : { ghost: true }) });
     if (!p.alive) return; // hồn ma nói không ai nghe
     const n = normalize(text);
     const vouch = /(khong phai|trong sach|vo toi|uy tin|tin .* duoc|clear)/.test(n);

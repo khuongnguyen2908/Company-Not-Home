@@ -32,7 +32,7 @@ const STATIC: (keyof Agent)[] = ['look', 'name', 'empId', 'color', 'desk'];
 /** Vị trí: đi trong gói vị trí 20 lần/giây, không lặp trong ảnh chụp */
 const MOTION: (keyof Agent)[] = ['x', 'y', 'facing', 'moving', 'walkT'];
 /** Trường công khai của người khác (phần còn lại là riêng tư, máy nhận tự điền giá trị trống) */
-const PUBLIC: (keyof Agent)[] = ['id', 'role', 'dept', 'alive', 'ejected', 'hidden', 'scanning', 'hrScanning', 'artistScanning', 'bossDone', 'directorRevealed', 'poRevealed', 'deathRoom', 'lastPortal', 'ghostLv', 'human', 'isPlayer'];
+const PUBLIC: (keyof Agent)[] = ['id', 'role', 'dept', 'alive', 'ejected', 'hidden', 'scanning', 'hrScanning', 'artistScanning', 'bossDone', 'directorRevealed', 'poRevealed', 'deathRoom', 'lastPortal', 'ghostLv', 'human', 'isPlayer', 'away'];
 const round2 = (v: unknown) => (typeof v === 'number' && !Number.isInteger(v) ? Math.round(v * 100) / 100 : v);
 /** Đồng hồ đếm ngược: giao diện chỉ hiện theo giây nên làm tròn 0,5 giây (đỡ phải gửi ảnh chụp mỗi khung hình) */
 const COUNTDOWN = new Set(['killCd', 'adminCd', 'engCd', 'mediaCd', 'itCd', 'itCamT', 'adminBattery', 'portalCd', 'engHideT', 'artistNext']);
@@ -109,7 +109,8 @@ export function buildFull(w: World, viewerId: number, withStatic = false): FullS
     out.meeting = enc({
       ...m, t: Math.round(m.t * 4) / 4, queue: [], reactQueue: [], votes,
       protect: v.dept === 'producer' ? m.protect : null,
-      chat: m.chat.filter(c => c.to === undefined || c.to === viewerId).map(c => (c.anon && c.from !== viewerId ? { ...c, from: viewerId } : c)),
+      // tin riêng chỉ người nhận thấy; tin của hồn ma chỉ người đã chết thấy
+      chat: m.chat.filter(c => (c.to === undefined || c.to === viewerId) && (!c.ghost || !v.alive || c.from === viewerId)).map(c => (c.anon && c.from !== viewerId ? { ...c, from: viewerId } : c)),
     });
   }
   const crew = w.aliveCrew();

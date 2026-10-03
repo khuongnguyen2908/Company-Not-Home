@@ -396,7 +396,10 @@ export class GameScene extends Phaser.Scene {
       v.sprite.setAlpha(a.alive ? 1 : 0.42);
       v.sprite.setDepth(a.y);
       v.shadow.setPosition(a.x, a.y + 4).setDepth(a.y - 1);
-      v.tag.setPosition(a.x, a.y - 66 + floatY).setDepth(30000 + a.y).setAlpha(a.alive ? 1 : 0.6);
+      // người thật mất kết nối: thẻ tên báo rõ, mờ đi
+      const label = a.away ? `${a.name} #${a.empId} · mất kết nối` : `${a.name} #${a.empId}`;
+      if (v.tag.text !== label) v.tag.setText(label);
+      v.tag.setPosition(a.x, a.y - 66 + floatY).setDepth(30000 + a.y).setAlpha(a.away ? 0.55 : a.alive ? 1 : 0.6);
       const imposterMate = (p.role === 'impostor' || (p.role === 'crew' && p.dept === 'climber')) && a.role === 'impostor'; // Intern tham vọng cũng biết mặt Nội gián
       v.tag.setColor(imposterMate ? '#ff5d73' : '#ffffff');
     }

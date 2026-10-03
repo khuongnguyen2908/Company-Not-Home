@@ -9,7 +9,13 @@ import { avatarURL, avatarImage, chairURL, characterCanvas, tagText, nameInk, GU
 import { sfx } from '../audio';
 import { openMini, closeMini, miniOpen, openFaceId, openCardSwipe, openColorCheck, openV3 } from './minigames';
 import { act, net, NetHost, NetClient, newRoomCode, normalizeCode, MAX_PLAYERS, type Profile } from '../net/room';
-import { TabTransport } from '../net/transport';
+import { TabTransport, newPeerId } from '../net/transport';
+
+/** Mã máy cố định cho từng tab (giữ nguyên khi tải lại trang) để vào lại đúng nhân vật; mỗi ô ?multitest một mã riêng */
+const NET_SUFFIX = MT_SLOT_RAW() ? ':mt' + MT_SLOT_RAW() : '';
+function MT_SLOT_RAW() { return new URLSearchParams(location.search).get('mt'); }
+function stablePeerId() { const k = 'ngvp-peer' + NET_SUFFIX; let id = sessionStorage.getItem(k); if (!id) { id = newPeerId(); sessionStorage.setItem(k, id); } return id; }
+const ROOM_KEY = 'ngvp-room' + NET_SUFFIX;
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector(sel) as T;
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
@@ -230,7 +236,8 @@ export class UI {
     $('#go-howto', el).onclick = () => this.openRules();
     $('#go-keys', el).onclick = () => this.openControls();
     // Link mời (?room=MÃ): có tên rồi thì vào thẳng phòng; chưa có tên thì điền sẵn mã vào menu chơi nhiều người
-    const invite = new URLSearchParams(location.search).get('room');
+    // link mời, hoặc vừa tải lại trang khi đang ở trong phòng (vào lại đúng nhân vật cũ)
+    const invite = new URLSearchParams(location.search).get('room') ?? sessionStorage.getItem(ROOM_KEY);
     if (invite && !MT_SLOT && !this.inviteUsed) {
       this.inviteUsed = true;
       const code = normalizeCode(invite);
@@ -684,7 +691,12 @@ export class UI {
   /** Lệnh từ thanh công cụ của màn chia ô (?multitest) */
   mtCommand(cmd: string, arg?: number) {
     const w = session.world;
-    if (cmd === 'start' && net.host && !net.host.inGame) this.startNetGame();
+    if (cmd === 'start' && net.host && !net.host.inGame) {
+      // chờ đủ các ô vào phòng (tối đa 6 giây) rồi mới bắt đầu, để không ô nào vào muộn bị từ chối
+      const want = arg ?? 0, t0 = performance.now();
+      const tryStart = () => { const h = net.host; if (!h || h.inGame) return; if (h.players.length >= want || performance.now() - t0 > 6000) this.startNetGame(); else window.setTimeout(tryStart, 250); };
+      tryStart();
+    }
     if (cmd === 'again' && net.host && w?.phase === 'ended') this.startNetGame();
     if (cmd === 'ready') { const go = this.root.querySelector('.reveal #go') as HTMLButtonElement | null; if (go && !go.classList.contains('is-ready')) go.click(); }
     if (cmd === 'meeting' && net.host && w && w.phase === 'play') { const a = w.agents.find(x => x.alive && !x.human) ?? w.player; w.emergencyCd = 0; w.callEmergency(a, 'bell'); }
@@ -724,7 +736,9 @@ export class UI {
     if (net.host) net.host.close();
     if (net.client) { net.client.leave(); session.world = null; } // bản sao không bao giờ được tự chạy như ván chơi một mình
     net.host = null; net.client = null; net.role = 'solo';
+    sessionStorage.removeItem(ROOM_KEY);
     this.roomEl?.remove(); this.roomEl = null;
+    this.netBanner(false);
   }
 
   createRoom(code = newRoomCode()) {
@@ -732,6 +746,9 @@ export class UI {
     const h = new NetHost(new TabTransport(code), code, this.myProfile());
     net.host = h; net.role = 'host';
     h.onRoomChange = () => this.renderRoom();
+    h.onNote = (t) => this.notify(t);
+    // chủ phòng tắt tab / tải lại trang: báo cả phòng đóng ngay (không để mọi người chơi tiếp một mình)
+    window.addEventListener('pagehide', () => { if (net.host === h) h.close(); }, { once: true });
     net.onError = (m) => this.toast(m);
     this.showRoom();
     h.broadcastRoom();
@@ -739,14 +756,17 @@ export class UI {
 
   joinRoom(code: string) {
     this.leaveNet();
-    const c = new NetClient(new TabTransport(code), code, this.myProfile());
+    const c = new NetClient(new TabTransport(code, stablePeerId()), code, this.myProfile());
     net.client = c; net.role = 'client';
+    sessionStorage.setItem(ROOM_KEY, code);
+    c.onNote = (t) => this.notify(t);
+    c.onHostLost = (lost) => this.netBanner(lost);
     net.onError = (m) => this.toast(m);
     c.onRoom = () => { if (!session.world || session.world.phase === 'ended' || !c.replica) this.showRoom(); };
     c.onReject = (r) => { this.leaveNet(); this.showMainMenu(); this.infoModal('Không vào được phòng', `<p>${esc(r)}</p>`); };
     c.onStart = (rep) => this.startClientGame(rep);
     c.onEnd = () => this.showRoom();
-    c.onClosed = () => { this.leaveNet(); closeMini(); this.showMainMenu(); this.infoModal('Phòng đã đóng', '<p>Chủ phòng đã đóng phòng.</p>'); };
+    c.onClosed = () => { this.leaveNet(); closeMini(); this.showMainMenu(); this.infoModal('Phòng đã đóng', '<p>Chủ phòng đã đóng phòng hoặc mất kết nối quá lâu.</p>'); };
     this.showRoom();
     // gõ cửa vài lần (chủ phòng có thể chưa sẵn sàng); không thấy phòng thì báo
     let tries = 0;
@@ -782,20 +802,22 @@ export class UI {
     const st = room.settings;
     const total = st.fillBots ? Math.max(st.seats, room.players.length) : room.players.length;
     const imps = total <= 6 ? 1 : st.imps;
+    const cap = Math.min(MAX_PLAYERS, Math.max(4, st.seats));
     const empty = Math.max(0, total - room.players.length);
     const link = `${location.origin}${location.pathname}?room=${room.code}`;
     const canStart = total >= 4;
     el.innerHTML = `<div class="room-card">
       <div class="room-head"><div><small>PHÒNG</small><h2>${esc(room.code)}</h2></div>
         <div class="room-share"><button type="button" class="ghost-btn" id="rm-code">Sao chép mã</button><button type="button" class="ghost-btn" id="rm-link">Sao chép link mời</button></div></div>
-      <ul class="room-players">${room.players.map(p => `<li class="${p.peer === me ? 'me' : ''}"><img src="${avatarURL(normalizeLook(p.look))}" alt=""><span><b>${esc(p.name)}</b><small>#${esc(p.empId)}</small></span>${p.host ? '<em class="tag host">Chủ phòng</em>' : ''}${p.peer === me ? '<em class="tag you">Bạn</em>' : ''}</li>`).join('')}
+      <ul class="room-players">${room.players.map(p => `<li class="${p.peer === me ? 'me' : ''}${p.lost ? ' lost' : ''}"><img src="${avatarURL(normalizeLook(p.look))}" alt=""><span><b>${esc(p.name)}</b><small>#${esc(p.empId)}</small></span>${p.host ? '<em class="tag host">Chủ phòng</em>' : ''}${p.peer === me ? '<em class="tag you">Bạn</em>' : ''}${p.lost ? '<em class="tag lost">Mất kết nối</em>' : ''}</li>`).join('')}
         ${Array.from({ length: empty }, () => `<li class="seat">${st.fillBots ? '<span class="bot">Bot</span>' : 'Ghế trống'}</li>`).join('')}</ul>
       <div class="room-set">
         <label><input type="checkbox" id="rm-bots" ${st.fillBots ? 'checked' : ''} ${host ? '' : 'disabled'}> Ghế trống có bot chơi cùng</label>
-        <label>Số ghế <select id="rm-seats" ${host && st.fillBots ? '' : 'disabled'}>${[4, 5, 6, 7, 8, 9, 10].map(n => `<option value="${n}" ${n === st.seats ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+        <label>Số ghế <select id="rm-seats" ${host ? '' : 'disabled'}>${[4, 5, 6, 7, 8, 9, 10].map(n => `<option value="${n}" ${n === st.seats ? 'selected' : ''} ${n < room.players.length ? 'disabled' : ''}>${n}</option>`).join('')}</select></label>
         <label>Nội gián <select id="rm-imps" ${host && total > 6 ? '' : 'disabled'}><option value="1" ${imps === 1 ? 'selected' : ''}>1</option><option value="2" ${imps === 2 ? 'selected' : ''}>2</option></select></label>
       </div>
-      <p class="room-note">${room.players.length}/${MAX_PLAYERS} người · ván ${total} người, ${imps} Nội gián${canStart ? '' : ' · cần ít nhất 4 người (bật bot để chơi ngay)'}</p>
+      <p class="room-note">${room.players.length}/${cap} người · ván ${total} người, ${imps} Nội gián${canStart ? '' : ' · cần ít nhất 4 người (bật bot để chơi ngay)'}</p>
+      <p class="room-flash" hidden></p>
       <div class="room-foot"><button class="ghost-btn" id="rm-leave" type="button">Rời phòng</button>
         ${host ? `<button class="primary big" id="rm-start" type="button" ${canStart ? '' : 'disabled'}>Bắt đầu ván</button>` : `<span class="room-wait">Chờ chủ phòng bắt đầu…</span>`}</div>
     </div>`;
@@ -845,6 +867,19 @@ export class UI {
     this.roomEl?.remove(); this.roomEl = null;
     session.world = rep;
     this.enterGameUi();
+  }
+
+  /** Thông báo của phòng: trong ván hiện như thông báo nổi, ở màn hình phòng hiện dưới danh sách */
+  private notify(text: string) {
+    if (this.hudEl?.isConnected && !this.roomEl) { this.toast(text, 3200); return; }
+    const f = this.roomEl?.querySelector('.room-flash') as HTMLElement | null;
+    if (f) { f.hidden = false; f.textContent = text; window.setTimeout(() => { if (f.textContent === text) f.hidden = true; }, 4000); }
+  }
+  /** Người vào phòng: dải báo mất kết nối với chủ phòng */
+  private netBanner(on: boolean) {
+    let b = document.querySelector('.net-lost') as HTMLElement | null;
+    if (!on) { b?.remove(); return; }
+    if (!b) { b = document.createElement('div'); b.className = 'net-lost'; b.textContent = 'Mất kết nối với chủ phòng… đang chờ kết nối lại'; document.body.appendChild(b); }
   }
 
   /** Phần giao diện chung khi vào ván (một mình, chủ phòng, người vào phòng) */
@@ -1956,6 +1991,7 @@ export class UI {
     const log = $('.chat-log', el);
     while (this.meetChatCount < m.chat.length) {
       const c = m.chat[this.meetChatCount++];
+      if (c.ghost && w.player.alive && c.from !== w.player.id) continue; // tin của hồn ma: người còn sống không đọc được
       if (c.to !== undefined && c.to !== w.player.id) continue; // tin riêng (log Tester) chỉ người nhận thấy
       const a = w.agents[c.from];
       const row = document.createElement('div');
@@ -2093,11 +2129,12 @@ export class UI {
     el.className = 'modal spawn-modal';
     el.innerHTML = `<div class="sheet info-sheet spawn-sheet" role="dialog" aria-label="Chọn nơi bắt đầu">
       <div class="sheet-head"><h2>Chọn nơi bắt đầu</h2><b class="sp-left">10</b></div>
+      <p class="sp-here">Bạn đang ở: <b>${esc(roomName(roomAt(p.x, p.y) ?? 'meeting'))} · ${esc(levelName(levelAt(p.x, p.y)))}</b></p>
       <p class="sp-sub">Phòng họp luôn có sẵn; 2 nơi còn lại là của riêng bạn, không ai biết bạn chọn đâu.</p>
       <div class="sp-cards">${offer.map((idx, i) => {
         const sp = SPAWN_POINTS[idx];
         const n = p.role === 'crew' && p.dept !== 'gd' && p.dept !== 'climber' ? myTasksOn(sp.level) : 0;
-        return `<button type="button" class="sp-card${i === 0 ? ' stay' : ''}" data-i="${i}">${i === 0 ? '<span class="sp-default">Hết giờ sẽ ở lại đây</span>' : ''}<span class="sp-ic">${iconSvg(sp.icon)}</span><b>${esc(roomName(sp.room))}</b><small>${esc(levelName(sp.level))}</small>${n ? `<em>${n} việc của bạn ở tầng này</em>` : '<em class="none">Không có việc của bạn</em>'}</button>`;
+        return `<button type="button" class="sp-card${i === 0 ? ' stay' : ''}" data-i="${i}">${i === 0 ? '<span class="sp-default">Hết giờ sẽ ở lại đây</span>' : ''}<span class="sp-ic">${iconSvg(sp.icon)}</span><b>${esc(roomName(sp.room))}</b><small>${esc(levelName(sp.level))}${sp.level === levelAt(p.x, p.y) ? ' <i class="sp-same">Cùng tầng</i>' : ''}</small>${n ? `<em>${n} việc của bạn ở tầng này</em>` : '<em class="none">Không có việc của bạn</em>'}</button>`;
       }).join('')}</div>
       <div class="sp-bar"><i></i></div>
     </div>`;

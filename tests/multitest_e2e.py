@@ -1,6 +1,7 @@
 # Kiểm tra chơi nhiều người trong trình duyệt thật (màn chia ô ?multitest).
 # Chạy: npm run build:single && (cd dist-single && python3 -m http.server 8765) rồi ở tab khác: python3 tests/multitest_e2e.py
 # Phần 1: di chuyển đồng bộ, họp, chat, sẵn sàng bỏ phiếu, bỏ phiếu, chọn nơi bắt đầu.
+# Phần 3: tải lại trang giữa ván vào lại đúng nhân vật, dòng 'Bạn đang ở' ở màn chọn nơi bắt đầu, chủ phòng đóng tab.
 # Phần 2: hết ván, chơi ván mới, về phòng, rời giữa ván, người đến muộn bị từ chối, vào bằng link, chủ phòng đóng phòng.
 import asyncio
 from playwright.async_api import async_playwright
@@ -101,3 +102,36 @@ async def main2():
         for i,f in enumerate(fr): print(f"lỗi ô {i+1}:", await ev(f, "(window.__errs||[]).slice(0,3)"))
         await b.close()
 print('=== Phần 2 ==='); asyncio.run(main2())
+
+async def main3():
+    async with async_playwright() as p:
+        b = await p.chromium.launch(args=["--disable-gpu","--disable-webgl"])
+        ctx = await b.new_context(viewport={"width":1500,"height":900}); pg = await ctx.new_page()
+        await pg.goto("http://localhost:8765/index.html?multitest=3"); await pg.wait_for_timeout(4500)
+        fr = lambda: sorted([f for f in pg.frames if 'mt=' in f.url], key=lambda f: f.url)
+        F = fr()
+        await pg.click(".mt-bar button[data-c='start']"); await pg.wait_for_timeout(2000)
+        await pg.click(".mt-bar button[data-c='ready']"); await pg.wait_for_timeout(8000)
+        me2 = await ev(F[1], "__session.world.meId"); x_before = await ev(F[0], f"Math.round(__session.world.agents[{me2}].x)")
+        print("người 2 là nhân vật", me2)
+        # người 2 tải lại trang giữa ván
+        await F[1].evaluate("location.reload()"); await pg.wait_for_timeout(6000)
+        F = fr()
+        print("sau tải lại: người 2 có ván?", await ev(F[1], "!!__session.world && __session.world.phase"), "| nhân vật", await ev(F[1], "__session.world?.meId"), "| tờ phân công còn mở?", await ev(F[1], "!!document.querySelector('.reveal')"))
+        print("chủ phòng coi là người thật:", await ev(F[0], f"__session.world.agents[{me2}].human"), "| mất kết nối:", await ev(F[0], f"!!__session.world.agents[{me2}].away"))
+        print("thông báo ở ô 3 (toast):", await ev(F[2], "document.querySelector('.toast')?.textContent ?? ''"))
+        # gọi họp -> bỏ phiếu bỏ qua -> màn chọn nơi bắt đầu có 'Bạn đang ở'
+        await pg.click(".mt-bar button[data-c='meeting']"); await pg.wait_for_timeout(2500)
+        for f in F: await f.click("#m-ready")
+        await pg.wait_for_timeout(1200)
+        for f in F: await f.evaluate("document.querySelector('#m-skip') && !document.querySelector('#m-skip').disabled && document.querySelector('#m-skip').click()")
+        for t in range(40):
+            await pg.wait_for_timeout(1000)
+            if await ev(F[1], "!!document.querySelector('.spawn-modal')"): break
+        print("màn chọn ở người 2:", await ev(F[1], "document.querySelector('.sp-here')?.textContent"), "| nhãn cùng tầng:", await ev(F[1], "document.querySelectorAll('.sp-same').length"))
+        await pg.screenshot(path="/tmp/mt_here.png")
+        # chủ phòng đóng tab
+        await F[0].goto("about:blank"); await pg.wait_for_timeout(1500)
+        for i in (1, 2): print(f"ô {i+1} sau khi chủ phòng đóng:", await ev(F[i], "[...document.querySelectorAll('.modal h2')].map(e=>e.textContent).join(' | ')"))
+        await b.close()
+print('=== Phần 3: tải lại giữa ván, màn chọn nơi bắt đầu, chủ phòng đóng tab ==='); asyncio.run(main3())
