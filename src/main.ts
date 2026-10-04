@@ -75,4 +75,4 @@ if (MT_SLOT && window.parent !== window) {
 }
 
 // Công cụ gỡ lỗi: thêm ?debug vào địa chỉ để truy cập trạng thái game từ console
-if (location.search.includes('debug')) { (window as any).__session = session; (window as any).__charCanvas = characterCanvas; }
+if (location.search.includes('debug')) { (window as any).__session = session; (window as any).__charCanvas = characterCanvas; void import('./net/room').then(m => { (window as any).__net = m.net; }); }

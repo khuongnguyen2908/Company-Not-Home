@@ -26,5 +26,12 @@ export const session = {
     info: { title: 'Phòng offline', people: 1, max: 1, imps: 1, roles: 0, wins: 0, played: 0, streak: 0 },
     /** Tin chat trong sảnh (sảnh báo lên giao diện để ghi vào khung chat) */
     onChat: null as null | ((m: { name: string; empId: string; text: string; me: boolean }) => void),
+    /** Sảnh online: người khác trong phòng (mã máy → hồ sơ + trạng thái), do giao diện cập nhật từ mạng */
+    online: false,
+    remote: new Map<string, { name: string; empId: string; look: import('./game/look').Look; lost: boolean; s: import('./net/room').LobbyState | null }>(),
+    /** sảnh gửi trạng thái của mình / báo mình vừa chat, nghịch đồ (giao diện chuyển lên mạng) */
+    sendState: null as null | ((s: import('./net/room').LobbyState, ms: number) => void),
+    sendChat: null as null | ((text: string) => void),
+    sendFx: null as null | ((key: string) => void),
   },
 };

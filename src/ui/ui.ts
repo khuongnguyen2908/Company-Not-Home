@@ -386,7 +386,8 @@ export class UI {
     const p = this.prefs;
     if (!/^[1-9][0-9]{2}$/.test(this.sessId)) this.sessId = this.randomFreeId();
     session.lobby.me = { name: this.sessName || p.name, look: p.look, empId: this.sessId };
-    this.syncLobbyBots();
+    if (net.role !== 'solo') { const mine = (net.host?.players.find(x => x.host) ?? net.client?.room?.players.find(x => x.peer === net.client?.tr.peerId)); if (mine) session.lobby.me.empId = mine.empId; }
+    else { session.lobby.online = false; this.syncLobbyBots(); }
     this.root.innerHTML = '';
     const hud = document.createElement('div');
     hud.className = 'hud lobby-hud';
@@ -423,7 +424,8 @@ export class UI {
     muteLabel();
     $('#l-mute', hud).onclick = () => { this.prefs.muted = !this.prefs.muted; savePrefs(this.prefs); sfx.setMuted(this.prefs.muted); muteLabel(); };
     $('#l-menu', hud).onclick = () => { const m = $('.menu-pop', hud); m.hidden = !m.hidden; };
-    $('#l-exit', hud).onclick = () => this.showMainMenu();
+    $('#l-exit', hud).onclick = () => { if (net.role !== 'solo') { forgetRoom(); this.leaveNet(); } this.showMainMenu(); };
+    if (net.role !== 'solo') ($('#l-exit', hud)).textContent = net.host ? '🚪 Đóng phòng, về màn hình chính' : '🚪 Rời phòng, về màn hình chính';
     $('#l-keys', hud).onclick = () => { $('.menu-pop', hud).hidden = true; this.openControls(); };
     $('#l-rules', hud).onclick = () => { $('.menu-pop', hud).hidden = true; this.openRules(); };
     this.bindMusicButton($('#l-music', hud));
@@ -504,6 +506,7 @@ export class UI {
 
   /** Cập nhật thông tin cho màn hình phòng và bảng Nhân viên của tháng trên tường sảnh */
   private syncLobbyInfo() {
+    if (session.lobby.online) { this.refreshOnlineLobby(); return; }
     const p = this.prefs, L = session.lobby, n = 1 + L.bots.length;
     const enabled = SPECIAL_ROLES.filter(r => p.roles[r]).length;
     L.info = { title: 'Phòng offline', people: n, max: n, imps: n <= 6 ? 1 : p.imps, roles: Math.min(enabled, p.maxSpecial), wins: this.stats.wins, played: this.stats.played, streak: this.stats.streak };
@@ -511,6 +514,7 @@ export class UI {
 
   private renderLobbyPeople() {
     const hud = this.lobbyHud; if (!hud) return;
+    if (session.lobby.online) { this.refreshOnlineLobby(); return; }
     const L = session.lobby;
     const people = [{ ...L.me, me: true }, ...L.bots.map(b => ({ ...b, me: false }))];
     $('.lc-people', hud).innerHTML = people.map(x => `<li><img src="${avatarURL(x.look!)}" alt=""><span>${esc(x.name)} <small>#${x.empId}</small>${x.me ? ' (bạn)' : ''}</span></li>`).join('');
@@ -535,8 +539,8 @@ export class UI {
     if (!near) return;
     sfx.unlock(); sfx.click();
     if (near === 'wardrobe') this.openWardrobe();
-    else if (near === 'board') this.openBoard();
-    else if (near === 'elevator') this.startFromLobby();
+    else if (near === 'board') { if (session.lobby.online) this.openRoomPanel(); else this.openBoard(); }
+    else if (near === 'elevator') { if (session.lobby.online) this.startOnlineFromLobby(); else this.startFromLobby(); }
   }
 
   /** Bắt đầu ca từ sảnh: cảnh mọi người vào thang máy đi lên văn phòng */
@@ -739,6 +743,8 @@ export class UI {
   /** Màn chia ô ?multitest: ép một ghế người thật làm Nội gián ở ván tới (-1: không ép) */
   forcedImpSeat = -1;
 
+  /** Phiếu ẩn danh: chơi nhiều người thì theo cài đặt phòng, chơi một mình thì theo cài đặt riêng */
+  private anonVotesOn() { const st = net.host?.settings ?? net.client?.room?.settings; return net.role !== 'solo' && st ? !!st.anonVotes : this.prefs.anonVotes; }
   private myProfile(): Profile {
     return { name: this.sessName || this.prefs.name || 'Bạn', look: this.prefs.look, empId: this.sessId || String(100 + Math.floor(Math.random() * 900)) };
   }
@@ -769,6 +775,8 @@ export class UI {
     if (net.host) net.host.close();
     if (net.client) { net.client.leave(); session.world = null; } // bản sao không bao giờ được tự chạy như ván chơi một mình
     net.host = null; net.client = null; net.role = 'solo';
+    session.lobby.online = false; session.lobby.remote.clear(); session.lobby.sendState = session.lobby.sendChat = session.lobby.sendFx = null;
+    this.onlineLobbyOn = false;
     sessionStorage.removeItem(ROOM_KEY);
     this.rejoinPop(null);
     this.roomEl?.remove(); this.roomEl = null;
@@ -791,7 +799,9 @@ export class UI {
     }
     const h = new NetHost(multi, code, this.myProfile(), { timers: false });
     net.host = h; net.role = 'host';
-    h.onRoomChange = () => this.renderRoom();
+    const pr = this.prefs;
+    h.settings = { fillBots: true, seats: Math.max(4, Math.min(MAX_PLAYERS, pr.bots + 1)), imps: pr.imps === 2 ? 2 : 1, roles: { ...pr.roles }, maxSpecial: pr.maxSpecial, discussTime: 60, voteTime: 30, anonVotes: pr.anonVotes };
+    h.onRoomChange = () => { this.renderRoom(); this.refreshOnlineLobby(); };
     h.onNote = (t) => this.notify(t);
     // chủ phòng tắt tab / tải lại trang: báo cả phòng đóng ngay (không để mọi người chơi tiếp một mình)
     window.addEventListener('pagehide', () => { if (net.host === h) h.close(); }, { once: true });
@@ -826,7 +836,7 @@ export class UI {
     c.onNote = (t) => this.notify(t);
     c.onHostLost = (lost) => this.netBanner(lost);
     net.onError = (m) => this.toast(m);
-    c.onRoom = () => { rememberRoom(code, myPeer); if (!c.replica) window.setTimeout(() => { if (!c.replica) this.rejoinPop(null); }, 1200); if (!session.world || session.world.phase === 'ended' || !c.replica) this.showRoom(); };
+    c.onRoom = () => { rememberRoom(code, myPeer); if (this.roomEl?.classList.contains('room-panel')) this.renderRoom(); if (!c.replica) window.setTimeout(() => { if (!c.replica) this.rejoinPop(null); }, 1200); if (!c.replica) this.showRoom(); }; // đang ở màn kết quả thì chờ chủ phòng bấm Về phòng
     c.onReject = (r) => { forgetRoom(); this.leaveNet(); this.showMainMenu(); this.infoModal('Không vào được phòng', `<p>${esc(r)}</p>`); };
     c.onStart = (rep) => { this.rejoinPop(null); this.startClientGame(rep); };
     c.onEnd = () => this.showRoom();
@@ -851,6 +861,8 @@ export class UI {
   /** Màn hình phòng: danh sách người, cài đặt (chủ phòng chỉnh), bắt đầu ván */
   showRoom() {
     closeMini();
+    // đã biết phòng: vào sảnh tầng G chung (màn hình danh sách chỉ còn dùng lúc đang tìm phòng)
+    if (net.host || net.client?.room) { this.enterOnlineLobby(); return; }
     this.root.querySelectorAll('.overlay, .modal').forEach(e => e.remove());
     if (!this.roomEl || !this.roomEl.isConnected) {
       const el = document.createElement('div');
@@ -882,9 +894,20 @@ export class UI {
       <ul class="room-players">${room.players.map(p => `<li class="${p.peer === me ? 'me' : ''}${p.lost ? ' lost' : ''}"><img src="${avatarURL(normalizeLook(p.look))}" alt=""><span><b>${esc(p.name)}</b><small>#${esc(p.empId)}</small></span>${p.host ? '<em class="tag host">Chủ phòng</em>' : ''}${p.peer === me ? '<em class="tag you">Bạn</em>' : ''}${p.lost ? '<em class="tag lost">Mất kết nối</em>' : ''}</li>`).join('')}
         ${Array.from({ length: empty }, () => `<li class="seat">${st.fillBots ? '<span class="bot">Bot</span>' : 'Ghế trống'}</li>`).join('')}</ul>
       <div class="room-set">
-        <label><input type="checkbox" id="rm-bots" ${st.fillBots ? 'checked' : ''} ${host ? '' : 'disabled'}> Ghế trống có bot chơi cùng</label>
-        <label>Số ghế <select id="rm-seats" ${host ? '' : 'disabled'}>${[4, 5, 6, 7, 8, 9, 10].map(n => `<option value="${n}" ${n === st.seats ? 'selected' : ''} ${n < room.players.length ? 'disabled' : ''}>${n}</option>`).join('')}</select></label>
-        <label>Nội gián <select id="rm-imps" ${host && total > 6 ? '' : 'disabled'}><option value="1" ${imps === 1 ? 'selected' : ''}>1</option><option value="2" ${imps === 2 ? 'selected' : ''}>2</option></select></label>
+        <section><h4>Người chơi</h4>
+          <label><input type="checkbox" id="rm-bots" ${st.fillBots ? 'checked' : ''} ${host ? '' : 'disabled'}> Ghế trống có bot chơi cùng</label>
+          <label>Số ghế <select id="rm-seats" ${host ? '' : 'disabled'}>${[4, 5, 6, 7, 8, 9, 10].map(n => `<option value="${n}" ${n === st.seats ? 'selected' : ''} ${n < room.players.length ? 'disabled' : ''}>${n}</option>`).join('')}</select></label>
+          <label>Nội gián <select id="rm-imps" ${host && total > 6 ? '' : 'disabled'}><option value="1" ${imps === 1 ? 'selected' : ''}>1</option><option value="2" ${imps === 2 ? 'selected' : ''}>2</option></select></label>
+        </section>
+        <section><h4>Vai có kỹ năng <small>(tối đa <select id="rm-max" ${host ? '' : 'disabled'}>${[0, 1, 2, 3, 4, 5, 6].map(n => `<option value="${n}" ${n === st.maxSpecial ? 'selected' : ''}>${n}</option>`).join('')}</select> vai mỗi ván)</small></h4>
+          <div class="rm-roles">${SPECIAL_ROLES.map(r => `<button type="button" class="rm-role${st.roles[r] !== false ? ' on' : ''}" data-r="${r}" ${host ? '' : 'disabled'} title="${esc(ROLE_INFO[r].name)}">${ROLE_INFO[r].icon} ${esc(ROLE_INFO[r].name)}</button>`).join('')}</div>
+        </section>
+        <section><h4>Cuộc họp</h4>
+          <label>Thảo luận <select id="rm-disc" ${host ? '' : 'disabled'}>${[30, 45, 60, 90, 120].map(n => `<option value="${n}" ${n === st.discussTime ? 'selected' : ''}>${n} giây</option>`).join('')}</select></label>
+          <label>Bỏ phiếu <select id="rm-vote" ${host ? '' : 'disabled'}>${[15, 30, 45, 60].map(n => `<option value="${n}" ${n === st.voteTime ? 'selected' : ''}>${n} giây</option>`).join('')}</select></label>
+          <label><input type="checkbox" id="rm-anon" ${st.anonVotes ? 'checked' : ''} ${host ? '' : 'disabled'}> Phiếu ẩn danh</label>
+        </section>
+        ${host ? '' : '<p class="small rm-ro">Chỉ chủ phòng chỉnh được cài đặt.</p>'}
       </div>
       <p class="room-note">${room.players.length}/${cap} người · ván ${total} người, ${imps} Nội gián${canStart ? '' : ' · cần ít nhất 4 người (bật bot để chơi ngay)'}</p>
       ${this.p2pText() ? `<p class="room-p2p ${this.p2pStatus}">${esc(this.p2pText())}</p>` : ''}
@@ -900,9 +923,116 @@ export class UI {
       (el.querySelector('#rm-bots') as HTMLInputElement).onchange = (e) => { host.settings.fillBots = (e.target as HTMLInputElement).checked; host.broadcastRoom(); };
       (el.querySelector('#rm-seats') as HTMLSelectElement).onchange = (e) => { host.settings.seats = Number((e.target as HTMLSelectElement).value); host.broadcastRoom(); };
       (el.querySelector('#rm-imps') as HTMLSelectElement).onchange = (e) => { host.settings.imps = Number((e.target as HTMLSelectElement).value) === 2 ? 2 : 1; host.broadcastRoom(); };
+      (el.querySelector('#rm-max') as HTMLSelectElement).onchange = (e) => { host.settings.maxSpecial = Number((e.target as HTMLSelectElement).value); host.broadcastRoom(); };
+      (el.querySelector('#rm-disc') as HTMLSelectElement).onchange = (e) => { host.settings.discussTime = Number((e.target as HTMLSelectElement).value); host.broadcastRoom(); };
+      (el.querySelector('#rm-vote') as HTMLSelectElement).onchange = (e) => { host.settings.voteTime = Number((e.target as HTMLSelectElement).value); host.broadcastRoom(); };
+      (el.querySelector('#rm-anon') as HTMLInputElement).onchange = (e) => { host.settings.anonVotes = (e.target as HTMLInputElement).checked; host.broadcastRoom(); };
+      el.querySelectorAll<HTMLButtonElement>('.rm-role').forEach(b => b.onclick = () => { const r = b.dataset.r!; host.settings.roles = { ...host.settings.roles, [r]: host.settings.roles[r] === false }; host.broadcastRoom(); });
       const sb = el.querySelector('#rm-start') as HTMLButtonElement | null;
       if (sb) sb.onclick = () => this.startNetGame();
     }
+  }
+
+  // ---------- Sảnh tầng G chung (online) ----------
+  private onlineLobbyOn = false;
+  private sentLookKey = '';
+  private lobbyScene() { return session.phaser?.scene.getScene('lobby') as unknown as { remoteSay?: (p: string, t: string) => void; remoteFx?: (p: string, k: string) => void; playElevator?: (done: () => void) => void } | undefined; }
+  /** Vào (hoặc làm mới) sảnh chung của phòng */
+  private enterOnlineLobby() {
+    const L = session.lobby, h = net.host, c = net.client;
+    if (this.onlineLobbyOn && this.lobbyHud?.isConnected && session.world === null) { this.refreshOnlineLobby(); return; }
+    this.roomEl?.remove(); this.roomEl = null;
+    L.online = true;
+    L.bots = []; L.version++;
+    L.remote.clear();
+    // trạng thái / chat / nghịch đồ của mình đi lên mạng; của người khác về sảnh
+    L.sendState = h ? (st, ms) => { h.setMyLobby(st); h.lobbyTick(ms); } : (st, ms) => c?.sendLobby(st, ms);
+    L.sendChat = h ? (t) => h.lobbyChat(t) : (t) => c?.sendLobbyChat(t);
+    L.sendFx = h ? (k) => h.lobbyFx(k) : (k) => c?.sendLobbyFx(k);
+    const say = (peer: string, t: string) => this.lobbyScene()?.remoteSay?.(peer, t);
+    const fx = (peer: string, k: string) => this.lobbyScene()?.remoteFx?.(peer, k);
+    if (h) { h.onLobbyChat = say; h.onLobbyFx = fx; }
+    if (c) { c.onLobbyChat = say; c.onLobbyFx = fx; c.onLobbyGo = () => this.playOnlineElevator(); }
+    this.onlineLobbyOn = true;
+    this.enterLobby();
+    this.refreshOnlineLobby();
+  }
+  /** Danh sách người, màn hình phòng trên tường, thẻ góc trái */
+  private refreshOnlineLobby() {
+    const hud = this.lobbyHud; if (!hud || !session.lobby.online) return;
+    const h = net.host, c = net.client;
+    const room = h ? { code: h.code, players: h.players, settings: h.settings } : c?.room;
+    if (!room) return;
+    const me = h ? h.tr.peerId : c!.tr.peerId;
+    const st = room.settings, total = st.fillBots ? Math.max(st.seats, room.players.length) : room.players.length, imps = total <= 6 ? 1 : st.imps;
+    const cap = Math.min(MAX_PLAYERS, Math.max(4, st.seats));
+    session.lobby.info = { ...session.lobby.info, title: `Phòng ${room.code}`, people: room.players.length, max: cap, imps, roles: Math.min(SPECIAL_ROLES.filter(r => this.prefs.roles[r]).length, this.prefs.maxSpecial) };
+    const title = $('.lc-title', hud);
+    if (title.dataset.code !== room.code) {
+      title.dataset.code = room.code;
+      title.innerHTML = `Phòng ${esc(room.code)} <button type="button" class="lc-copy" title="Sao chép mã phòng">Sao chép</button>`;
+      const cp = title.querySelector('.lc-copy') as HTMLButtonElement;
+      cp.onclick = (e) => {
+        e.stopPropagation();
+        navigator.clipboard?.writeText(room.code).then(() => { cp.textContent = 'Đã chép!'; cp.classList.add('ok'); window.setTimeout(() => { cp.textContent = 'Sao chép'; cp.classList.remove('ok'); }, 1400); }).catch(() => { cp.textContent = room.code; });
+      };
+    }
+    ($('.lc-mode', hud)).innerHTML = `${h ? 'Bạn là chủ phòng' : 'Chơi nhiều người'} · ${room.players.length}/${cap} người${st.fillBots ? ` · ${Math.max(0, total - room.players.length)} bot` : ''}${this.p2pText() ? `<br><small class="lc-p2p">${esc(this.p2pText())}</small>` : ''}`;
+    $('.lc-people', hud).innerHTML = room.players.map(x => `<li class="${x.lost ? 'lost' : ''}"><img src="${avatarURL(normalizeLook(x.look))}" alt=""><span>${esc(x.name)} <small>#${esc(x.empId)}</small>${x.peer === me ? ' (bạn)' : ''}${x.host ? ' · chủ phòng' : ''}${x.lost ? ' · mất kết nối' : ''}</span></li>`).join('');
+    $('.lc-faces', hud).innerHTML = room.players.slice(0, 6).map(x => `<img src="${avatarURL(normalizeLook(x.look))}" alt="">`).join('');
+    $('.lc-sum', hud).textContent = `${room.players.length} người · ${imps} Nội gián`;
+    // mã số do chủ phòng cấp (không trùng trong phòng): hiện mã, không cho đổi ở sảnh online
+    const mine = room.players.find(x => x.peer === me);
+    $('#l-id b', hud).textContent = '#' + (mine?.empId ?? '');
+    const editI = hud.querySelector('#l-id i') as HTMLElement | null; if (editI) editI.hidden = true;
+    ($('#l-id', hud) as HTMLButtonElement).disabled = true;
+  }
+  /** Mỗi khung hình ở sảnh online: chép danh sách người khác (hồ sơ + trạng thái) cho cảnh vẽ */
+  private syncOnlineLobbyFrame() {
+    const L = session.lobby; if (!L.online) return;
+    const h = net.host, c = net.client;
+    const players = h ? h.players : c?.room?.players ?? [];
+    const states = h ? h.lobby : c?.lobby ?? new Map();
+    const me = h ? h.tr.peerId : c?.tr.peerId;
+    const seen = new Set<string>();
+    for (const p of players) {
+      if (p.peer === me) continue;
+      seen.add(p.peer);
+      const cur = L.remote.get(p.peer);
+      const look = cur && lookKey(cur.look) === lookKey(normalizeLook(p.look)) ? cur.look : normalizeLook(p.look);
+      L.remote.set(p.peer, { name: p.name, empId: p.empId, look, lost: !!p.lost, s: states.get(p.peer) ?? null });
+    }
+    for (const k of [...L.remote.keys()]) if (!seen.has(k)) L.remote.delete(k);
+  }
+  /** Quầy lễ tân ở sảnh online: bảng cài đặt phòng (chủ phòng chỉnh, người khác xem) */
+  private openRoomPanel() {
+    const el = document.createElement('div');
+    el.className = 'room-screen room-panel';
+    this.root.appendChild(el);
+    this.roomEl = el;
+    this.renderRoom();
+    const close = document.createElement('button'); close.className = 'x art room-x'; close.type = 'button'; close.innerHTML = iconSvg('close');
+    const shut = () => { el.remove(); if (this.roomEl === el) this.roomEl = null; };
+    el.addEventListener('click', (e) => { if (e.target === el) shut(); });
+    const attach = () => { const card = el.querySelector('.room-card'); if (card && !card.querySelector('.room-x')) card.prepend(close); };
+    attach(); new MutationObserver(attach).observe(el, { childList: true });
+    close.onclick = shut;
+  }
+  /** Chủ phòng bấm vào ca ở thang máy: cả phòng cùng xem cảnh thang máy rồi vào ván */
+  private startOnlineFromLobby() {
+    const h = net.host;
+    if (!h) { this.toast('Chờ chủ phòng bấm vào ca nhé', 2200); return; }
+    const total = h.settings.fillBots ? Math.max(h.settings.seats, h.players.length) : h.players.length;
+    if (total < 4) { this.toast('Cần ít nhất 4 người (bật bot ở quầy lễ tân để chơi ngay)', 2600); return; }
+    h.lobbyGo();
+    this.playOnlineElevator();
+  }
+  private playOnlineElevator() {
+    const sc = this.lobbyScene();
+    this.roomEl?.remove(); this.roomEl = null;
+    if (!sc?.playElevator || !this.lobbyHud) { if (net.host) this.startNetGame(); return; }
+    this.lobbyHud.classList.add('cutscene');
+    sc.playElevator(() => { if (net.host) this.startNetGame(); /* người vào phòng: chờ lệnh bắt đầu của chủ phòng */ });
   }
 
   /** Chủ phòng bắt đầu ván: người thật ngồi các ghế đầu, bot điền phần còn lại */
@@ -916,7 +1046,9 @@ export class UI {
     const p = this.prefs;
     const remote = humans.filter(x => !x.host);
     const me = humans.find(x => x.host)!;
-    const w = new World({ playerName: me.name, playerLook: p.look, roles: p.roles, maxSpecial: p.maxSpecial,
+    const st = h.settings;
+    const roles = Object.fromEntries(SPECIAL_ROLES.map(r => [r, st.roles[r] !== false])) as typeof p.roles;
+    const w = new World({ playerName: me.name, playerLook: p.look, roles, maxSpecial: st.maxSpecial, discussTime: st.discussTime, voteTime: st.voteTime,
       playerRole: p.testRole === 'random' ? 'random' : p.testRole === 'impostor' ? 'impostor' : 'crew',
       playerDept: p.testRole !== 'random' && p.testRole !== 'impostor' ? p.testRole : undefined,
       bots: total - 1, impostors: imps, botProfiles: remote.map(r => ({ name: r.name, look: normalizeLook(r.look), empId: r.empId })), playerEmpId: me.empId });
@@ -942,7 +1074,11 @@ export class UI {
 
   /** Thông báo của phòng: trong ván hiện như thông báo nổi, ở màn hình phòng hiện dưới danh sách */
   private notify(text: string) {
-    if (this.hudEl?.isConnected && !this.roomEl) { this.toast(text, 3200); return; }
+    if (this.hudEl?.isConnected && !this.roomEl && session.world) { this.toast(text, 3200); return; }
+    if (this.lobbyHud?.isConnected && !this.roomEl) {
+      const n = document.createElement('div'); n.className = 'lobby-note'; n.textContent = text; this.lobbyHud.appendChild(n);
+      window.setTimeout(() => n.remove(), 4000); return;
+    }
     const f = this.roomEl?.querySelector('.room-flash') as HTMLElement | null;
     if (f) { f.hidden = false; f.textContent = text; window.setTimeout(() => { if (f.textContent === text) f.hidden = true; }, 4000); }
   }
@@ -2128,7 +2264,7 @@ export class UI {
       this.resultShown = true;
       for (const [target, voters] of m.result.tally) {
         const holder = target === 'skip' ? null : el.querySelector(`.tile[data-id="${target}"] .voters`);
-        const html = this.prefs.anonVotes
+        const html = this.anonVotesOn()
           ? voters.map(() => '<span class="anon-vote" title="Phiếu ẩn danh"></span>').join('')
           : voters.map(v => `<img src="${avatarURL(w.agents[v].look)}" title="${esc(w.agents[v].name)} #${w.agents[v].empId}" alt="">`).join('');
         if (holder) holder.innerHTML = html;
@@ -2315,6 +2451,16 @@ export class UI {
 
   // ================= MỖI KHUNG HÌNH =================
   private frame(dt: number) {
+    if (session.lobby.online && !session.world) {
+      this.syncOnlineLobbyFrame();
+      // đổi ngoại hình ở máy thay đồ: báo cả phòng (gửi lại hồ sơ)
+      const L = session.lobby, k = L.me.look ? lookKey(L.me.look) + L.me.name : '';
+      if (k && k !== this.sentLookKey) {
+        this.sentLookKey = k;
+        if (net.host) { const mine = net.host.players.find(x => x.host); if (mine && L.me.look) { mine.look = L.me.look; mine.name = L.me.name; net.host.broadcastRoom(); } }
+        else if (net.client && L.me.look) { net.client.me = { ...net.client.me, look: L.me.look, name: L.me.name }; net.client.join(); }
+      }
+    }
     // người vào phòng: mở màn chọn nơi bắt đầu khi nhận được lựa chọn (mỗi cuộc họp một lần; ảnh chụp đến trễ không mở lại)
     { const w = session.world; if (net.role === 'client' && w && w.phase === 'play' && w.spawnOffer && !this.spawnPickerOpen && !this.meetEl && this.spawnDoneFor !== w.meetingCount) this.showSpawnPicker(); }
     // Gộp bàn phím và cần điều khiển

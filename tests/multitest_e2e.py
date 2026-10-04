@@ -88,13 +88,14 @@ async def main2():
         await pg.click(".mt-bar button[data-c='again']"); await pg.wait_for_timeout(2500)
         for i in (0,1): print(f"ô {i+1} ván mới:", await ev(fr[i], "(() => `tờ phân công=${!!document.querySelector('.reveal')} phase=${__session.world.phase} người thật=${__session.world.agents.filter(a=>a.human).length}`)()"))
         await pg.click(".mt-bar button[data-c='ready']"); await pg.wait_for_timeout(8000)
-        await ev(fr[0], "__session.world.endGame('impostor', 'Thử lần 2')"); await pg.wait_for_timeout(2000)
-        # về phòng
+        await ev(fr[0], "__session.world.endGame('impostor', 'Thử lần 2')")
+        # về phòng (chờ màn kết quả hiện hẳn rồi mới bấm)
+        await fr[0].wait_for_selector(".gameover #lobby", timeout=15000); await pg.wait_for_timeout(500)
         await fr[0].click(".gameover #lobby"); await pg.wait_for_timeout(1500)
-        for i in (0,1): print(f"ô {i+1} sau 'Về phòng':", (await ev(fr[i], "document.querySelector('.room-screen')?.innerText.replace(/\\s+/g,' ').slice(0,90) ?? 'không có màn phòng'")))
+        for i in (0,1): print(f"ô {i+1} sau 'Về phòng':", (await ev(fr[i], "(document.querySelector('.lc-title')?.textContent ?? 'không ở sảnh phòng') + ' · ' + (document.querySelector('.lc-mode')?.textContent ?? '')")))
         # 3. tab riêng vào bằng link lúc phòng chờ
         await late.goto(f"http://localhost:8765/index.html?room={code}"); await late.wait_for_timeout(3000)
-        print("vào bằng link: tab mới thấy", (await late.evaluate("document.querySelector('.room-screen')?.innerText.replace(/\\s+/g,' ').slice(0,120) ?? 'không vào được'")))
+        print("vào bằng link: tab mới thấy", (await late.evaluate("(document.querySelector('.lc-title')?.textContent ?? 'không vào được') + ' · ' + (document.querySelector('.lc-mode')?.textContent ?? '')")))
         print("chủ phòng thấy", await ev(fr[0], "__net.host.players.map(p=>p.name).join(', ')"))
         # 5. chủ phòng đóng phòng
         await ev(fr[0], "__ui.leaveNet()"); await pg.wait_for_timeout(1500)
@@ -178,3 +179,76 @@ async def main4():
         print("   sau 17 giây:", await tab2.evaluate("[...document.querySelectorAll('.modal h2')].map(e=>e.textContent).join(' | ')"), "| nút vào lại còn?", await tab2.evaluate("!!document.querySelector('.rejoin-btn')"))
         await b.close()
 print('=== Phần 4: tab riêng + màn chia ô (tab ẩn), nhãn mã phòng, vào lại sau khi đóng tab, mất chủ phòng ==='); asyncio.run(main4())
+
+async def main5():
+    async with async_playwright() as p:
+        b = await p.chromium.launch(args=["--disable-gpu","--disable-webgl"])
+        ctx = await b.new_context(viewport={"width":1500,"height":900}); pg = await ctx.new_page()
+        await pg.goto("http://localhost:8765/index.html?multitest=3"); await pg.wait_for_timeout(13000)
+        F = sorted([f for f in pg.frames if 'mt=' in f.url], key=lambda f: f.url)
+        for f in F: await f.evaluate("window.addEventListener('error', e => (window.__errs ||= []).push(e.message))")
+        for i,f in enumerate(F):
+            print(f"ô {i+1}:", await f.evaluate("(() => { const sc=__session.phaser.scene.getScene('lobby'); return `cảnh sảnh=${__session.phaser.scene.isActive('lobby')} tiêu đề=${document.querySelector('.lc-title')?.textContent} người khác=${sc.bots.filter(b=>b.peer).length} đã tới=${sc.bots.filter(b=>b.peer&&b.arrived).length} mình đã tới=${sc.me?.arrived}`; })()"))
+        await pg.screenshot(path="/tmp/lob_on1.png")
+        # người 2 đi sang phải trong sảnh
+        p2 = await F[1].evaluate("__net.client.tr.peerId")
+        x0 = await F[0].evaluate(f"(() => {{ const m=__session.phaser.scene.getScene('lobby').bots.find(b=>b.peer==='{p2}'); return Math.round(m.x); }})()")
+        el = await pg.query_selector(".mt-cell[data-slot='2'] iframe"); await el.click(position={"x":300,"y":300}); await pg.wait_for_timeout(200)
+        await pg.keyboard.down("a"); await pg.wait_for_timeout(1000); await pg.keyboard.up("a"); await pg.wait_for_timeout(500)
+        own = await F[1].evaluate("Math.round(__session.phaser.scene.getScene('lobby').me.x)")
+        x1 = await F[0].evaluate(f"(() => {{ const m=__session.phaser.scene.getScene('lobby').bots.find(b=>b.peer==='{p2}'); return Math.round(m.x); }})()")
+        x3 = await F[2].evaluate(f"(() => {{ const m=__session.phaser.scene.getScene('lobby').bots.find(b=>b.peer==='{p2}'); return Math.round(m.x); }})()")
+        print("người 2 đi trong sảnh: máy mình", own, "| chủ phòng thấy", x0, "->", x1, "| người 3 thấy", x3)
+        # chat
+        await F[1].evaluate("__session.phaser.scene.getScene('lobby').chatSay('Chào cả phòng!')"); await pg.wait_for_timeout(800)
+        for i in (0,2): print(f"ô {i+1} thấy bong bóng:", await F[i].evaluate("__session.phaser.scene.getScene('lobby').bubbles.some(b=>b.text==='Chào cả phòng!')"))
+        # nghịch chuông
+        await F[2].evaluate("__session.phaser.scene.getScene('lobby').interact('bell')"); await pg.wait_for_timeout(500)
+        print("chủ phòng thấy hiệu ứng chuông:", await F[0].evaluate("__session.phaser.scene.getScene('lobby').fx.some(f=>f.kind==='ring')"))
+        await pg.screenshot(path="/tmp/lob_on2.png")
+        # chủ phòng vào ca bằng thang máy -> cả phòng xem cảnh thang máy rồi vào ván
+        await F[0].evaluate("(() => { const ui=__ui; ui.startOnlineFromLobby(); })()")
+        await pg.wait_for_timeout(1500)
+        for i,f in enumerate(F): print(f"ô {i+1} đang xem cảnh thang máy:", await f.evaluate("!!__session.phaser.scene.getScene('lobby').cut"))
+        await pg.wait_for_timeout(9000)
+        for i,f in enumerate(F): print(f"ô {i+1} sau cảnh thang máy:", await f.evaluate("(() => `có ván=${!!__session.world} tờ phân công=${!!document.querySelector('.reveal')}`)()"))
+        for i,f in enumerate(F): print(f"lỗi ô {i+1}:", await f.evaluate("(window.__errs||[]).slice(0,3)"))
+        await b.close()
+print('=== Phần 5: sảnh chung online (tới sảnh, đi lại, chat, nghịch đồ, cùng vào thang máy) ==='); asyncio.run(main5())
+
+OVER6 = """(() => { const sc=__session.phaser.scene.getScene('lobby'); let n=0; const vs=sc.vehicles; for (let i=0;i<vs.length;i++) for (let j=i+1;j<vs.length;j++) { const a=vs[i], b=vs[j]; if (a.lane===b.lane && Math.abs(a.x-b.x) < (a.len+b.len)/2 - 2) n++; } return n; })()"""
+async def main6():
+    async with async_playwright() as p:
+        b = await p.chromium.launch(args=["--disable-gpu","--disable-webgl"])
+        ctx = await b.new_context(viewport={"width":1300,"height":820})
+        # 4. sảnh chơi một mình có bot -> thoát -> tạo phòng online
+        A = await ctx.new_page(); errs=[]; A.on("pageerror", lambda e: errs.append(str(e)))
+        await A.goto("http://localhost:8765/index.html?debug"); await A.wait_for_timeout(800)
+        await A.fill("#f-name", "Chủ"); await A.click("#go-offline"); await A.wait_for_timeout(6000)
+        print("sảnh chơi một mình: số bot", await A.evaluate("__session.phaser.scene.getScene('lobby').bots.length"))
+        await A.evaluate("document.querySelector('#l-exit').click()"); await A.wait_for_timeout(600)
+        await A.click("#go-online"); await A.click("#on-create"); await A.wait_for_timeout(5000)
+        print("4. sảnh online sau khi tạo phòng: bot còn sót =", await A.evaluate("__session.phaser.scene.getScene('lobby').bots.filter(b=>!b.peer).length"), "| tiêu đề:", await A.evaluate("document.querySelector('.lc-title').innerText"))
+        code = await A.evaluate("__net.host.code")
+        print("1. nút sao chép:", await A.evaluate("!!document.querySelector('.lc-copy')"))
+        # 2. xe chồng nhau: lấy mẫu 25 giây
+        worst = 0
+        for t in range(50):
+            await A.wait_for_timeout(500); worst = max(worst, await A.evaluate(OVER6))
+        print("2. số cặp xe cùng làn chồng nhau (lớn nhất trong 25 giây):", worst)
+        # người vào phòng
+        B = await ctx.new_page(); B.on("pageerror", lambda e: errs.append(str(e)))
+        await B.goto("http://localhost:8765/index.html?debug"); await B.wait_for_timeout(800)
+        await B.fill("#f-name", "Khách"); await B.click("#go-online"); await B.fill("#on-code", code); await B.click("#on-go"); await B.wait_for_timeout(3000)
+        # 3. chủ phòng chỉnh cài đặt
+        await A.evaluate("__ui.openRoomPanel()"); await A.wait_for_timeout(300)
+        await A.click(".rm-role[data-r='hr']"); await A.select_option("#rm-disc", "90"); await A.check("#rm-anon"); await A.wait_for_timeout(600)
+        await A.screenshot(path="/tmp/rm_panel.png")
+        await B.evaluate("__ui.openRoomPanel()"); await B.wait_for_timeout(400)
+        print("3. người vào phòng thấy: HR bật?", await B.evaluate("document.querySelector(\".rm-role[data-r='hr']\").classList.contains('on')"), "| thảo luận:", await B.evaluate("document.querySelector('#rm-disc').value"), "| ẩn danh:", await B.evaluate("document.querySelector('#rm-anon').checked"), "| chỉnh được?", await B.evaluate("!document.querySelector('#rm-disc').disabled"))
+        await A.evaluate("document.querySelector('.room-x')?.click()"); await B.evaluate("document.querySelector('.room-x')?.click()")
+        await A.evaluate("__ui.startOnlineFromLobby()"); await A.wait_for_timeout(9000)
+        print("   vào ván: thảo luận", await A.evaluate("__session.world.discussTime"), "giây | có HR trong ván?", await A.evaluate("__session.world.roleList.includes('hr')"), "| máy khách phiếu ẩn danh:", await B.evaluate("__ui.anonVotesOn()"))
+        print("lỗi:", errs[:3])
+        await b.close()
+print('=== Phần 6: bot không sót khi chuyển sang phòng online, nút sao chép, xe không chồng nhau, cài đặt phòng ==='); asyncio.run(main6())

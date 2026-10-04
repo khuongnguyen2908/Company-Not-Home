@@ -1980,3 +1980,21 @@ body.mt-mode { overflow: hidden; }
 @keyframes npSpin { to { transform: rotate(360deg); } }
 .room-p2p { margin: 0; font-weight: 700; font-size: .85rem; color: #1f6feb; }
 .room-p2p.offline { color: #b0261c; }
+/* Sảnh chung online */
+.lc-p2p { font-weight: 600; opacity: .85; }
+.lc-people li.lost { opacity: .55; }
+.lobby-note { position: absolute; left: 50%; top: 70px; transform: translateX(-50%); z-index: 9; background: #fff3a0; border: 3px solid var(--ink); border-radius: 10px; padding: 6px 14px; font-weight: 800; box-shadow: 0 4px 0 var(--ink); animation: noteIn .3s ease-out; pointer-events: none; }
+.room-panel .room-card { position: relative; }
+.room-x { position: absolute; top: 8px; right: 8px; width: 34px; height: 34px; }
+.lc-copy { margin-left: 6px; vertical-align: 3px; font-size: .62rem; font-weight: 800; border: 2px solid var(--ink); border-radius: 999px; background: #ffe36e; padding: 1px 8px; cursor: pointer; font-family: var(--body); }
+.lc-copy.ok { background: #c8f0d2; }
+/* Bảng cài đặt phòng */
+.room-set { flex-direction: column; gap: 10px; }
+.room-set section { border: 2px dashed #c9c4b4; border-radius: 10px; padding: 8px 10px; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+.room-set h4 { width: 100%; margin: 0; font-family: var(--display); font-size: 1rem; }
+.room-set h4 small { font-family: var(--body); font-weight: 600; font-size: .8rem; color: var(--muted); }
+.rm-roles { display: flex; flex-wrap: wrap; gap: 6px; }
+.rm-role { border: 2px solid #c9c4b4; border-radius: 999px; background: #f1efe8; color: #9a96aa; padding: 3px 10px; font-weight: 700; font-size: .8rem; cursor: pointer; font-family: var(--body); text-decoration: line-through; }
+.rm-role.on { border-color: var(--ink); background: #c8f0d2; color: var(--ink); text-decoration: none; }
+.rm-role:disabled { cursor: default; }
+.rm-ro { margin: 0; color: var(--muted); }

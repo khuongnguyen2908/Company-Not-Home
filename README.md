@@ -70,7 +70,7 @@ Kiểm tra: `python3 tests/lobby_reentry.py` (về sảnh nhiều lần vẫn đ
 ## Chơi nhiều người
 
 - Màn hình chính → **Chơi nhiều người** → Tạo phòng mới (mã 6 ký tự, ví dụ `KPI-482`, kèm link mời) hoặc nhập mã để vào phòng. Mở link mời (`?room=MÃ`) là vào thẳng phòng.
-- **Màn hình phòng:** danh sách người, chủ phòng chỉnh bot điền ghế trống (bật/tắt), số ghế, số Nội gián; tối đa 10 người, ván cần ít nhất 4 người.
+- **Sảnh tầng G chung:** vào phòng là tới sảnh chung (đi xe buýt tới, bước vào cửa kính). Thấy nhau đi lại, ngồi sofa, cầm cốc nước; chat bằng bong bóng trên đầu; nghịch chuông, mèo, bể cá, cây thì mọi người cùng thấy; thay đồ thì người khác thấy ngay. Người mới vào phòng hiện ra ở chỗ xuống xe và bước vào theo đúng đường họ đi. Thẻ góc trái và màn hình phòng trên tường hiện mã phòng, số người, trạng thái kết nối. **Quầy lễ tân:** bảng cài đặt ván do chủ phòng chỉnh, người khác xem: người chơi (bot điền ghế trống, số ghế, số Nội gián), vai có kỹ năng (bật/tắt từng vai, số vai tối đa mỗi ván), cuộc họp (thời gian thảo luận, bỏ phiếu, phiếu ẩn danh). Ván dùng đúng các cài đặt này. Nút "Sao chép" cạnh mã phòng ở thẻ góc trái. **Thang máy:** chủ phòng bấm vào ca thì cả phòng cùng xem cảnh thang máy rồi vào ván. Tối đa 10 người, ván cần ít nhất 4 người. Hết ván, "Về phòng" đưa cả phòng về sảnh.
 - **Chủ phòng chạy game**, người vào phòng gửi điều khiển và nhận trạng thái đã lọc (không lộ vai, phòng ban, việc, hồi chiêu, kết quả kỹ năng của người khác). Tin nhắn của người đã nghỉ việc / bị sa thải chỉ người đã chết đọc được.
 - **Sức chứa phòng = số ghế** chủ phòng chọn; đủ ghế thì người mới bị từ chối.
 - **Kết nối:** im lặng quá 4 giây là "mất kết nối" (hiện trên danh sách phòng, thẻ tên, cả phòng nhận thông báo); trong ván quá 60 giây thì bot chơi thay hẳn, ở phòng chờ quá 12 giây thì rời phòng. **Tải lại trang hoặc mở lại link trong 60 giây là vào lại đúng nhân vật cũ.** Người vào phòng không nghe thấy chủ phòng 5 giây thì thấy dải báo, 15 giây thì về màn hình chính. Chủ phòng tắt tab thì phòng đóng ngay.
@@ -81,7 +81,7 @@ Kiểm tra: `python3 tests/lobby_reentry.py` (về sảnh nhiều lần vẫn đ
 - Kiểm tra: `npx tsx tests/net_conn_test.ts` (kết nối: sức chứa, tin hồn ma, mất kết nối, vào lại, bot thay, mất chủ phòng), `npx tsx tests/net_test.ts` (mạng giả có độ trễ và mất gói: không lộ bí mật, bản sao khớp chủ phòng, ván kết thúc đúng), `tests/multitest_e2e.py` (trình duyệt thật).
 - **Máy khác, mạng khác (P2P):** dùng WebRTC qua PeerJS (`src/net/peer.ts`): chủ phòng đăng ký tên `ngvp-<mã phòng>` trên máy giới thiệu công cộng `0.peerjs.com`, người vào phòng nối tới đó; có máy chuyển tiếp TURN dự phòng của PeerJS cho mạng chặn kết nối thẳng. Chủ phòng nhận người vào qua cả kênh nội bộ (các tab cùng trình duyệt) lẫn P2P; người vào phòng thử kênh nội bộ trước, 1,2 giây không thấy chủ phòng mới bật P2P. Mỗi tin mang mã máy logic nên vào lại đúng nhân vật dù đi đường khác. Mã phòng trùng phòng khác thì tự đổi mã; mất mạng thì báo rõ. Màn chia ô `?multitest` chỉ dùng kênh nội bộ.
 - **Thử P2P:** cần chạy trên trang GitHub Pages (link chơi thử trên claude.ai chặn kết nối ra ngoài). Kiểm tra tự động: `npx tsx tests/p2p_test.ts` (PeerJS giả).
-- Giai đoạn sau: rà đủ tính năng với nhiều người thật, sảnh chung.
+- Giai đoạn sau: rà đủ tính năng với nhiều người thật.
 
 ## Phòng thử mini-game
 

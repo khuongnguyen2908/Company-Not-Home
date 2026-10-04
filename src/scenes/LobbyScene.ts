@@ -91,6 +91,8 @@ interface Mover {
   id: number; phase: number; x: number; y: number; facing: 1 | -1; moving: boolean; walkT: number; look: Look; name: string; empId: string;
   sprite: Phaser.GameObjects.Image; shadow: Phaser.GameObjects.Image; tag: Phaser.GameObjects.Text;
   path: { x: number; y: number }[]; wait: number; seat: number | null; arrived: boolean; cupUntil: number; isMe: boolean;
+  /** sảnh online: người thật ở máy khác (mã máy), điều khiển bằng trạng thái nhận qua mạng */
+  peer?: string;
 }
 interface Vehicle { kind: 'car' | 'moto' | 'bus' | 'taxi'; lane: 0 | 1; x: number; v: number; color: number; len: number;
   stopAt?: number; state: 'drive' | 'stopped' | 'leave'; t: number; drop?: Mover[]; dropped?: number; roll: number; door: number }
@@ -282,16 +284,43 @@ export class LobbyScene extends Phaser.Scene {
   private syncPeople() {
     const L = session.lobby;
     if (!L.me.look) return;
+    if (L.online) {
+      // sảnh online: bỏ hết bot của sảnh chơi một mình (cảnh có thể đang chạy sẵn từ trước)
+      for (const b of this.bots.filter(x => !x.peer)) this.destroyMover(b);
+      this.bots = this.bots.filter(x => x.peer);
+      this.arrivals = this.arrivals.filter(a => a.people.every(m => m.isMe || m.peer));
+      this.syncRemote(); if (this.me) { this.syncMe(); return; }
+    } else if (this.bots.some(x => x.peer)) {
+      // rời phòng online, về sảnh chơi một mình: bỏ người của phòng cũ, dựng lại bot
+      for (const b of this.bots.filter(x => x.peer)) this.destroyMover(b);
+      this.bots = this.bots.filter(x => !x.peer);
+      this.version = -1;
+    }
     if (!this.me) {
       this.me = this.makeMover(0, L.me.name, L.me.empId, L.me.look, true);
       this.myKey = lookKey(L.me.look) + L.me.name + L.me.empId;
       this.version = L.version;
+      if (L.online) {
+        // sảnh online: mình tới bằng xe buýt; người khác đã được dựng riêng (đứng sẵn hoặc đi taxi tới)
+        this.arrivals.unshift({ kind: 'bus', people: [this.me], stopX: 2.6 * T }); // chuyến của mình luôn tới trước
+        return;
+      }
       this.bots = L.bots.map((p, i) => this.makeMover(i + 1, p.name, p.empId, p.look, false));
       // Xe buýt chở bạn và vài đồng nghiệp tới, phần còn lại đi taxi
       this.arrivals.push({ kind: 'bus', people: [this.me, ...this.bots.slice(0, 3)], stopX: 2.6 * T });
       for (let i = 3; i < this.bots.length; i += 3) this.arrivals.push({ kind: 'taxi', people: this.bots.slice(i, i + 3), stopX: (i % 2 ? 13.5 : 6.5) * T });
       return;
     }
+    this.syncMe();
+    if (this.version !== L.version && !L.online) {
+      this.version = L.version;
+      this.syncBots();
+    }
+  }
+  /** Ngoại hình / tên của mình đổi (thay đồ, đổi mã số) */
+  private syncMe() {
+    const L = session.lobby;
+    if (!this.me || !L.me.look) return;
     const k = lookKey(L.me.look) + L.me.name + L.me.empId;
     if (k !== this.myKey) {
       this.myKey = k;
@@ -299,8 +328,10 @@ export class LobbyScene extends Phaser.Scene {
       this.ensureTex(L.me.look);
       this.me.tag.setText(`${L.me.name} #${L.me.empId}`);
     }
-    if (this.version !== L.version) {
-      this.version = L.version;
+  }
+  private syncBots() {
+    const L = session.lobby;
+    {
       // Giữ những bot vẫn còn, bot mới đi taxi tới, bot bị bớt thì về
       const keep: Mover[] = [];
       const fresh: Mover[] = [];
@@ -314,6 +345,63 @@ export class LobbyScene extends Phaser.Scene {
       for (let i = 0; i < fresh.length; i += 3) this.arrivals.push({ kind: 'taxi', people: fresh.slice(i, i + 3), stopX: (6 + Math.random() * 8) * T });
     }
   }
+
+  // ---------- Sảnh online: người thật ở máy khác ----------
+  private remoteSeq = 1000;
+  /** Dựng / bỏ / cập nhật người khác theo danh sách nhận qua mạng */
+  private syncRemote() {
+    const R = session.lobby.remote;
+    for (const b of [...this.bots]) if (b.peer && !R.has(b.peer)) { this.destroyMover(b); this.bots = this.bots.filter(x => x !== b); } // người đã rời phòng
+    for (const [peer, r] of R) {
+      let m = this.bots.find(b => b.peer === peer);
+      if (!m) {
+        if (!r.s) continue; // chưa nhận được trạng thái của người này: chưa dựng
+        m = this.makeMover(this.remoteSeq++, r.name, r.empId, r.look, false);
+        m.peer = peer;
+        this.bots.push(m);
+        // Không đặt xe riêng cho người khác: họ hiện ra đúng chỗ xuống xe ở máy họ rồi bước vào theo đúng đường họ đi
+        m.arrived = false; m.x = r.s.x; m.y = r.s.y;
+      }
+      const key = lookKey(r.look) + r.name + r.empId + (r.lost ? '!' : '');
+      if ((m as Mover & { netKey?: string }).netKey !== key) {
+        (m as Mover & { netKey?: string }).netKey = key;
+        m.look = r.look; m.name = r.name; m.empId = r.empId; this.ensureTex(r.look);
+        m.tag.setText(r.lost ? `${r.name} #${r.empId} · mất kết nối` : `${r.name} #${r.empId}`);
+      }
+      m.tag.setAlpha(r.lost ? 0.55 : 1);
+    }
+  }
+  /** Người khác: đi mượt tới vị trí họ gửi, ngồi đúng ghế, cầm cốc nước */
+  private driveRemote(m: Mover, dt: number) {
+    const s = session.lobby.remote.get(m.peer!)?.s;
+    if (!s) return;
+    if (!m.arrived) {
+      // ở máy họ vừa xuống xe: hiện ra ở đó (mờ dần vào), từ đây đi theo trạng thái
+      if (!s.arrived) { m.sprite.setAlpha(0); m.shadow.setAlpha(0); m.tag.setAlpha(0); return; }
+      m.arrived = true; m.x = s.x; m.y = s.y;
+      m.sprite.setVisible(true); m.shadow.setVisible(true); m.tag.setVisible(true);
+      this.tweens.add({ targets: [m.sprite, m.shadow, m.tag], alpha: 1, duration: 350 });
+    }
+    if (this.cut) return;
+    if (s.seat !== null && m.seat !== s.seat) { this.standUp(m); this.sit(m, s.seat); }
+    if (s.seat === null && m.seat !== null) this.standUp(m);
+    if (m.seat === null) {
+      const d = Math.hypot(s.x - m.x, s.y - m.y);
+      if (d > 3 * T) { m.x = s.x; m.y = s.y; } else { const k = Math.min(1, dt * 12); m.x += (s.x - m.x) * k; m.y += (s.y - m.y) * k; }
+      m.facing = s.f; m.moving = !!s.m || d > 4;
+      if (m.moving) m.walkT += dt;
+    }
+    m.cupUntil = s.cup ? this.time.now + 500 : 0;
+  }
+  /** Người khác chat: bong bóng trên đầu họ */
+  remoteSay(peer: string, text: string) {
+    const m = this.bots.find(b => b.peer === peer);
+    if (!m || !m.arrived) return;
+    this.say(m, text);
+    session.lobby.onChat?.({ name: m.name, empId: m.empId, text, me: false });
+  }
+  /** Người khác nghịch đồ: hiệu ứng ở máy mình */
+  remoteFx(_peer: string, key: string) { this.playFx(key); }
 
   private step(m: Mover, ix: number, iy: number, dt: number) {
     const len = Math.hypot(ix, iy);
@@ -386,10 +474,29 @@ export class LobbyScene extends Phaser.Scene {
     const colors = [0xe2412f, 0x2e9cf0, 0x3fbf6a, 0xffffff, 0x8a4fd8, 0x2d3142, 0xff9ec4];
     this.vehicles.push({ kind, lane, x: dir > 0 ? -len : W * T + len, v: v * dir, color: kind === 'taxi' ? 0xffd23f : kind === 'bus' ? 0xffc93c : colors[Math.floor(Math.random() * colors.length)], len, state: 'drive', t: 0, roll: 0, door: 0, ...extra });
   }
+  /** Hướng chạy của làn: làn 0 sang phải, làn 1 sang trái */
+  private laneDir(lane: 0 | 1) { return lane === 0 ? 1 : -1; }
+  /** Đầu làn còn trống để xe mới vào (không sinh xe chồng lên xe khác) */
+  private laneFree(lane: 0 | 1) {
+    const startX = lane === 0 ? -2 * T : (W + 2) * T;
+    return !this.vehicles.some(o => o.lane === lane && Math.abs(o.x - startX) < o.len / 2 + 3.5 * T);
+  }
+  /** Tốc độ tối đa để không đâm vào xe phía trước cùng làn (giữ khoảng cách, dừng chờ khi xe trước đỗ) */
+  private followCap(v: Vehicle) {
+    const dir = this.laneDir(v.lane);
+    let gap = Infinity;
+    for (const o of this.vehicles) {
+      if (o === v || o.lane !== v.lane) continue;
+      const ahead = (o.x - v.x) * dir;
+      if (ahead <= 0) continue;
+      gap = Math.min(gap, ahead - (o.len + v.len) / 2);
+    }
+    return gap < 18 ? 0 : Math.max(0, (gap - 18) * 3);
+  }
   private vehiclesTick(dt: number) {
     // Xe chở người tới (mỗi lúc một chuyến)
     const busy = this.vehicles.some(v => v.drop);
-    if (!busy && this.arrivals.length) {
+    if (!busy && this.arrivals.length && this.laneFree(0)) {
       const a = this.arrivals.shift()!;
       this.spawnVehicle(0, a.kind, { stopAt: a.stopX, drop: a.people, dropped: 0, v: a.kind === 'bus' ? 230 : 260 });
     }
@@ -399,14 +506,14 @@ export class LobbyScene extends Phaser.Scene {
       this.nextCar = 1.4 + Math.random() * 2.6;
       const lane: 0 | 1 = this.vehicles.some(v => v.drop) ? 1 : (Math.random() < 0.5 ? 0 : 1);
       const r = Math.random();
-      this.spawnVehicle(lane, r < 0.15 ? 'bus' : r < 0.32 ? 'taxi' : 'car');
-      if (Math.random() < 0.12) sfx.honk();
+      if (this.laneFree(lane)) { this.spawnVehicle(lane, r < 0.15 ? 'bus' : r < 0.32 ? 'taxi' : 'car'); if (Math.random() < 0.12) sfx.honk(); }
     }
     for (const v of this.vehicles) {
       v.t += dt;
+      const cap = this.followCap(v);
       if (v.stopAt !== undefined && v.state === 'drive') {
         const dist = v.stopAt - v.x;
-        const sp = Math.max(30, Math.min(Math.abs(v.v), dist * 2.2));
+        const sp = Math.min(cap, Math.max(30, Math.min(Math.abs(v.v), dist * 2.2)));
         v.x += sp * dt; v.roll += sp * dt;
         if (dist < 3) { v.x = v.stopAt; v.state = 'stopped'; v.t = 0; if (v.kind === 'bus') sfx.busBrake(); }
         continue;
@@ -430,7 +537,7 @@ export class LobbyScene extends Phaser.Scene {
       }
       // chạy bình thường hoặc rời đi (tăng tốc dần)
       const target = v.state === 'leave' ? Math.abs(v.v) : Math.abs(v.v);
-      const cur = v.state === 'leave' ? Math.min(target, 40 + v.t * 160) : target;
+      const cur = Math.min(cap, v.state === 'leave' ? Math.min(target, 40 + v.t * 160) : target);
       v.x += cur * Math.sign(v.v || 1) * dt; v.roll += cur * dt;
     }
     this.vehicles = this.vehicles.filter(v => v.x > -6 * T && v.x < (W + 6) * T);
@@ -506,6 +613,7 @@ export class LobbyScene extends Phaser.Scene {
     if (!this.me || !this.me.arrived) return;
     this.say(this.me, text, true);
     session.lobby.onChat?.({ name: this.me.name, empId: this.me.empId, text, me: true });
+    if (session.lobby.online) { session.lobby.sendChat?.(text); return; } // sảnh online: người thật đọc, bot không đáp
     // Nhắc tên bot thì bot đáp lại
     const n = normalize(text);
     const hit = this.bots.find(b => b.arrived && n.includes(normalize(b.name)));
@@ -521,13 +629,18 @@ export class LobbyScene extends Phaser.Scene {
   interact(key: string) {
     const me = this.me; if (!me) return;
     if (key.startsWith('sit:')) { const i = Number(key.slice(4)); if (this.sit(me, i)) sfx.pop(); return; }
+    if (key === 'bell' || key === 'cat' || key === 'fish' || key.startsWith('plant:')) { this.playFx(key); if (session.lobby.online) session.lobby.sendFx?.(key); return; }
+    if (key === 'water') { me.cupUntil = this.time.now + 20000; sfx.splash(); return; }
+    if (key === 'bus') { this.say(me, BUS_JOKES[Math.floor(Math.random() * BUS_JOKES.length)], true); return; }
+  }
+  /** Hiệu ứng nghịch đồ dùng chung (mình làm, hoặc người khác làm trong sảnh online) */
+  private playFx(key: string) {
     if (key === 'bell') { sfx.ting(); this.fx.push({ kind: 'ring', x: 5.6 * T, y: 4.2 * T, t: 0 }); this.popText(5.6 * T, 3.6 * T, 'ting!'); return; }
     if (key === 'cat') {
       sfx.meow(); this.catT = 1.2; this.popText(SEATS[this.catSeat].x * T + T / 2, SEATS[this.catSeat].y * T - 6, 'meo~');
       if (Math.random() < 0.35) { const free = SEATS.map((_, i) => i).filter(i => this.seats[i] === null && SEATS[i].kind === 'sofa'); if (free.length) { this.seats[this.catSeat] = null; this.catSeat = free[Math.floor(Math.random() * free.length)]; this.seats[this.catSeat] = -99; } }
       return;
     }
-    if (key === 'water') { me.cupUntil = this.time.now + 20000; sfx.splash(); return; }
     if (key === 'fish') { this.fishScare = 1.6; sfx.tapGlass(); return; }
     if (key.startsWith('plant:')) {
       const i = Number(key.slice(6)); this.plantShake[i] = 0.9; sfx.splash();
@@ -535,7 +648,6 @@ export class LobbyScene extends Phaser.Scene {
       for (let k = 0; k < 7; k++) this.fx.push({ kind: 'drop', x: px + (Math.random() - 0.5) * 20, y: py - 20, t: 0, vx: (Math.random() - 0.5) * 120, vy: -120 - Math.random() * 80 });
       return;
     }
-    if (key === 'bus') { this.say(me, BUS_JOKES[Math.floor(Math.random() * BUS_JOKES.length)], true); return; }
   }
   private popText(x: number, y: number, s: string) {
     const t = this.add.text(x, y, s, { fontFamily: '"Baloo 2", sans-serif', fontSize: '18px', fontStyle: '800', color: '#ffe36e', stroke: '#1d1a2b', strokeThickness: 5 }).setOrigin(0.5).setDepth(46000);
@@ -690,8 +802,11 @@ export class LobbyScene extends Phaser.Scene {
       if (me.seat === null) this.step(me, inp.x, inp.y, dt); else me.moving = false;
     }
     this.draw(me);
-    // Bot: đi dạo trong sảnh, thỉnh thoảng ra sofa ngồi
+    // Sảnh online: gửi trạng thái của mình lên mạng
+    if (session.lobby.online) session.lobby.sendState?.({ x: Math.round(me.x), y: Math.round(me.y), f: me.facing, m: me.moving ? 1 : 0, seat: me.seat, cup: me.cupUntil > this.time.now ? 1 : 0, arrived: me.arrived ? 1 : 0 }, deltaMs);
+    // Bot: đi dạo trong sảnh, thỉnh thoảng ra sofa ngồi (người ở máy khác thì theo trạng thái nhận qua mạng)
     for (const b of this.bots) {
+      if (b.peer) { this.driveRemote(b, dt); if (b.arrived) this.draw(b); continue; }
       if (!b.arrived) continue;
       if (!this.cut) {
         if (b.path.length) { if (this.follow(b, dt) && (b as Mover & { wantSeat?: number }).wantSeat !== undefined) { const ws = (b as Mover & { wantSeat?: number }).wantSeat!; (b as Mover & { wantSeat?: number }).wantSeat = undefined; if (!this.sit(b, ws)) b.wait = 1; else b.wait = 6 + Math.random() * 10; } }
@@ -712,7 +827,7 @@ export class LobbyScene extends Phaser.Scene {
     this.chatT -= dt;
     if (this.chatT <= 0 && !this.cut) {
       this.chatT = 20 + Math.random() * 10;
-      const pool = this.bots.filter(b => b.arrived);
+      const pool = session.lobby.online ? [] : this.bots.filter(b => b.arrived && !b.peer);
       if (pool.length) this.botSay(pool[Math.floor(Math.random() * pool.length)], LOBBY_LINES[Math.floor(Math.random() * LOBBY_LINES.length)]);
     }
     // Chỗ tương tác gần nhất: so khoảng cách thật giữa biển lớn, món nhỏ và chỗ ngồi

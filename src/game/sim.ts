@@ -261,6 +261,8 @@ export interface WorldOptions {
   seed?: number;
   headless?: boolean; // dùng khi chạy thử tự động: người chơi cũng do bot điều khiển
   spawnChoice?: boolean; // chọn nơi xuất hiện sau họp (mặc định bật)
+  discussTime?: number;  // thời gian thảo luận mỗi cuộc họp (giây)
+  voteTime?: number;     // thời gian bỏ phiếu (giây)
 }
 
 function mulberry32(a: number) {
@@ -313,6 +315,9 @@ export class World {
   visionMul = 1;
   /** Danh sách phòng ban có năng lực trong ván (công khai) */
   roleList: RoleDept[] = [];
+  /** Thời gian họp (giây), chủ phòng chỉnh được */
+  discussTime = DISCUSS_TIME;
+  voteTime = VOTE_TIME;
   /** Số Nội gián trong ván (thông tin công khai, máy người vào phòng dùng để hiện đúng) */
   impostorTotal = 1;
 
@@ -320,6 +325,8 @@ export class World {
     this.rng = mulberry32(opts.seed ?? Math.floor(Math.random() * 1e9));
     this.headless = !!opts.headless;
     if (opts.spawnChoice !== undefined) this.spawnChoice = opts.spawnChoice;
+    if (opts.discussTime) this.discussTime = Math.max(15, Math.min(180, opts.discussTime));
+    if (opts.voteTime) this.voteTime = Math.max(10, Math.min(120, opts.voteTime));
     this.visionMul = opts.vision ?? 1;
     this.liftCapacity = opts.liftCapacity ?? 4;
     this.liftPry = opts.liftPry ?? true;
@@ -1993,7 +2000,7 @@ export class World {
     const body = victim !== null ? this.bodies.find(b => b.victim === victim) : null;
     const room = body ? body.room : null;
     const m: Meeting = {
-      reporter, victim, room, t: 0, duration: DISCUSS_TIME + VOTE_TIME, discussEnd: DISCUSS_TIME, chat: [], queue: [], via: victim !== null ? 'body' : via, reactions: [], reactQueue: [], hrClaims: [],
+      reporter, victim, room, t: 0, duration: this.discussTime + this.voteTime, discussEnd: this.discussTime, chat: [], queue: [], via: victim !== null ? 'body' : via, reactions: [], reactQueue: [], hrClaims: [],
       votes: new Map(), voteAt: new Map(), result: null, protect: null,
     };
     this.meeting = m;
@@ -2404,7 +2411,7 @@ export class World {
     const m = this.meeting;
     if (!m || m.result || m.t >= m.discussEnd) return;
     m.discussEnd = m.t;
-    m.duration = m.t + VOTE_TIME;
+    m.duration = m.t + this.voteTime;
   }
 
   /** Kết thúc phần thảo luận sớm (khi người chơi đã vote và muốn tua nhanh) */

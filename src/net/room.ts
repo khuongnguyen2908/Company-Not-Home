@@ -18,7 +18,17 @@ export interface Target { x: number; y: number; cx?: number; cy?: number }
 export type NetRole = 'solo' | 'host' | 'client';
 export interface Profile { name: string; look: Look; empId: string }
 export interface RoomPlayer extends Profile { peer: string; host: boolean; lost?: boolean /* đang mất kết nối */ }
-export interface RoomSettings { fillBots: boolean; seats: number; imps: 1 | 2 }
+/** Cài đặt ván do chủ phòng chỉnh ở quầy lễ tân (mọi người thấy) */
+export interface RoomSettings {
+  fillBots: boolean; seats: number; imps: 1 | 2;
+  /** vai có kỹ năng được bật, và số vai tối đa mỗi ván */
+  roles: Record<string, boolean>; maxSpecial: number;
+  /** cuộc họp: thời gian thảo luận / bỏ phiếu (giây), phiếu ẩn danh */
+  discussTime: number; voteTime: number; anonVotes: boolean;
+}
+export const DEFAULT_SETTINGS: RoomSettings = { fillBots: true, seats: 8, imps: 1, roles: {}, maxSpecial: 3, discussTime: 60, voteTime: 30, anonVotes: false };
+/** Trạng thái một người trong sảnh tầng G (gửi 10 lần/giây khi chưa vào ca) */
+export interface LobbyState { x: number; y: number; f: 1 | -1; m: 0 | 1; seat: number | null; cup: 0 | 1; arrived: 0 | 1 }
 
 // ---------- Tin nhắn ----------
 export type ToHost =
@@ -27,6 +37,9 @@ export type ToHost =
   | { t: 'act'; id: number; name: string; args: unknown[] }
   | { t: 'ready'; on: boolean }
   | { t: 'hb' }
+  | { t: 'lst'; s: LobbyState }
+  | { t: 'lchat'; text: string }
+  | { t: 'lfx'; key: string }
   | { t: 'leave' };
 export type ToClient =
   | { t: 'room'; code: string; players: RoomPlayer[]; settings: RoomSettings; inGame: boolean }
@@ -40,6 +53,10 @@ export type ToClient =
   | { t: 'end' }
   | { t: 'hb' }
   | { t: 'note'; text: string }
+  | { t: 'lst'; all: [string, LobbyState][] }
+  | { t: 'lchat'; peer: string; text: string }
+  | { t: 'lfx'; peer: string; key: string }
+  | { t: 'lgo' }
   | { t: 'closed' };
 
 /** Mã phòng 6 ký tự dễ đọc (bỏ các ký tự dễ nhầm như O/0, I/1) */
@@ -75,13 +92,18 @@ export function act(name: string, ...args: unknown[]): string | null {
 // =============================================================================================
 export class NetHost {
   players: RoomPlayer[] = [];
-  settings: RoomSettings = { fillBots: true, seats: 8, imps: 1 };
+  settings: RoomSettings = { ...DEFAULT_SETTINGS, roles: {} };
   /** máy → nhân vật trong ván đang chơi */
   agentOf = new Map<string, number>();
   inGame = false;
   onRoomChange = () => {};
   /** thông báo cho cả phòng (chủ phòng cũng hiện) */
   onNote = (_t: string) => {};
+  /** Sảnh tầng G: trạng thái từng người, tin chat, nghịch đồ */
+  lobby = new Map<string, LobbyState>();
+  onLobbyChat = (_peer: string, _text: string) => {};
+  onLobbyFx = (_peer: string, _key: string) => {};
+  private lobbyT = 0;
   /** tờ phân công đã đóng (ván đang chạy): người vào lại không cần chờ sẵn sàng */
   revealDone = false;
   private timer = 0;
@@ -157,6 +179,15 @@ export class NetHost {
         return;
       }
       case 'hb': return;
+      case 'lst': if (pl && !this.inGame) this.lobby.set(from, sanitizeLobby(m.s)); return;
+      case 'lchat': {
+        if (!pl || typeof m.text !== 'string') return;
+        const text = m.text.replace(/[<>]/g, '').slice(0, 120).trim();
+        if (!text) return;
+        this.tr.send('*', { t: 'lchat', peer: from, text } satisfies ToClient); this.onLobbyChat(from, text);
+        return;
+      }
+      case 'lfx': if (pl && typeof m.key === 'string' && LOBBY_FX.has(m.key)) { this.tr.send('*', { t: 'lfx', peer: from, key: m.key } satisfies ToClient); this.onLobbyFx(from, m.key); } return;
       case 'leave': { const p = this.players.find(x => x.peer === from); if (p) this.note(this.inGame ? `${p.name} #${p.empId} đã rời phòng, bot làm thay` : `${p.name} #${p.empId} đã rời phòng`); this.dropPeer(from); return; }
     }
     if (!pl || !this.inGame) return;
@@ -205,6 +236,21 @@ export class NetHost {
     this.onRoomChange();
   }
 
+  /** Sảnh: chủ phòng cập nhật trạng thái của mình, gom của mọi người phát cho cả phòng 10 lần/giây */
+  setMyLobby(s: LobbyState) { this.lobby.set(this.tr.peerId, s); }
+  lobbyTick(ms: number) {
+    if (this.inGame) return;
+    this.lobbyT += ms;
+    if (this.lobbyT < 100) return;
+    this.lobbyT = 0;
+    const live = new Set(this.players.map(p => p.peer));
+    for (const k of [...this.lobby.keys()]) if (!live.has(k)) this.lobby.delete(k);
+    this.tr.send('*', { t: 'lst', all: [...this.lobby] } satisfies ToClient);
+  }
+  lobbyChat(text: string) { this.tr.send('*', { t: 'lchat', peer: this.tr.peerId, text } satisfies ToClient); }
+  lobbyFx(key: string) { this.tr.send('*', { t: 'lfx', peer: this.tr.peerId, key } satisfies ToClient); }
+  /** Chủ phòng bấm vào ca: cả phòng cùng xem cảnh thang máy */
+  lobbyGo() { this.tr.send('*', { t: 'lgo' } satisfies ToClient); }
   /** Bắt đầu ván: World đã được tạo ở chủ phòng; ghép mỗi máy với một nhân vật người thật */
   startGame(w: World, seatOf: Map<string, number>) {
     this.inGame = true;
@@ -280,6 +326,12 @@ export class NetClient {
   onEnd = () => {};
   onClosed = () => {};
   onNote = (_t: string) => {};
+  /** Sảnh: trạng thái mọi người, chat, nghịch đồ, chủ phòng bấm vào ca */
+  lobby = new Map<string, LobbyState>();
+  onLobbyChat = (_peer: string, _text: string) => {};
+  onLobbyFx = (_peer: string, _key: string) => {};
+  onLobbyGo = () => {};
+  private lobbyT = 0;
   /** mất / có lại kết nối với chủ phòng */
   onHostLost = (_lost: boolean) => {};
   hostLost = false;
@@ -335,11 +387,19 @@ export class NetClient {
       case 'end': this.replica = null; this.onEnd(); return;
       case 'closed': clearInterval(this.timer); this.onClosed(); return;
       case 'note': this.onNote(m.text); return;
+      case 'lst': if (Array.isArray(m.all)) this.lobby = new Map(m.all); return;
+      case 'lchat': if (m.peer !== this.tr.peerId) this.onLobbyChat(m.peer, m.text); return;
+      case 'lfx': if (m.peer !== this.tr.peerId) this.onLobbyFx(m.peer, m.key); return;
+      case 'lgo': this.onLobbyGo(); return;
       case 'hb': return;
     }
   }
   private heard() { this.lastHost = this.clock(); if (this.hostLost) { this.hostLost = false; this.onHostLost(false); } }
 
+  /** Sảnh: gửi trạng thái của mình 10 lần/giây */
+  sendLobby(s: LobbyState, ms: number) { this.lobbyT += ms; if (this.lobbyT < 100) return; this.lobbyT = 0; this.tr.send(this.hostPeer ?? '*', { t: 'lst', s } satisfies ToHost); }
+  sendLobbyChat(text: string) { this.tr.send(this.hostPeer ?? '*', { t: 'lchat', text } satisfies ToHost); }
+  sendLobbyFx(key: string) { this.tr.send(this.hostPeer ?? '*', { t: 'lfx', key } satisfies ToHost); }
   sendAct(name: string, args: unknown[]) { this.tr.send(this.hostPeer ?? '*', { t: 'act', id: ++this.actId, name, args } satisfies ToHost); }
   sendReady(on = true) { this.tr.send(this.hostPeer ?? '*', { t: 'ready', on } satisfies ToHost); }
   /** Gửi điều khiển khi đổi hướng, và nhắc lại 5 lần/giây cho chắc */
@@ -363,6 +423,13 @@ export class NetClient {
   leave() { clearInterval(this.timer); this.tr.send(this.hostPeer ?? '*', { t: 'leave' } satisfies ToHost); this.tr.close(); }
 }
 
+/** Nghịch đồ được báo cho cả phòng (ngồi, cốc nước đi theo trạng thái nên không cần) */
+export const LOBBY_FX = new Set(['bell', 'cat', 'fish', 'plant:0', 'plant:1']);
+function sanitizeLobby(s: LobbyState): LobbyState {
+  const n = (v: unknown, lo: number, hi: number) => { const x = typeof v === 'number' && Number.isFinite(v) ? v : 0; return Math.max(lo, Math.min(hi, x)); };
+  const seat = s?.seat === null || s?.seat === undefined ? null : Math.round(n(s.seat, 0, 20));
+  return { x: n(s?.x, 0, 2000), y: n(s?.y, 0, 2000), f: s?.f === -1 ? -1 : 1, m: s?.m ? 1 : 0, seat, cup: s?.cup ? 1 : 0, arrived: s?.arrived ? 1 : 0 };
+}
 const clamp1 = (v: unknown) => { const n = typeof v === 'number' && Number.isFinite(v) ? v : 0; return Math.max(-1, Math.min(1, n)); };
 function sanitizeProfile(p: Profile): Profile {
   const name = String(p?.name ?? 'Khách').replace(/[<>]/g, '').trim().slice(0, 16) || 'Khách';
