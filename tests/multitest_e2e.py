@@ -146,7 +146,7 @@ async def main4():
         F = sorted([f for f in grid.frames if 'mt=' in f.url], key=lambda f: f.url)
         code = await F[0].evaluate("__net.host.code")
         tab = await ctx.new_page(); await tab.goto("http://localhost:8765/index.html?debug"); await tab.wait_for_timeout(800)
-        await tab.fill("#f-name", "Tab riêng"); await tab.click("#go-online"); await tab.fill("#on-code", code); await tab.click("#on-go"); await tab.wait_for_timeout(2000)
+        await tab.fill("#f-name", "Tab riêng"); await tab.click("#go-online"); await tab.click("#on-private"); await tab.fill("#on-code", code); await tab.click("#on-go"); await tab.wait_for_timeout(2000)
         await grid.click(".mt-bar button[data-c='start']"); await grid.wait_for_timeout(2500)
         for f in F: await f.evaluate("document.querySelector('.reveal #go')?.click()")
         await tab.evaluate("document.querySelector('.reveal #go')?.click()"); await grid.wait_for_timeout(8000)
@@ -227,7 +227,7 @@ async def main6():
         await A.fill("#f-name", "Chủ"); await A.click("#go-offline"); await A.wait_for_timeout(6000)
         print("sảnh chơi một mình: số bot", await A.evaluate("__session.phaser.scene.getScene('lobby').bots.length"))
         await A.evaluate("document.querySelector('#l-exit').click()"); await A.wait_for_timeout(600)
-        await A.click("#go-online"); await A.click("#on-create"); await A.wait_for_timeout(5000)
+        await A.click("#go-online"); await A.click("#on-new"); await A.click("#on-create"); await A.wait_for_timeout(5000)
         print("4. sảnh online sau khi tạo phòng: bot còn sót =", await A.evaluate("__session.phaser.scene.getScene('lobby').bots.filter(b=>!b.peer).length"), "| tiêu đề:", await A.evaluate("document.querySelector('.lc-title').innerText"))
         code = await A.evaluate("__net.host.code")
         print("1. nút sao chép:", await A.evaluate("!!document.querySelector('.lc-copy')"))
@@ -239,7 +239,7 @@ async def main6():
         # người vào phòng
         B = await ctx.new_page(); B.on("pageerror", lambda e: errs.append(str(e)))
         await B.goto("http://localhost:8765/index.html?debug"); await B.wait_for_timeout(800)
-        await B.fill("#f-name", "Khách"); await B.click("#go-online"); await B.fill("#on-code", code); await B.click("#on-go"); await B.wait_for_timeout(3000)
+        await B.fill("#f-name", "Khách"); await B.click("#go-online"); await B.click("#on-private"); await B.fill("#on-code", code); await B.click("#on-go"); await B.wait_for_timeout(3000)
         # 3. chủ phòng chỉnh cài đặt
         await A.evaluate("__ui.openRoomPanel()"); await A.wait_for_timeout(300)
         await A.click(".rm-role[data-r='hr']"); await A.select_option("#rm-disc", "90"); await A.check("#rm-anon"); await A.wait_for_timeout(600)

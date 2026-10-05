@@ -87,6 +87,10 @@ Kiểm tra: `python3 tests/lobby_reentry.py` (về sảnh nhiều lần vẫn đ
 
 Chỉ có khi mở game với **`?admin`** (màn chia ô: `?multitest=4&admin`); người chơi thường không thấy và game không ghi số liệu. Hết mỗi ván, màn kết quả có mục **📊 Thống kê ván** (`src/game/stats.ts`, chỉ quan sát, không đổi luật): cách kết thúc, KPI lúc kết thúc, thời gian chơi và cả ván, vụ gài đầu, họp đầu, số vụ gài, cuộc họp, phá hoại, tỉ lệ sa thải trúng Nội gián, phiếu của Nhân viên trúng Nội gián, Sếp đi tuần có thắng không, chỉ số của bạn (Nội gián: số vụ gài, thời gian từ lúc hồi chiêu xong tới lúc gài được; Nhân viên: việc xong, phiếu đúng/sai) và dòng thời gian. Nút **Sao chép ván này** / **Sao chép tất cả** (các ván từ lúc mở game) để dán cho người làm game. Có ở máy chơi một mình và máy chủ phòng.
 
+## Phòng Public / Private
+
+Chơi nhiều người → **Tạo phòng mới** (tên phòng, công tắc Public, mặc định Public) / **Phòng Public** (danh sách phòng đang mở: tên, chủ phòng, số người, Đang chờ/Đang chơi; tự làm mới mỗi 5 giây) / **Phòng Private** (nhập mã). Danh bạ phòng không cần máy chủ riêng (`src/net/directory.ts`): một trình duyệt giữ mã cố định làm quầy danh bạ trên PeerJS, chủ phòng Public báo danh mỗi 5 giây, quầy xác nhận; người giữ quầy thoát thì người khác tự nhận thay; phòng ngừng báo danh quá 20 giây bị dọn. Các tab cùng trình duyệt / `?multitest` thấy nhau qua BroadcastChannel. Kiểm tra: `npx tsx tests/directory_test.ts`.
+
 ## Chơi nhiều người
 
 - Màn hình chính → **Chơi nhiều người** → Tạo phòng mới (mã 6 ký tự, ví dụ `KPI-482`, kèm link mời) hoặc nhập mã để vào phòng. Mở link mời (`?room=MÃ`) là vào thẳng phòng.

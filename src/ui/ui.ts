@@ -18,6 +18,7 @@ import { Peer } from 'peerjs';
 /** Màn chia ô chỉ dùng kênh nội bộ (chạy cả khi không có mạng); bình thường thêm P2P để máy khác vào được */
 const USE_P2P = !new URLSearchParams(location.search).get('mt');
 import { startPump } from '../net/pump';
+import { DirectoryAnnouncer, fetchRooms, cleanRoomName, type RoomEntry } from '../net/directory';
 
 /** Mã máy cố định cho từng tab (giữ nguyên khi tải lại trang) để vào lại đúng nhân vật; mỗi ô ?multitest một mã riêng */
 const NET_SUFFIX = MT_SLOT_RAW() ? ':mt' + MT_SLOT_RAW() : '';
@@ -789,28 +790,77 @@ export class UI {
   }
 
   /** Menu Chơi nhiều người: tạo phòng mới hoặc vào bằng mã */
+  /** Chơi nhiều người: Tạo phòng mới / Phòng Public (danh sách) / Phòng Private (nhập mã). prefill: mã từ link mời */
   openOnlineMenu(prefill = '') {
-    const m = this.infoModal('Chơi nhiều người', `
-      <div class="online-menu">
-        <button class="primary big" type="button" id="on-create">Tạo phòng mới<small>Nhận mã phòng và link mời bạn bè</small></button>
-        <div class="on-join"><input id="on-code" maxlength="8" placeholder="Mã phòng, ví dụ KPI-482" value="${esc(prefill)}" autocomplete="off"><button class="ghost-btn" type="button" id="on-go">Vào phòng</button></div>
-        <p class="on-err" hidden></p>
-        <p class="small">Thử nhiều người một mình: mở trang với <b>?multitest=4</b> ở cuối địa chỉ (4 người chơi trên một màn hình).</p>
-      </div>`);
-    const code = m.querySelector('#on-code') as HTMLInputElement;
-    (m.querySelector('#on-create') as HTMLButtonElement).onclick = () => { m.remove(); this.createRoom(); };
-    const join = () => {
-      const c = normalizeCode(code.value);
-      if (!/^[A-Z]{3}-[0-9]{3}$/.test(c)) { const e = m.querySelector('.on-err') as HTMLElement; e.hidden = false; e.textContent = 'Mã phòng gồm 3 chữ và 3 số, ví dụ KPI-482.'; code.focus(); return; }
-      m.remove(); this.joinRoom(c);
+    const me = this.myProfile();
+    const m = this.infoModal('Chơi nhiều người', '<div class="online-menu"></div>');
+    const box = m.querySelector('.online-menu') as HTMLElement;
+    let refresh = 0;
+    const stopRefresh = () => { window.clearInterval(refresh); refresh = 0; };
+    new MutationObserver((_r, o) => { if (!m.isConnected) { stopRefresh(); o.disconnect(); } }).observe(document.body, { childList: true, subtree: true });
+    const back = '<button type="button" class="ghost-btn om-back" aria-label="Quay lại">← Quay lại</button>';
+    const view = (k: 'menu' | 'create' | 'public' | 'private') => {
+      stopRefresh();
+      if (k === 'menu') {
+        box.innerHTML = `
+          <button class="primary big" type="button" id="on-new">➕ Tạo phòng mới<small>Vào sảnh chung, bạn là chủ phòng</small></button>
+          <button class="ghost-btn big" type="button" id="on-public">🌐 Phòng Public<small>Chọn từ danh sách phòng đang mở</small></button>
+          <button class="ghost-btn big" type="button" id="on-private">🔒 Phòng Private<small>Nhập mã phòng bạn bè gửi</small></button>
+          <p class="small">Thử nhiều người một mình: mở trang với <b>?multitest=4</b> ở cuối địa chỉ.</p>`;
+        (box.querySelector('#on-new') as HTMLButtonElement).onclick = () => view('create');
+        (box.querySelector('#on-public') as HTMLButtonElement).onclick = () => view('public');
+        (box.querySelector('#on-private') as HTMLButtonElement).onclick = () => view('private');
+      } else if (k === 'create') {
+        box.innerHTML = `${back}
+          <label class="om-field">Tên phòng<input id="on-name" maxlength="24" value="${esc(`Phòng của ${me.name}`)}" autocomplete="off"></label>
+          <label class="om-switch"><span><b>Phòng Public</b><small id="on-pubnote">Hiện trong danh sách Phòng Public</small></span><input type="checkbox" id="on-pub" checked><i aria-hidden="true"></i></label>
+          <button class="primary big" type="button" id="on-create">Tạo phòng<small>Mã phòng có ngay khi vào sảnh</small></button>`;
+        const pub = box.querySelector('#on-pub') as HTMLInputElement;
+        pub.onchange = () => { ($('#on-pubnote', box)).textContent = pub.checked ? 'Hiện trong danh sách Phòng Public' : 'Chỉ vào được bằng mã phòng hoặc link mời'; };
+        (box.querySelector('#on-create') as HTMLButtonElement).onclick = () => {
+          const name = cleanRoomName(($('#on-name', box) as HTMLInputElement).value, `Phòng của ${me.name}`);
+          m.remove(); this.createRoom(undefined, { name, pub: pub.checked });
+        };
+      } else if (k === 'public') {
+        box.innerHTML = `${back}<div class="om-bar"><span id="om-count">Đang tìm phòng…</span><button type="button" class="ghost-btn" id="om-refresh">⟳ Làm mới</button></div><div class="om-list"></div>`;
+        const list = box.querySelector('.om-list') as HTMLElement;
+        const load = () => {
+          void fetchRooms({ p2p: USE_P2P ? Peer as unknown as PeerCtor : null }).then(rooms => {
+            if (!list.isConnected) return;
+            ($('#om-count', box)).textContent = rooms.length ? `${rooms.length} phòng · tự làm mới mỗi 5 giây` : 'Tự làm mới mỗi 5 giây';
+            list.innerHTML = rooms.length ? rooms.map((r: RoomEntry) => {
+              const full = r.players >= r.max, play = r.status === 'play';
+              return `<div class="om-room"><div><b>${esc(r.name)}<span class="om-tag ${play ? 'play' : 'wait'}">${play ? 'Đang chơi' : 'Đang chờ'}</span></b><small>Chủ phòng: ${esc(r.host)} · ${r.players}/${r.max} người</small></div>
+                <button type="button" class="${play || full ? 'ghost-btn' : 'primary'}" data-code="${esc(r.code)}" ${play || full ? 'disabled' : ''}>${play ? 'Đang chơi' : full ? 'Đủ người' : 'Vào'}</button></div>`;
+            }).join('') : `<div class="om-empty"><p>Chưa có phòng công khai nào.</p><button type="button" class="primary" id="om-new">➕ Tạo phòng mới</button></div>`;
+            list.querySelectorAll<HTMLButtonElement>('[data-code]').forEach(btn => btn.onclick = () => { m.remove(); this.joinRoom(btn.dataset.code!); });
+            const nb = list.querySelector('#om-new') as HTMLButtonElement | null; if (nb) nb.onclick = () => view('create');
+          });
+        };
+        load(); refresh = window.setInterval(load, 5000);
+        (box.querySelector('#om-refresh') as HTMLButtonElement).onclick = () => { sfx.click(); load(); };
+      } else {
+        box.innerHTML = `${back}<p>Nhập mã phòng bạn bè gửi cho bạn</p>
+          <div class="on-join"><input id="on-code" maxlength="8" placeholder="Ví dụ KPI-482" value="${esc(prefill)}" autocomplete="off"><button class="primary" type="button" id="on-go">Vào phòng</button></div>
+          <p class="on-err" hidden></p><p class="small">Hoặc mở thẳng link mời bạn bè gửi, không cần nhập mã.</p>`;
+        const code = box.querySelector('#on-code') as HTMLInputElement;
+        const join = () => {
+          const c = normalizeCode(code.value);
+          if (!/^[A-Z]{3}-[0-9]{3}$/.test(c)) { const e = box.querySelector('.on-err') as HTMLElement; e.hidden = false; e.textContent = 'Mã phòng gồm 3 chữ và 3 số, ví dụ KPI-482.'; code.focus(); return; }
+          m.remove(); this.joinRoom(c);
+        };
+        (box.querySelector('#on-go') as HTMLButtonElement).onclick = join;
+        code.onkeydown = (e) => { if (e.key === 'Enter') join(); };
+        if (!prefill) code.focus();
+      }
+      const bk = box.querySelector('.om-back') as HTMLButtonElement | null; if (bk) bk.onclick = () => view('menu');
     };
-    (m.querySelector('#on-go') as HTMLButtonElement).onclick = join;
-    code.onkeydown = (e) => { if (e.key === 'Enter') join(); };
-    if (!prefill) code.focus();
+    view(prefill ? 'private' : 'menu');
   }
 
   /** Rời phòng hiện tại (chủ phòng: đóng phòng) */
   leaveNet() {
+    this.dirAnn?.stop(); this.dirAnn = null; // gỡ khỏi danh sách Phòng Public
     if (net.host) net.host.close();
     if (net.client) { net.client.leave(); session.world = null; } // bản sao không bao giờ được tự chạy như ván chơi một mình
     net.host = null; net.client = null; net.role = 'solo';
@@ -822,7 +872,11 @@ export class UI {
     this.netBanner(false);
   }
 
-  createRoom(code = newRoomCode()) {
+  /** Báo danh phòng Public cho danh bạ */
+  private dirAnn: DirectoryAnnouncer | null = null;
+  private createOpts: { name?: string; pub?: boolean } = {};
+  createRoom(code = newRoomCode(), opts: { name?: string; pub?: boolean } = this.createOpts) {
+    this.createOpts = opts;
     this.leaveNet();
     startPump();
     const tab = new TabTransport(code);
@@ -832,15 +886,23 @@ export class UI {
       const p2p = new PeerTransport(tab.peerId, 'host', code, Peer as unknown as PeerCtor);
       multi.add(p2p);
       p2p.onStatus = (st) => {
-        if (st === 'taken' && net.host?.code === code && net.host.players.length === 1) { this.createRoom(newRoomCode()); return; } // mã trùng phòng khác: đổi mã
+        if (st === 'taken' && net.host?.code === code && net.host.players.length === 1) { this.createRoom(newRoomCode(), opts); return; } // mã trùng phòng khác: đổi mã
         this.p2pStatus = st; this.renderRoom();
       };
     }
     const h = new NetHost(multi, code, this.myProfile(), { timers: false });
     net.host = h; net.role = 'host';
     const pr = this.prefs;
-    h.settings = { fillBots: true, seats: Math.max(4, Math.min(MAX_PLAYERS, pr.bots + 1)), imps: pr.imps === 2 ? 2 : 1, roles: { ...pr.roles }, maxSpecial: pr.maxSpecial, discussTime: 60, voteTime: 30, anonVotes: pr.anonVotes, killCd: 0 };
-    h.onRoomChange = () => { this.renderRoom(); this.refreshOnlineLobby(); };
+    h.settings = { fillBots: true, seats: Math.max(4, Math.min(MAX_PLAYERS, pr.bots + 1)), imps: pr.imps === 2 ? 2 : 1, roles: { ...pr.roles }, maxSpecial: pr.maxSpecial, discussTime: 60, voteTime: 30, anonVotes: pr.anonVotes, killCd: 0, name: '', public: true };
+    h.settings.name = cleanRoomName(opts.name ?? '', `Phòng của ${h.me.name}`);
+    h.settings.public = opts.pub ?? true;
+    // phòng Public: báo danh cho danh sách Phòng Public (đổi tên / Public / người vào ra thì cập nhật ngay)
+    this.dirAnn = new DirectoryAnnouncer(() => {
+      const x = net.host;
+      if (x !== h || !x.settings.public) return null;
+      return { code: x.code, name: x.settings.name, host: `${x.me.name} #${x.me.empId}`, players: x.players.length, max: Math.min(MAX_PLAYERS, Math.max(4, x.settings.seats)), status: x.inGame ? 'play' : 'wait' };
+    }, { p2p: USE_P2P ? Peer as unknown as PeerCtor : null }).start();
+    h.onRoomChange = () => { this.renderRoom(); this.refreshOnlineLobby(); this.dirAnn?.now(); };
     h.onNote = (t) => this.notify(t);
     // chủ phòng tắt tab / tải lại trang: báo cả phòng đóng ngay (không để mọi người chơi tiếp một mình)
     window.addEventListener('pagehide', () => { if (net.host === h) h.close(); }, { once: true });
@@ -854,7 +916,9 @@ export class UI {
     const resuming = !!peer || sessionStorage.getItem(ROOM_KEY) === code || lastRoom()?.code === code;
     this.leaveNet();
     startPump();
-    const myPeer = peer ?? (lastRoom()?.code === code && !sessionStorage.getItem('ngvp-peer' + NET_SUFFIX) ? lastRoom()!.peer : stablePeerId());
+    // nhận lại nhân vật cũ chỉ khi bấm "Vào lại phòng" (peer) hoặc tải lại đúng tab này (mã máy của tab);
+    // vào bằng mã / từ danh sách ở tab khác thì là người mới (không chiếm chỗ của tab đang chơi)
+    const myPeer = peer ?? stablePeerId();
     sessionStorage.setItem('ngvp-peer' + NET_SUFFIX, myPeer);
     const multi = new MultiTransport([new TabTransport(code, myPeer)]);
     const c = new NetClient(multi, code, this.myProfile(), { timers: false });
@@ -933,6 +997,10 @@ export class UI {
       <ul class="room-players">${room.players.map(p => `<li class="${p.peer === me ? 'me' : ''}${p.lost ? ' lost' : ''}"><img src="${avatarURL(normalizeLook(p.look))}" alt=""><span><b>${esc(p.name)}</b><small>#${esc(p.empId)}</small></span>${p.host ? '<em class="tag host">Chủ phòng</em>' : ''}${p.peer === me ? '<em class="tag you">Bạn</em>' : ''}${p.lost ? '<em class="tag lost">Mất kết nối</em>' : ''}</li>`).join('')}
         ${Array.from({ length: empty }, () => `<li class="seat">${st.fillBots ? '<span class="bot">Bot</span>' : 'Ghế trống'}</li>`).join('')}</ul>
       <div class="room-set">
+        <section><h4>Phòng</h4>
+          <label class="om-field">Tên phòng<input id="rm-name" maxlength="24" value="${esc(st.name || '')}" ${host ? '' : 'disabled'} autocomplete="off"></label>
+          <label class="om-switch"><span><b>Phòng Public</b><small>${st.public ? 'Hiện trong danh sách Phòng Public' : 'Chỉ vào được bằng mã phòng hoặc link mời'}</small></span><input type="checkbox" id="rm-pub" ${st.public ? 'checked' : ''} ${host ? '' : 'disabled'}><i aria-hidden="true"></i></label>
+        </section>
         <section><h4>Người chơi</h4>
           <label><input type="checkbox" id="rm-bots" ${st.fillBots ? 'checked' : ''} ${host ? '' : 'disabled'}> Ghế trống có bot chơi cùng</label>
           <label>Số ghế <select id="rm-seats" ${host ? '' : 'disabled'}>${[4, 5, 6, 7, 8, 9, 10].map(n => `<option value="${n}" ${n === st.seats ? 'selected' : ''} ${n < room.players.length ? 'disabled' : ''}>${n}</option>`).join('')}</select></label>
@@ -960,6 +1028,9 @@ export class UI {
     (el.querySelector('#rm-link') as HTMLButtonElement).onclick = (e) => copy(link, e.currentTarget as HTMLElement);
     (el.querySelector('#rm-leave') as HTMLButtonElement).onclick = () => { forgetRoom(); this.leaveNet(); this.showMainMenu(); };
     if (host) {
+      const nm = el.querySelector('#rm-name') as HTMLInputElement;
+      nm.onchange = () => { host.settings.name = cleanRoomName(nm.value, `Phòng của ${host.me.name}`); host.broadcastRoom(); };
+      (el.querySelector('#rm-pub') as HTMLInputElement).onchange = (e) => { host.settings.public = (e.target as HTMLInputElement).checked; host.broadcastRoom(); };
       (el.querySelector('#rm-bots') as HTMLInputElement).onchange = (e) => { host.settings.fillBots = (e.target as HTMLInputElement).checked; host.broadcastRoom(); };
       (el.querySelector('#rm-seats') as HTMLSelectElement).onchange = (e) => { host.settings.seats = Number((e.target as HTMLSelectElement).value); host.broadcastRoom(); };
       (el.querySelector('#rm-imps') as HTMLSelectElement).onchange = (e) => { host.settings.imps = Number((e.target as HTMLSelectElement).value) === 2 ? 2 : 1; host.broadcastRoom(); };
@@ -1011,12 +1082,13 @@ export class UI {
     const title = $('.lc-title', hud);
     if (title.dataset.code !== room.code) {
       title.dataset.code = room.code;
-      title.innerHTML = `Phòng ${esc(room.code)} <button type="button" class="lc-copy" title="Sao chép mã phòng">Sao chép</button>`;
-      const cp = title.querySelector('.lc-copy') as HTMLButtonElement;
-      cp.onclick = (e) => {
+      title.innerHTML = `Phòng ${esc(room.code)} <button type="button" class="lc-copy" data-what="code" title="Sao chép mã phòng">Sao chép mã</button><button type="button" class="lc-copy" data-what="link" title="Sao chép link vào phòng">Sao chép link</button>`;
+      // sao chép mã phòng, hoặc link vào thẳng phòng (?room=MÃ)
+      title.querySelectorAll<HTMLButtonElement>('.lc-copy').forEach(cp => cp.onclick = (e) => {
         e.stopPropagation();
-        navigator.clipboard?.writeText(room.code).then(() => { cp.textContent = 'Đã chép!'; cp.classList.add('ok'); window.setTimeout(() => { cp.textContent = 'Sao chép'; cp.classList.remove('ok'); }, 1400); }).catch(() => { cp.textContent = room.code; });
-      };
+        const label = cp.textContent!, txt = cp.dataset.what === 'link' ? `${location.origin}${location.pathname}?room=${room.code}` : room.code;
+        navigator.clipboard?.writeText(txt).then(() => { cp.textContent = 'Đã chép!'; cp.classList.add('ok'); window.setTimeout(() => { cp.textContent = label; cp.classList.remove('ok'); }, 1400); }).catch(() => { this.infoModal('Sao chép', `<input class="gs-text" readonly value="${esc(txt)}" style="width:100%">`); });
+      });
     }
     ($('.lc-mode', hud)).innerHTML = `${h ? 'Bạn là chủ phòng' : 'Chơi nhiều người'} · ${room.players.length}/${cap} người${st.fillBots ? ` · ${Math.max(0, total - room.players.length)} bot` : ''}${this.p2pText() ? `<br><small class="lc-p2p">${esc(this.p2pText())}</small>` : ''}`;
     $('.lc-people', hud).innerHTML = room.players.map(x => `<li class="${x.lost ? 'lost' : ''}"><img src="${avatarURL(normalizeLook(x.look))}" alt=""><span>${esc(x.name)} <small>#${esc(x.empId)}</small>${x.peer === me ? ' (bạn)' : ''}${x.host ? ' · chủ phòng' : ''}${x.lost ? ' · mất kết nối' : ''}</span></li>`).join('');
@@ -3344,7 +3416,9 @@ function titleBackdrop(): string {
     }
     return o;
   };
-  const far = [[0, 330, 140, 270], [130, 260, 120, 340], [240, 360, 160, 240], [380, 300, 110, 300], [1160, 280, 130, 320], [1280, 350, 150, 250], [1420, 240, 180, 360]]
+  // dãy nhà phía xa lặp thêm hai bên (hình rộng gấp đôi để luôn co giãn theo chiều cao, không cắt đỉnh tòa nhà)
+  const farBase = [[0, 330, 140, 270], [130, 260, 120, 340], [240, 360, 160, 240], [380, 300, 110, 300], [1160, 280, 130, 320], [1280, 350, 150, 250], [1420, 240, 180, 360]];
+  const far = [...farBase, ...farBase.map(([x, y, w, h]) => [x - 1600, y, w, h]), ...farBase.map(([x, y, w, h]) => [x + 1600, y, w, h])]
     .map(([x, y, w, h]) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#3b2f5c"/>${win(x + 14, y + 20, Math.floor((w - 20) / 22), Math.floor((h - 40) / 30), 12, 18, 10, 0.3)}`).join('');
   const tower = `<rect x="800" y="70" width="480" height="530" fill="#2b2e4a" stroke="#1d1a2b" stroke-width="8"/>
     <rect x="840" y="20" width="400" height="56" rx="10" fill="#ffe36e" stroke="#1d1a2b" stroke-width="7"/>
@@ -3354,9 +3428,9 @@ function titleBackdrop(): string {
   const mid = [[670, 230, 120, 370], [1280, 200, 130, 400]]
     .map(([x, y, w, h]) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#4a3f75" stroke="#1d1a2b" stroke-width="6"/>${win(x + 14, y + 20, 4, Math.floor((h - 40) / 34), 18, 22, 10, 0.4)}`).join('');
   return `<div class="ts-sky"><i class="ts-sun"></i></div>
-    <svg class="ts-city" viewBox="0 0 1600 640" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+    <svg class="ts-city" viewBox="-800 0 3200 640" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
       ${far}${mid}${tower}
-      <rect x="0" y="600" width="1600" height="40" fill="#1d1a2b"/>
-      <rect x="0" y="596" width="1600" height="8" fill="#c9a77c"/>
+      <rect x="-800" y="600" width="3200" height="40" fill="#1d1a2b"/>
+      <rect x="-800" y="596" width="3200" height="8" fill="#c9a77c"/>
     </svg>`;
 }

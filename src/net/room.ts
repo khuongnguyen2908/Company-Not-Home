@@ -27,8 +27,10 @@ export interface RoomSettings {
   discussTime: number; voteTime: number; anonVotes: boolean;
   /** hồi chiêu gài bẫy (giây); 0 = tự động theo cỡ ván và số Nội gián */
   killCd: number;
+  /** tên phòng (hiện trong danh sách Public); public: hiện trong danh sách Public, tắt = chỉ vào bằng mã / link mời */
+  name: string; public: boolean;
 }
-export const DEFAULT_SETTINGS: RoomSettings = { fillBots: true, seats: 8, imps: 1, roles: {}, maxSpecial: 3, discussTime: 60, voteTime: 30, anonVotes: false, killCd: 0 };
+export const DEFAULT_SETTINGS: RoomSettings = { fillBots: true, seats: 8, imps: 1, roles: {}, maxSpecial: 3, discussTime: 60, voteTime: 30, anonVotes: false, killCd: 0, name: '', public: true };
 /** Trạng thái một người trong sảnh tầng G (gửi 10 lần/giây khi chưa vào ca) */
 export interface LobbyState { x: number; y: number; f: 1 | -1; m: 0 | 1; seat: number | null; cup: 0 | 1; arrived: 0 | 1 }
 
@@ -126,7 +128,7 @@ export class NetHost {
 
   /** Đồng hồ (ms). Kiểm tra tự động thay bằng đồng hồ giả và tự gọi watch() */
   clock: () => number = () => performance.now();
-  constructor(public tr: Transport, public code: string, me: Profile, opts: { timers?: boolean } = {}) {
+  constructor(public tr: Transport, public code: string, public me: Profile, opts: { timers?: boolean } = {}) {
     this.players = [{ ...me, peer: tr.peerId, host: true }];
     tr.onMessage((from, raw) => this.onMsg(from, raw as ToHost));
     // nhịp kiểm tra kết nối (chạy cả ở phòng chờ lẫn trong ván, không phụ thuộc vòng lặp game)
