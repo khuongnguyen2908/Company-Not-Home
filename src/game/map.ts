@@ -9,9 +9,9 @@ export const MAP_H = 76; // thêm giếng thang bộ riêng ở dưới cùng b�
 /** Các tầng: gốc tọa độ (ô) của từng tầng trên bản đồ */
 export interface FloorDef { id: number; name: string; short: string; ox: number; oy: number; w: number; h: number }
 export const FLOORS: FloorDef[] = [
-  { id: 1, name: 'Tầng 1', short: '1', ox: 0, oy: 0, w: 38, h: 22 },
-  { id: 2, name: 'Tầng 2', short: '2', ox: 40, oy: 0, w: 38, h: 22 },
-  { id: 3, name: 'Tầng 3', short: '3', ox: 0, oy: 24, w: 38, h: 22 },
+  { id: 1, name: 'Tầng 1', short: '1', ox: 0, oy: 0, w: 31, h: 19 },
+  { id: 2, name: 'Tầng 2', short: '2', ox: 40, oy: 0, w: 31, h: 19 }, // bản đồ mới: tầng nhỏ gọn hơn
+  { id: 3, name: 'Tầng 3', short: '3', ox: 0, oy: 24, w: 31, h: 19 },
   { id: 4, name: 'Sân thượng', short: 'S', ox: 40, oy: 24, w: 38, h: 14 },
 ];
 export const ROOF = 4;
@@ -19,12 +19,15 @@ export const ROOF = 4;
 export const CABIN = { x: 67, y: 41, w: 4, h: 3 };
 export const LIFT_FLOORS = [1, 2, 3]; // thang máy không lên sân thượng
 /** Giếng thang bộ: khu riêng dùng chung cho cả tòa, chiếu nghỉ từ sân thượng (trên cùng) xuống tầng 1 */
-export const STAIRWELL = { x: 3, y: 48, w: 9, h: 27 };
+/** Bản đồ mới: mỗi tầng chỉ một đoạn thang thẳng (trước: hai đoạn zíc zắc), chiếu nghỉ cách nhau STAIR_STEP hàng */
+export const STAIR_STEP = 8; // đoạn thang 5 bậc: thang bộ nhanh gấp đôi trước, thang máy (buồng có sẵn) vẫn nhanh hơn
+export const STAIRWELL = { x: 3, y: 48, w: 5, h: 3 * STAIR_STEP + 3 }; // chiếu nghỉ 5 ô (đoạn thang 2 ô sát cửa + chỗ đứng)
 export const STAIRS_LEVEL = 5;
 /** Chiếu nghỉ từng tầng trong giếng thang (hàng giữa của chiếu nghỉ). Giữa hai chiếu nghỉ là hai đoạn cầu thang gấp khúc */
-export const LANDINGS = [4, 3, 2, 1].map((lv, i) => ({ level: lv, y: STAIRWELL.y + i * 8 + 1 }));
+export const LANDINGS = [4, 3, 2, 1].map((lv, i) => ({ level: lv, y: STAIRWELL.y + i * STAIR_STEP + 1 }));
 /** Các ô bậc thang (để vẽ): mỗi tầng hai đoạn chạy ngang hết bề rộng giếng thang */
-export const STAIR_FLIGHTS: { y: number; dir: 1 | -1 }[] = [0, 1, 2].flatMap(i => [{ y: STAIRWELL.y + i * 8 + 4, dir: 1 as const }, { y: STAIRWELL.y + i * 8 + 6, dir: -1 as const }]);
+/** Đoạn thang thẳng đứng sát cửa vào (2 ô × (STAIR_STEP − 3) bậc) giữa hai chiếu nghỉ */
+export const STAIR_FLIGHTS: { x: number; y: number; w: number; h: number }[] = [0, 1, 2].map(i => ({ x: STAIRWELL.x, y: STAIRWELL.y + i * STAIR_STEP + 3, w: 2, h: STAIR_STEP - 3 }));
 
 export type RoomId =
   | 'director' | 'hr' | 'meeting' | 'art' | 'server'
@@ -36,7 +39,12 @@ export type RoomId =
 export interface Rect { x: number; y: number; w: number; h: number }
 export interface Room extends Rect { id: RoomId; name: string; floor: number; floor2: number; label: boolean; pattern: 'plain' | 'checker' | 'stripe'; level: number }
 
-const fl = (n: number) => FLOORS[n - 1];
+/** Gốc tọa độ để đặt phòng, đồ đạc… của từng tầng. Tầng 1–3: tường ngoài phía trên dày 2 ô (hàng trên cùng là đỉnh tường,
+ *  hàng thứ hai là mặt tường để treo bảng, cửa sổ), nên gốc tọa độ thấp hơn khung tầng 1 hàng */
+export const TOP_WALL = (n: number) => (n >= 1 && n <= 3 ? 1 : 0);
+const fl = (n: number) => (TOP_WALL(n) ? { ...FLOORS[n - 1], oy: FLOORS[n - 1].oy + TOP_WALL(n) } : FLOORS[n - 1]);
+/** Bản đồ mới: hành lang Tầng 2 cao hơn 2 hàng so với các tầng chưa làm lại (cửa thang máy, cửa thang bộ, camera theo đó) */
+const dyHall = (n: number) => (n >= 1 && n <= 3 ? 2 : 0);
 const HALL = { floor: 0xd8d2c4, floor2: 0xcfc8b8, label: false, pattern: 'plain' as const };
 const STAIR = { floor: 0x8e8a9e, floor2: 0x807c90, label: false, pattern: 'stripe' as const };
 const R = (level: number, id: RoomId, name: string, x: number, y: number, w: number, h: number, floor: number, floor2: number, label = true, pattern: Room['pattern'] = 'plain'): Room =>
@@ -44,35 +52,37 @@ const R = (level: number, id: RoomId, name: string, x: number, y: number, w: num
 
 export const ROOMS: Room[] = [
   // Tầng 1: Đón tiếp
-  R(1, 'reception', 'Lễ tân', 1, 1, 18, 8, 0xe9d9c9, 0xe0cdbb, true, 'checker'),
-  R(1, 'security', 'Phòng bảo vệ', 20, 1, 17, 8, 0xb9c0d6, 0xaeb6ce, true, 'checker'),
-  R(1, 'fun', 'Khu giải trí', 1, 14, 14, 7, 0xc7e3f2, 0xb8d9eb, true, 'checker'),
-  R(1, 'power', 'Kho điện', 23, 14, 14, 7, 0xc9c2b4, 0xbfb7a8, true, 'stripe'),
-  { ...R(1, 'hall1', 'Hành lang', 1, 10, 36, 3, 0, 0), ...HALL },
-  // Tầng 2: Làm việc (tầng giữa)
-  R(2, 'open', 'Phòng làm việc', 1, 1, 18, 8, 0xe6d9b8, 0xdccea9),
-  R(2, 'meeting', 'Phòng họp', 20, 1, 17, 8, 0xd9d4ee, 0xd0caea),
-  R(2, 'pantry', 'Pantry', 1, 14, 14, 7, 0xf3e4b0, 0xe9d593, true, 'checker'),
-  R(2, 'print', 'Phòng in ấn', 23, 14, 14, 7, 0xdedfe6, 0xd3d5de),
-  { ...R(2, 'hall2', 'Hành lang', 1, 10, 36, 3, 0, 0), ...HALL },
+  R(1, 'reception', 'Lễ tân', 1, 1, 13, 6, 0xe9d9c9, 0xe0cdbb, true, 'checker'),
+  R(1, 'security', 'Phòng bảo vệ', 15, 1, 6, 6, 0xb9c0d6, 0xaeb6ce, true, 'checker'),
+  R(1, 'fun', 'Khu giải trí', 22, 1, 8, 10, 0xc7e3f2, 0xb8d9eb, true, 'checker'),
+  R(1, 'power', 'Kho điện', 1, 12, 7, 5, 0xc9c2b4, 0xbfb7a8, true, 'stripe'),
+  { ...R(1, 'hall1', 'Hành lang', 1, 8, 20, 3, 0, 0), ...HALL },
+  // Tầng 2: Làm việc (tầng giữa). Bản đồ mới: phòng nhỏ lại, kích thước đa dạng, cửa nối thẳng giữa các phòng phía trên
+  R(2, 'open', 'Phòng làm việc', 1, 1, 11, 6, 0xe6d9b8, 0xdccea9),
+  R(2, 'meeting', 'Phòng họp', 13, 1, 10, 6, 0xd9d4ee, 0xd0caea),
+  R(2, 'print', 'Phòng in ấn', 24, 1, 6, 6, 0xdedfe6, 0xd3d5de),
+  R(2, 'pantry', 'Pantry', 1, 12, 11, 5, 0xf3e4b0, 0xe9d593, true, 'checker'),
+  { ...R(2, 'hall2', 'Hành lang', 1, 8, 29, 3, 0, 0), ...HALL },
   // Tầng 3: Lãnh đạo và kỹ thuật
-  R(3, 'director', 'Phòng Giám đốc', 1, 1, 11, 8, 0xc99a6e, 0xbf8f63, true, 'stripe'),
-  R(3, 'hr', 'Phòng HR', 13, 1, 12, 8, 0xf2d4dc, 0xead0d6),
-  R(3, 'server', 'Phòng Server', 26, 1, 11, 8, 0x9eb3c9, 0x93a8bf, true, 'checker'),
-  R(3, 'qa', 'Phòng QA', 1, 14, 14, 7, 0xcfe8d2, 0xc3e0c7),
-  R(3, 'art', 'Studio Art', 23, 14, 14, 7, 0xf6e7c1, 0xefdcae, true, 'stripe'),
-  { ...R(3, 'hall3', 'Hành lang', 1, 10, 36, 3, 0, 0), ...HALL },
+  R(3, 'director', 'Phòng Giám đốc', 1, 1, 7, 6, 0xc99a6e, 0xbf8f63, true, 'stripe'),
+  R(3, 'hr', 'Phòng HR', 9, 1, 7, 6, 0xf2d4dc, 0xead0d6),
+  R(3, 'server', 'Phòng Server', 17, 1, 5, 6, 0x9eb3c9, 0x93a8bf, true, 'checker'),
+  R(3, 'qa', 'Phòng QA', 23, 1, 7, 6, 0xcfe8d2, 0xc3e0c7),
+  R(3, 'art', 'Studio Art', 1, 12, 10, 5, 0xf6e7c1, 0xefdcae, true, 'stripe'),
+  { ...R(3, 'hall3', 'Hành lang', 1, 8, 29, 3, 0, 0), ...HALL },
   // Sân thượng
   R(4, 'roof_garden', 'Vườn mái', 1, 1, 14, 12, 0x9fcf7a, 0x93c56e, true, 'checker'),
   R(4, 'roof_terrace', 'Sân thượng', 16, 1, 6, 7, 0xb8b4a8, 0xaca89c, false, 'checker'),
   R(4, 'roof_ac', 'Khu điều hòa', 23, 1, 14, 12, 0xb8b4a8, 0xaca89c, true, 'checker'),
   // Giếng thang bộ (chiếu nghỉ + các đoạn cầu thang zíc zắc)
-  ...[0, 8, 16, 24].map(dy => ({ id: 'stairs' as RoomId, name: 'Thang bộ', level: STAIRS_LEVEL, x: STAIRWELL.x, y: STAIRWELL.y + dy, w: STAIRWELL.w, h: 3, floor: 0x8e8a9e, floor2: 0x86829a, label: false, pattern: 'checker' as const })),
+  ...[0, 1, 2, 3].map(i => i * STAIR_STEP).map(dy => ({ id: 'stairs' as RoomId, name: 'Thang bộ', level: STAIRS_LEVEL, x: STAIRWELL.x, y: STAIRWELL.y + dy, w: STAIRWELL.w, h: 3, floor: 0x8e8a9e, floor2: 0x86829a, label: false, pattern: 'checker' as const })),
   // Giữa hai chiếu nghỉ: lỗ xuống (trái) → đoạn thang chạy sang phải → lỗ xuống (phải) → đoạn thang chạy sang trái → lỗ xuống (trái)
   ...[0, 1, 2].flatMap(i => {
-    const y0 = STAIRWELL.y + i * 8, X = STAIRWELL.x, W = STAIRWELL.w;
+    const y0 = STAIRWELL.y + i * STAIR_STEP, X = STAIRWELL.x, W = STAIRWELL.w;
     const st = (x: number, y: number, w: number) => ({ id: 'stairs' as RoomId, name: 'Thang bộ', level: STAIRS_LEVEL, x, y, w, h: 1, floor: 0x6f6b80, floor2: 0x67637a, label: false, pattern: 'plain' as const });
-    return [st(X, y0 + 3, 1), st(X, y0 + 4, W), st(X + W - 1, y0 + 5, 1), st(X, y0 + 6, W), st(X, y0 + 7, 1)];
+    // một đoạn thang thẳng đứng sát cửa vào (2 ô × (STAIR_STEP − 3) bậc): đi thẳng từ chiếu nghỉ này lên/xuống chiếu nghỉ kia
+    void W;
+    return Array.from({ length: STAIR_STEP - 3 }, (_, k) => st(X, y0 + 3 + k, 2));
   }),
   // Buồng thang máy
   { id: 'cabin', name: 'Thang máy', level: 0, ...CABIN, floor: 0xc9ccd8, floor2: 0xbfc3d0, label: false, pattern: 'checker' },
@@ -81,9 +91,13 @@ export const ROOMS: Room[] = [
 // Cửa giữa các phòng và hành lang (ô khắc xuyên tường)
 const D = (level: number, xs: number[], ys: number[], room: RoomId) => xs.flatMap(x => ys.map(y => ({ x: fl(level).ox + x, y: fl(level).oy + y, room })));
 export const DOORS: { x: number; y: number; room: RoomId }[] = [
-  ...D(1, [9, 10], [9], 'hall1'), ...D(1, [28, 29], [9], 'hall1'), ...D(1, [7, 8], [13], 'hall1'), ...D(1, [29, 30], [13], 'hall1'),
-  ...D(2, [9, 10], [9], 'hall2'), ...D(2, [28, 29], [9], 'hall2'), ...D(2, [7, 8], [13], 'hall2'), ...D(2, [29, 30], [13], 'hall2'),
-  ...D(3, [6, 7], [9], 'hall3'), ...D(3, [18, 19], [9], 'hall3'), ...D(3, [31, 32], [9], 'hall3'), ...D(3, [7, 8], [13], 'hall3'), ...D(3, [29, 30], [13], 'hall3'),
+  ...D(1, [3, 4, 10, 11], [7], 'hall1'), ...D(1, [17, 18], [7], 'hall1'), ...D(1, [21], [8, 9], 'hall1'), ...D(1, [4, 5], [11], 'hall1'),
+  ...D(1, [14], [3, 4], 'reception'), // cửa nối Lễ tân ↔ Phòng bảo vệ
+  ...D(2, [3, 4], [7], 'hall2'), ...D(2, [17, 18], [7], 'hall2'), ...D(2, [26, 27], [7], 'hall2'), ...D(2, [7, 8], [11], 'hall2'),
+  // cửa nối thẳng giữa hai phòng (đường vòng): Phòng làm việc ↔ Phòng họp ↔ Phòng in ấn
+  ...D(2, [12], [3, 4], 'open'), ...D(2, [23], [3, 4], 'meeting'),
+  ...D(3, [3, 4], [7], 'hall3'), ...D(3, [12, 13], [7], 'hall3'), ...D(3, [19, 20], [7], 'hall3'), ...D(3, [26, 27], [7], 'hall3'), ...D(3, [5, 6], [11], 'hall3'),
+  ...D(3, [8], [3, 4], 'director'), // cửa nối Phòng Giám đốc ↔ Phòng HR
   ...D(4, [15], [5, 6], 'roof_terrace'), ...D(4, [22], [5, 6], 'roof_terrace'),
 ];
 
@@ -96,8 +110,8 @@ export const PORTALS: Portal[] = [
   // Cửa thoát hiểm ở mỗi tầng -> chiếu nghỉ tầng đó trong giếng thang, và ngược lại
   ...[1, 2, 3, 4].flatMap(lv => {
     const land = LANDINGS.find(l => l.level === lv)!;
-    const door = lv === 4 ? { x: fl(4).ox + 18, y: fl(4).oy + 8 } : { x: fl(lv).ox + 20, y: fl(lv).oy + 13 };
-    const front = lv === 4 ? { x: fl(4).ox + 18, y: fl(4).oy + 6 } : { x: fl(lv).ox + 20, y: fl(lv).oy + 11 };
+    const door = lv === 4 ? { x: fl(4).ox + 18, y: fl(4).oy + 8 } : { x: fl(lv).ox + 20, y: fl(lv).oy + 13 - dyHall(lv) };
+    const front = lv === 4 ? { x: fl(4).ox + 18, y: fl(4).oy + 6 } : { x: fl(lv).ox + 20, y: fl(lv).oy + 11 - dyHall(lv) };
     const name = lv === 4 ? 'Sân thượng' : `Tầng ${lv}`;
     return [
       { from: door, to: { x: STAIRWELL.x + 1, y: land.y }, fromLevel: lv, toLevel: STAIRS_LEVEL, label: 'Thang bộ' },
@@ -110,8 +124,8 @@ export const PORTALS: Portal[] = [
 /** Cửa thang máy ở mỗi tầng (2 ô trên tường hành lang) và ô đứng chờ trước cửa */
 export const LIFT_DOORS = LIFT_FLOORS.map(n => ({
   level: n,
-  tiles: [{ x: fl(n).ox + 16, y: fl(n).oy + 13 }, { x: fl(n).ox + 17, y: fl(n).oy + 13 }],
-  front: { x: fl(n).ox + 16.5, y: fl(n).oy + 12 }, // tâm chỗ đứng chờ (đơn vị ô, chưa cộng 0.5)
+  tiles: [{ x: fl(n).ox + 16, y: fl(n).oy + 13 - dyHall(n) }, { x: fl(n).ox + 17, y: fl(n).oy + 13 - dyHall(n) }],
+  front: { x: fl(n).ox + 16.5, y: fl(n).oy + 12 - dyHall(n) }, // tâm chỗ đứng chờ (đơn vị ô, chưa cộng 0.5)
 }));
 export const CABIN_DOOR = [{ x: CABIN.x + 1, y: CABIN.y - 1 }, { x: CABIN.x + 2, y: CABIN.y - 1 }];
 export const CABIN_PANEL = { x: CABIN.x, y: CABIN.y }; // bảng nút chọn tầng (góc trái trong buồng)
@@ -128,8 +142,9 @@ export interface Furniture extends Rect { kind: FurnitureKind; blocking: boolean
 
 // Bàn làm việc ở Phòng làm việc (tầng 2): mỗi người một bàn, chỗ ngồi là ô ngay dưới bàn
 export const DESKS: { x: number; y: number; seat: { x: number; y: number } }[] = [];
-for (const y of [2, 5]) for (const x of [2, 5, 8, 11, 14]) {
-  const gx = fl(2).ox + x, gy = fl(2).oy + y;
+// 10 bàn rải 3 tầng văn phòng (giao ngẫu nhiên mỗi ván): Tầng 1: Lễ tân 2, Bảo vệ 1 · Tầng 2: Phòng làm việc 4 · Tầng 3: HR, QA, Studio Art
+for (const [lv, x, y] of [[2, 1, 2], [2, 5, 2], [2, 1, 5], [2, 6, 5], [1, 1, 3], [1, 6, 1], [1, 19, 4], [3, 9, 5], [3, 28, 4], [3, 8, 15]] as [number, number, number][]) {
+  const gx = fl(lv).ox + x, gy = fl(lv).oy + y;
   DESKS.push({ x: gx, y: gy, seat: { x: gx, y: gy + 1 } });
 }
 
@@ -138,22 +153,22 @@ const F = (level: number, kind: FurnitureKind, x: number, y: number, w = 1, h = 
 
 export const FURNITURE: Furniture[] = [
   // Tầng 1
-  F(1, 'counter', 4, 4, 6, 1), F(1, 'scanner', 14, 1), F(1, 'boxes', 16, 6, 2, 2), F(1, 'sofa', 10, 7, 3, 1), F(1, 'bigplant', 1, 1),
-  F(1, 'monitors', 26, 1, 6, 1), F(1, 'shelf', 33, 1, 2, 1), F(1, 'plant', 36, 8),
-  F(1, 'dartboard', 5, 14), F(1, 'claw', 9, 14, 2, 2), F(1, 'fishtank', 3, 17, 3, 1), F(1, 'sofa', 8, 19, 3, 1), F(1, 'plant', 14, 20),
-  F(1, 'panel', 34, 14), F(1, 'shelf', 26, 18, 4, 2), F(1, 'boxes', 31, 19, 2, 1),
+  F(1, 'counter', 3, 3, 6, 1), F(1, 'scanner', 12, 0, 1, 1, false), F(1, 'boxes', 12, 5, 2, 2), F(1, 'sofa', 6, 6, 3, 1), F(1, 'bigplant', 1, 1),
+  F(1, 'monitors', 16, 1, 4, 1),
+  F(1, 'dartboard', 23, 0, 1, 1, false), F(1, 'claw', 27, 1, 2, 2), F(1, 'fishtank', 23, 6, 3, 1), F(1, 'sofa', 26, 9, 3, 1), F(1, 'plant', 29, 10),
+  F(1, 'panel', 6, 11, 1, 1, false), F(1, 'shelf', 1, 14, 2, 2), F(1, 'boxes', 1, 16, 2, 1),
   // Tầng 2
   ...DESKS.map(d => F(0, 'desk', d.x, d.y, 2, 1)),
-  F(2, 'kanban', 16, 1, 3, 1), F(2, 'computer', 16, 4, 2, 1), F(2, 'plant', 1, 8), F(2, 'watercooler', 18, 8),
-  F(2, 'meetingtable', 24, 3, 8, 4), F(2, 'whiteboard', 21, 1, 2, 1), F(2, 'projector', 34, 1), F(2, 'plant', 20, 8),
-  F(2, 'fridge', 1, 14, 2, 1), F(2, 'coffee', 3, 14, 2, 1), F(2, 'tap', 9, 14, 3, 1), F(2, 'pantrytable', 5, 17, 4, 2),
-  F(2, 'copier', 25, 14, 2, 1), F(2, 'printer', 31, 14, 2, 1), F(2, 'shelf', 33, 20, 2, 1),
+  F(2, 'kanban', 9, 0, 3, 1, false), F(2, 'computer', 9, 4, 2, 1), F(2, 'plant', 1, 1), F(2, 'watercooler', 7, 1),
+  F(2, 'meetingtable', 15, 2, 6, 3), F(2, 'whiteboard', 13, 0, 2, 1, false), F(2, 'projector', 22, 0, 1, 1, false), F(2, 'plant', 13, 6),
+  F(2, 'fridge', 1, 12, 2, 1), F(2, 'coffee', 3, 12, 2, 1), F(2, 'tap', 9, 12, 3, 1), F(2, 'pantrytable', 5, 14, 4, 2),
+  F(2, 'copier', 24, 1, 2, 1), F(2, 'printer', 28, 1, 2, 1), F(2, 'shelf', 28, 4, 2, 1),
   // Tầng 3
-  F(3, 'bigdesk', 4, 3, 4, 2), F(3, 'sofa', 7, 7, 3, 1), F(3, 'plant', 11, 1),
-  F(3, 'hrdesk', 16, 3, 3, 1), F(3, 'shelf', 22, 1, 2, 1), F(3, 'faceid', 13, 5), F(3, 'plant', 24, 8),
-  F(3, 'rack', 27, 2, 2, 2), F(3, 'rack', 31, 2, 2, 2), F(3, 'rack', 27, 6, 2, 2), F(3, 'router', 36, 4), F(3, 'computer', 33, 7, 2, 1),
-  F(3, 'computer', 3, 15, 2, 1), F(3, 'computer', 8, 15, 2, 1), F(3, 'shelf', 4, 19, 3, 1), F(3, 'plant', 14, 14),
-  F(3, 'easel', 26, 15), F(3, 'easel', 30, 15), F(3, 'pantrytable', 26, 18, 4, 2), F(3, 'colorcheck', 35, 15), F(3, 'plant', 36, 20),
+  F(3, 'bigdesk', 2, 2, 4, 2), F(3, 'sofa', 5, 6, 3, 1), F(3, 'plant', 7, 1),
+  F(3, 'hrdesk', 10, 2, 3, 1), F(3, 'faceid', 15, 4), F(3, 'plant', 15, 1),
+  F(3, 'rack', 17, 1, 2, 2), F(3, 'rack', 20, 1, 2, 2), F(3, 'router', 21, 4), F(3, 'computer', 17, 4, 2, 1),
+  F(3, 'computer', 23, 1, 2, 1), F(3, 'computer', 27, 1, 2, 1), F(3, 'plant', 29, 1),
+  F(3, 'easel', 2, 12), F(3, 'easel', 7, 12), F(3, 'pantrytable', 3, 15, 4, 2), F(3, 'colorcheck', 10, 13), F(3, 'plant', 10, 16),
   // Sân thượng
   F(4, 'gardenbed', 2, 2, 4, 2), F(4, 'gardenbed', 9, 2, 4, 2), F(4, 'gardenbed', 2, 8, 4, 2), F(4, 'gardenbed', 9, 8, 4, 2), F(4, 'bigplant', 14, 12),
   F(4, 'acunit', 25, 2, 2, 2), F(4, 'acunit', 29, 2, 2, 2), F(4, 'acunit', 33, 2, 2, 2), F(4, 'watertank', 27, 8, 4, 3),
@@ -212,39 +227,39 @@ const S = (level: number, id: Station['id'], name: string, room: RoomId, sx: num
 
 export const STATIONS: Station[] = [
   // Tầng 1
-  S(1, 'fingerprint', 'Chấm công vân tay', 'reception', 14, 2, 14.5, 1),
-  S(1, 'delivery', 'Ký nhận hàng', 'reception', 15, 7, 16, 6),
-  S(1, 'camera', 'Xem camera an ninh', 'security', 28, 2, 29, 1),
-  S(1, 'power', 'Bật lại cầu dao', 'power', 34, 15, 34.5, 14),
-  S(1, 'mt_cab', 'Sửa khóa tủ đồ', 'reception', 3, 7, 2.5, 7.5),
-  S(1, 'darts', 'Ném phi tiêu', 'fun', 6, 16, 5.5, 14.2), // đứng lệch phải, không đứng sau bể cá
-  S(1, 'claw', 'Gắp thú bông', 'fun', 11, 16, 10, 14),
-  S(1, 'fishfeed', 'Cho cá ăn', 'fun', 4, 18, 4.5, 17),
+  S(1, 'fingerprint', 'Chấm công vân tay', 'reception', 12, 1, 12.5, 0.4),
+  S(1, 'delivery', 'Ký nhận hàng', 'reception', 11, 5, 12, 5),
+  S(1, 'camera', 'Xem camera an ninh', 'security', 17, 2, 18, 1),
+  S(1, 'power', 'Bật lại cầu dao', 'power', 6, 12, 6.5, 11.4),
+  S(1, 'mt_cab', 'Sửa khóa tủ đồ', 'reception', 2, 6, 1.5, 6.5),
+  S(1, 'darts', 'Ném phi tiêu', 'fun', 24, 3, 23.5, 0.4),
+  S(1, 'claw', 'Gắp thú bông', 'fun', 29, 3, 28, 1),
+  S(1, 'fishfeed', 'Cho cá ăn', 'fun', 24, 7, 24.5, 6),
   // Tầng 2
-  S(2, 'excel', 'Nhập liệu Excel', 'open', 16, 5, 17, 4),
-  S(2, 'backlog', 'Sắp xếp backlog', 'open', 17, 2, 17.5, 1),
-  S(2, 'balance', 'Cân bằng chỉ số game', 'meeting', 21, 2, 22, 1),
-  S(2, 'projector', 'Bật máy chiếu', 'meeting', 34, 2, 34.5, 1),
-  S(2, 'coffee', 'Pha cà phê cho sếp', 'pantry', 3, 15, 4, 14),
-  S(2, 'fridge', 'Dọn tủ lạnh mốc', 'pantry', 2, 15, 2, 14),
-  S(2, 'getwater', 'Lấy nước tưới cây', 'pantry', 10, 15, 10.5, 14),
-  S(2, 'copier', 'Gỡ kẹt photocopy', 'print', 25, 15, 26, 14),
-  S(2, 'printdoc', 'In tài liệu', 'print', 31, 15, 32, 14),
-  S(2, 'minutes', 'Lấy biên bản họp', 'print', 35, 20, 34, 20), // đứng cạnh tủ, không đứng sau tủ
-  S(2, 'mt_desk', 'Gia cố gầm bàn họp', 'meeting', 33, 8, 34.5, 7.5),
-  S(2, 'mt_wc', 'Sửa ống gió', 'print', 35, 19, 35.5, 19.5),
+  S(2, 'excel', 'Nhập liệu Excel', 'open', 9, 5, 10, 4),
+  S(2, 'backlog', 'Sắp xếp backlog', 'open', 10, 1, 10.5, 0.4),
+  S(2, 'balance', 'Cân bằng chỉ số game', 'meeting', 13, 1, 14, 0.4),
+  S(2, 'projector', 'Bật máy chiếu', 'meeting', 22, 1, 22.5, 0.4),
+  S(2, 'coffee', 'Pha cà phê cho sếp', 'pantry', 3, 13, 4, 12),
+  S(2, 'fridge', 'Dọn tủ lạnh mốc', 'pantry', 2, 13, 2, 12),
+  S(2, 'getwater', 'Lấy nước tưới cây', 'pantry', 10, 13, 10.5, 12),
+  S(2, 'copier', 'Gỡ kẹt photocopy', 'print', 24, 2, 25, 1),
+  S(2, 'printdoc', 'In tài liệu', 'print', 28, 2, 29, 1),
+  S(2, 'minutes', 'Lấy biên bản họp', 'print', 27, 4, 28, 4), // đứng cạnh tủ, không đứng sau tủ
+  S(2, 'mt_desk', 'Gia cố gầm bàn họp', 'meeting', 21, 6, 21.5, 5.5),
+  S(2, 'mt_wc', 'Sửa ống gió', 'print', 29, 5, 29.5, 5.5),
   // Tầng 3
-  S(3, 'stamp', 'Ký duyệt hồ sơ', 'director', 5, 5, 6, 3.5),
-  S(3, 'interview', 'Xếp lịch phỏng vấn', 'hr', 17, 4, 17.5, 3),
-  S(3, 'faceid', 'Máy Face ID', 'hr', 14, 5, 13.5, 5),
-  S(3, 'wires', 'Nối lại dây cáp', 'server', 30, 4, 30, 2.5),
-  S(3, 'router', 'Khởi động lại router', 'server', 35, 4, 36.5, 4),
-  S(3, 'pushbuild', 'Đẩy bản build', 'server', 33, 8, 34, 7), // đứng trước màn hình
-  S(3, 'mt_floor', 'Sửa ống cáp', 'server', 35, 8, 35.5, 6.5),
-  S(3, 'bug', 'Tái hiện bug', 'qa', 3, 16, 4, 15),
-  S(3, 'testbuild', 'Test bản build', 'qa', 8, 16, 9, 15),
-  S(3, 'sprite', 'Tô màu sprite', 'art', 26, 16, 26.5, 15),
-  S(3, 'colorcheck', 'Máy so màu', 'art', 34, 15, 35.5, 15),
+  S(3, 'stamp', 'Ký duyệt hồ sơ', 'director', 5, 4, 5, 3),
+  S(3, 'interview', 'Xếp lịch phỏng vấn', 'hr', 11, 3, 11.5, 2),
+  S(3, 'faceid', 'Máy Face ID', 'hr', 14, 4, 15.5, 4),
+  S(3, 'wires', 'Nối lại dây cáp', 'server', 19, 3, 19, 1.5),
+  S(3, 'router', 'Khởi động lại router', 'server', 20, 4, 21.5, 4),
+  S(3, 'pushbuild', 'Đẩy bản build', 'server', 17, 5, 18, 4), // đứng trước màn hình
+  S(3, 'mt_floor', 'Sửa ống cáp', 'server', 21, 5, 21.5, 6),
+  S(3, 'bug', 'Tái hiện bug', 'qa', 23, 2, 24, 1),
+  S(3, 'testbuild', 'Test bản build', 'qa', 27, 2, 28, 1),
+  S(3, 'sprite', 'Tô màu sprite', 'art', 2, 13, 2.5, 12),
+  S(3, 'colorcheck', 'Máy so màu', 'art', 9, 13, 10.5, 13),
   // Sân thượng
   S(4, 'waterplant', 'Tưới cây', 'roof_garden', 4, 4, 4, 3),
   S(4, 'solar', 'Lau tấm pin', 'roof_terrace', 18, 3, 18.5, 2),
@@ -291,52 +306,52 @@ export const TASKS: TaskDef[] = [
 export const taskDef = (id: string) => TASKS.find(t => t.id === id)!;
 
 // Phòng họp (tầng 2): chuông họp khẩn giữa bàn, ô đứng bấm chuông ngay dưới bàn
-export const BELL = { x: fl(2).ox + 28, y: fl(2).oy + 5, room: 'meeting' as RoomId };
-export const BELL_STAND = { x: fl(2).ox + 28, y: fl(2).oy + 7 };
+export const BELL = { x: fl(2).ox + 18, y: fl(2).oy + 3, room: 'meeting' as RoomId };
+export const BELL_STAND = { x: fl(2).ox + 18, y: fl(2).oy + 5 };
 
 // Chỗ trốn. pair = -1: nối động (nắp trần thang máy ↔ cửa kỹ thuật giếng thang ở tầng buồng thang đang đứng)
 const H = (level: number, id: string, name: string, x: number, y: number, pair: number) =>
   ({ id, name, x: (level ? fl(level).ox : 0) + x, y: (level ? fl(level).oy : 0) + y, pair, level });
 export const HIDE_SPOTS: { id: string; name: string; x: number; y: number; pair: number; level: number }[] = [
   H(0, 'tm_hatch', 'Nắp trần thang máy', CABIN.x + 3, CABIN.y + 2, -1),
-  H(1, 'tm_shaft1', 'Cửa kỹ thuật giếng thang (Tầng 1)', 15, 12, -1),
-  H(2, 'tm_shaft2', 'Cửa kỹ thuật giếng thang (Tầng 2)', 15, 12, -1),
-  H(3, 'tm_shaft3', 'Cửa kỹ thuật giếng thang (Tầng 3)', 15, 12, -1),
-  H(1, 'ong_cap1', 'Ống cáp (Kho điện)', 35, 20, 5),
-  H(3, 'ong_cap3', 'Ống cáp (Server)', 35, 7, 4),
-  H(2, 'gam_ban_lv', 'Gầm bàn (Phòng làm việc)', 17, 7, 7),
-  H(2, 'gam_ban_hop', 'Gầm bàn (Phòng họp)', 35, 8, 6),
-  H(2, 'ong_gio2', 'Ống gió (Phòng in ấn)', 35, 20, 9),
+  H(1, 'tm_shaft1', 'Cửa kỹ thuật giếng thang (Tầng 1)', 15, 10, -1),
+  H(2, 'tm_shaft2', 'Cửa kỹ thuật giếng thang (Tầng 2)', 15, 10, -1),
+  H(3, 'tm_shaft3', 'Cửa kỹ thuật giếng thang (Tầng 3)', 15, 10, -1),
+  H(1, 'ong_cap1', 'Ống cáp (Kho điện)', 7, 16, 5),
+  H(3, 'ong_cap3', 'Ống cáp (Server)', 21, 6, 4),
+  H(2, 'gam_ban_lv', 'Gầm bàn (Phòng làm việc)', 11, 6, 7),
+  H(2, 'gam_ban_hop', 'Gầm bàn (Phòng họp)', 22, 6, 6),
+  H(2, 'ong_gio2', 'Ống gió (Phòng in ấn)', 29, 6, 9),
   H(4, 'ong_gio_mai', 'Ống gió (Khu điều hòa)', 35, 11, 8),
-  H(1, 'tu_do_lt', 'Tủ đồ (Lễ tân)', 2, 8, 11),
-  H(1, 'tu_do_gt', 'Tủ đồ (Khu giải trí)', 2, 20, 10),
-  H(3, 'tran_gd', 'Trần thạch cao (Giám đốc)', 2, 8, 13),
-  H(3, 'tran_qa', 'Trần thạch cao (QA)', 2, 20, 12),
+  H(1, 'tu_do_lt', 'Tủ đồ (Lễ tân)', 1, 6, 11),
+  H(1, 'tu_do_gt', 'Tủ đồ (Khu giải trí)', 29, 6, 10),
+  H(3, 'tran_gd', 'Trần thạch cao (Giám đốc)', 1, 6, 13),
+  H(3, 'tran_qa', 'Trần thạch cao (QA)', 23, 6, 12),
 ];
 
 // Chỗ đứng quanh bàn họp (đầu ván và sau mỗi cuộc họp)
 /** Điểm xuất hiện lại sau họp (kiểu Airship): mỗi người được chọn 3 trong 6 điểm */
 export interface SpawnPoint { id: string; room: RoomId; level: number; x: number; y: number; icon: string }
 export const SPAWN_POINTS: SpawnPoint[] = [
-  { id: 'reception', room: 'reception', level: 1, x: 10, y: 5, icon: 'idcard' },
-  { id: 'meeting', room: 'meeting', level: 2, x: 66, y: 7, icon: 'bell' },
-  { id: 'pantry', room: 'pantry', level: 2, x: 49, y: 16, icon: 'coffee' },
-  { id: 'hall3', room: 'hall3', level: 3, x: 19, y: 35, icon: 'stairs' },
-  { id: 'art', room: 'art', level: 3, x: 30, y: 41, icon: 'palette' },
+  { id: 'reception', room: 'reception', level: 1, x: 10, y: 6, icon: 'idcard' },
+  { id: 'meeting', room: 'meeting', level: 2, x: 56, y: 7, icon: 'bell' },
+  { id: 'pantry', room: 'pantry', level: 2, x: 49, y: 15, icon: 'coffee' },
+  { id: 'hall3', room: 'hall3', level: 3, x: 19, y: 34, icon: 'stairs' },
+  { id: 'art', room: 'art', level: 3, x: 5, y: 39, icon: 'palette' },
   { id: 'roof', room: 'roof_garden', level: 4, x: 48, y: 31, icon: 'plant' },
 ];
 export const SPAWNS: { x: number; y: number }[] = [
-  ...[24, 25, 26, 27, 28, 29, 30, 31].map(x => ({ x: fl(2).ox + x, y: fl(2).oy + 2 })),
-  ...[24, 25, 26, 27, 28, 29, 30, 31].map(x => ({ x: fl(2).ox + x, y: fl(2).oy + 7 })),
+  ...[15, 16, 17, 18, 19, 20].map(x => ({ x: fl(2).ox + x, y: fl(2).oy + 1 })),
+  ...[15, 16, 17, 18, 19, 20].map(x => ({ x: fl(2).ox + x, y: fl(2).oy + 5 })),
 ];
 
 // Camera an ninh: mỗi tầng một chiếc ở hành lang trước lõi thang (thấy cửa thang máy, thang bộ, cửa phòng, không thấy trong phòng)
 const CAM = (level: number, name: string, x: number, y: number, w: number, h: number, dx: number, dy: number) =>
   ({ name, level, x: fl(level).ox + x, y: fl(level).oy + y, w, h, dev: { x: fl(level).ox + dx, y: fl(level).oy + dy } });
 export const CAMERAS: { name: string; level: number; x: number; y: number; w: number; h: number; dev: { x: number; y: number } }[] = [
-  CAM(1, 'Tầng 1 · hành lang trước thang', 9, 9, 20, 5, 25, 9),
-  CAM(2, 'Tầng 2 · hành lang trước thang', 9, 9, 20, 5, 25, 9),
-  CAM(3, 'Tầng 3 · hành lang trước thang', 9, 9, 20, 5, 25, 9),
+  CAM(1, 'Tầng 1 · hành lang trước thang', 8, 7, 13, 5, 13, 7),
+  CAM(2, 'Tầng 2 · hành lang trước thang', 9, 7, 20, 5, 25, 7),
+  CAM(3, 'Tầng 3 · hành lang trước thang', 8, 7, 20, 5, 22, 7),
   CAM(4, 'Sân thượng · cửa thang bộ', 15, 1, 8, 8, 18, 0),
 ];
 
@@ -440,6 +455,21 @@ export function tileCenter(tx: number, ty: number) {
 }
 
 // Kiểm tra va chạm với hộp chân nhân vật
+/** Hồn ma: chỉ bay trong phạm vi tòa nhà (ô sàn và tường bao quanh, cách sàn tối đa 1 ô), không bay vào khoảng trống ngoài tòa nhà */
+let GHOST_OK: Uint8Array | null = null;
+export function ghostOk(px: number, py: number): boolean {
+  if (!GHOST_OK) {
+    GHOST_OK = new Uint8Array(MAP_W * MAP_H);
+    for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
+      let ok = 0;
+      for (let dy = -1; dy <= 1 && !ok; dy++) for (let dx = -1; dx <= 1 && !ok; dx++) if (isFloor(x + dx, y + dy)) ok = 1;
+      GHOST_OK[y * MAP_W + x] = ok;
+    }
+  }
+  const tx = Math.floor(px / TILE), ty = Math.floor(py / TILE);
+  return tx >= 0 && ty >= 0 && tx < MAP_W && ty < MAP_H && GHOST_OK[ty * MAP_W + tx] === 1;
+}
+
 export function canStand(px: number, py: number): boolean {
   const hw = 11, hh = 7;
   const pts = [[px - hw, py - hh], [px + hw, py - hh], [px - hw, py + hh], [px + hw, py + hh]];

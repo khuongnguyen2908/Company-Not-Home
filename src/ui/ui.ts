@@ -1,14 +1,17 @@
 import { session } from '../session';
-import { World, BOSS_TIME, type Agent, type GameEvent, type SabotageKind } from '../game/sim';
+import { World, BOSS_TIME, killCooldownFor, type Agent, type GameEvent, type SabotageKind } from '../game/sim';
 import { fmt } from '../content/text';
 import { iconSvg, stationIcon, ICON_ART } from './icons';
 import { PLAYER_NAMES, BOT_NAMES, ROLE_INFO, SPECIAL_ROLES, COLOR_GROUPS, STICKERS, normalize, type RoleDept } from '../game/data';
 import { ROOMS, TILE, MAP_W, MAP_H, DESKS, HIDE_SPOTS, CAMERAS, BELL, LOCKABLE_ROOMS, FLOORS, SPAWN_POINTS, levelAt, levelName, type RoomId, station, taskDef, roomAt, roomName, GRID, type MiniKind } from '../game/map';
 import { slotStation, IT_CAM_TIME, IT_CD, SAB_CD, ENG_CD, ADMIN_CD, MEDIA_CD, CLIMBER_CD, PRY_AFTER } from '../game/sim';
-import { avatarURL, avatarImage, chairURL, characterCanvas, tagText, nameInk, GUARD_LOOK, randomLook, lookKey, lookColor, normalizeLook, DEFAULT_LOOK, SKIN_TONES, CHAR_H, CHAR_ORIGIN_Y, SKINS, HAIR_COLORS, HAIR_STYLES, PALETTE, BODIES, MARKS, ITEMS, SLOT_NAMES, itemDef, bodyDef, colors2, defaultColor, type Look, type Slot, type ItemDef } from '../render/chars';
+import { avatarURL, avatarImage, chairURL, characterCanvas, tagText, nameInk, GUARD_LOOK, randomLook, lookKey, lookColor, normalizeLook, DEFAULT_LOOK, SKIN_TONES, CHAR_H, CHAR_W, CHAR_TOP, CHAR_ORIGIN_Y, SKINS, HAIR_COLORS, HAIR_STYLES, PALETTE, BODIES, MARKS, ITEMS, SLOT_NAMES, itemDef, bodyDef, colors2, defaultColor, type Look, type Slot, type ItemDef } from '../render/chars';
 import { sfx } from '../audio';
 import { openMini, closeMini, miniOpen, openFaceId, openCardSwipe, openColorCheck, openV3 } from './minigames';
-import { act, net, NetHost, NetClient, newRoomCode, normalizeCode, MAX_PLAYERS, HOST_GONE_MS, HOST_LOST_MS, type Profile } from '../net/room';
+import { GameStats, statsText } from '../game/stats';
+/** Chế độ admin (?admin): thống kê ván và nút sao chép số liệu, chỉ dành cho người làm game thử nghiệm trước khi phát hành */
+export const ADMIN = new URLSearchParams(location.search).has('admin');
+import { act, actAsync, net, NetHost, NetClient, newRoomCode, normalizeCode, MAX_PLAYERS, HOST_GONE_MS, HOST_LOST_MS, type Profile } from '../net/room';
 import { TabTransport, MultiTransport, newPeerId } from '../net/transport';
 import { PeerTransport, type PeerCtor, type P2PStatus } from '../net/peer';
 import { Peer } from 'peerjs';
@@ -196,23 +199,28 @@ export class UI {
         <p class="ts-tag">${esc(fmt('ui.title.tagline'))}</p>
         ${session.contentTest ? `<p class="ts-test">🧪 Đang chạy nội dung thử (${session.contentTest} mục) · <a href="?content">Mở công cụ nội dung</a></p>` : ''}
         <div class="ts-panel">
-          <div class="field"><label for="f-name">Họ tên hiển thị trên thẻ</label>
-            <div class="name-row">
-              <input id="f-name" maxlength="12" autocomplete="off" placeholder="Nhập tên hoặc bấm xí ngầu" value="${esc(this.sessName)}">
-              <button class="dice" id="f-dice" type="button" aria-label="Chọn tên ngẫu nhiên" title="Chọn tên ngẫu nhiên">🎲</button>
+          <!-- Thẻ nhân viên: nhân vật (bấm để thay đồ), tên hiển thị, mã số -->
+          <div class="mm-card">
+            <button class="mm-av" id="go-avatar" type="button" aria-label="Mở máy thay đồ"><img src="${avatarURL(this.prefs.look)}" alt=""><span>Thay đồ</span></button>
+            <div class="mm-fields">
+              <div class="field"><label for="f-name">Tên hiển thị</label>
+                <div class="name-row">
+                  <input id="f-name" maxlength="12" autocomplete="off" placeholder="Nhập tên hoặc bấm xí ngầu" value="${esc(this.sessName)}">
+                  <button class="dice" id="f-dice" type="button" aria-label="Chọn tên ngẫu nhiên" title="Chọn tên ngẫu nhiên">🎲</button>
+                </div>
+                <p class="name-err" id="name-err" hidden>Cần có tên trước khi vào sảnh.</p></div>
+              <div class="field"><label for="f-id">Mã số nhân viên</label>
+                <div class="name-row id-row"><span class="id-hash">#</span>
+                  <input id="f-id" inputmode="numeric" maxlength="3" autocomplete="off" placeholder="100 – 999" value="${esc(this.sessId)}">
+                  <button class="dice" id="f-iddice" type="button" aria-label="Bốc mã ngẫu nhiên" title="Bốc mã ngẫu nhiên">🎲</button>
+                </div>
+                <p class="name-err" id="id-err" hidden>Mã số gồm 3 chữ số, từ 100 đến 999.</p></div>
             </div>
-            <p class="name-err" id="name-err" hidden>Cần có tên trước khi vào sảnh.</p></div>
-          <div class="field"><label for="f-id">Mã số nhân viên <small>(3 số, để trống thì bốc ngẫu nhiên)</small></label>
-            <div class="name-row id-row"><span class="id-hash">#</span>
-              <input id="f-id" inputmode="numeric" maxlength="3" autocomplete="off" placeholder="100 – 999" value="${esc(this.sessId)}">
-              <button class="dice" id="f-iddice" type="button" aria-label="Bốc mã ngẫu nhiên" title="Bốc mã ngẫu nhiên">🎲</button>
-            </div>
-            <p class="name-err" id="id-err" hidden>Mã số gồm 3 chữ số, từ 100 đến 999.</p></div>
+          </div>
           <div class="mm-buttons">
-            <button class="primary big" id="go-offline">🏢 Chơi offline<small>với đồng nghiệp bot</small></button>
+            <button class="primary big" id="go-offline">🏢 Chơi với bot<small>Một mình cùng đồng nghiệp bot</small></button>
             <button class="ghost-btn big" id="go-online">🌐 Chơi nhiều người<small>Tạo phòng hoặc vào bằng mã phòng</small></button>
-            <button class="ghost-btn ts-music" id="go-music"></button>
-            <div class="mm-row three"><button class="ghost-btn" id="go-stats">🏆 Thành tích</button><button class="ghost-btn" id="go-howto">📖 Luật chơi</button><button class="ghost-btn" id="go-keys">🎮 Điều khiển</button></div>
+            <div class="mm-row three"><button class="ghost-btn" id="go-stats">🏆 Thành tích</button><button class="ghost-btn" id="go-howto">📖 Hướng dẫn</button><button class="ghost-btn" id="go-settings">⚙️ Cài đặt</button></div>
           </div>
         </div>
       </div>`;
@@ -245,8 +253,25 @@ export class UI {
     $('#go-offline', el).onclick = go;
     $('#go-online', el).onclick = () => { if (profileOk()) this.openOnlineMenu(); };
     $('#go-stats', el).onclick = () => this.infoModal('Thành tích', this.statsHtml());
-    $('#go-howto', el).onclick = () => this.openRules();
-    $('#go-keys', el).onclick = () => this.openControls();
+    // Hướng dẫn = Luật chơi + Điều khiển
+    $('#go-howto', el).onclick = () => {
+      const m = this.infoModal('Hướng dẫn', `<div class="mm-guide"><button class="ghost-btn big" type="button" data-g="rules">📖 Luật chơi<small>Hai phe, cách thắng, các vai</small></button><button class="ghost-btn big" type="button" data-g="keys">🎮 Điều khiển<small>Phím, cần điều khiển trên điện thoại</small></button></div>`);
+      m.querySelectorAll<HTMLButtonElement>('[data-g]').forEach(b => b.onclick = () => { m.remove(); if (b.dataset.g === 'rules') this.openRules(); else this.openControls(); });
+    };
+    // Cài đặt: nhạc nền, âm thanh hiệu ứng
+    $('#go-settings', el).onclick = () => {
+      const m = this.infoModal('Cài đặt', `<div class="mm-guide"><button class="ghost-btn big" type="button" id="st-music"></button><button class="ghost-btn big" type="button" id="st-sfx"></button></div>`);
+      this.bindMusicButton($('#st-music', m));
+      const sb = $('#st-sfx', m), lab = () => { sb.textContent = this.prefs.muted ? '🔇 Âm thanh hiệu ứng: Tắt' : '🔊 Âm thanh hiệu ứng: Bật'; };
+      lab(); sb.onclick = () => { this.prefs.muted = !this.prefs.muted; savePrefs(this.prefs); sfx.setMuted(this.prefs.muted); lab(); };
+    };
+    // Bấm nhân vật trên thẻ nhân viên: mở máy thay đồ; lưu xong thì ảnh trên thẻ cập nhật
+    $('#go-avatar', el).onclick = () => {
+      sfx.unlock(); sfx.click();
+      this.openWardrobe();
+      const img = $('#go-avatar img', el) as HTMLImageElement;
+      const t = window.setInterval(() => { if (!document.querySelector('.ae-done')) { window.clearInterval(t); img.src = avatarURL(this.prefs.look); session.paused = false; } }, 300);
+    };
     // Link mời (?room=MÃ): có tên rồi thì vào thẳng phòng; chưa có tên thì điền sẵn mã vào menu chơi nhiều người
     // Vừa rời một phòng (kể cả đã đóng tab): nút vào lại phòng, nhận lại đúng nhân vật nếu còn trong 60 giây
     const lr = lastRoom();
@@ -272,7 +297,6 @@ export class UI {
       if (!nameIn.value) nameIn.value = p.name || `Người ${MT_SLOT}`;
       window.setTimeout(() => { if (!profileOk()) return; if (MT_SLOT === '1') this.createRoom(code); else this.joinRoom(code); }, MT_SLOT === '1' ? 200 : 700 + Number(MT_SLOT) * 150);
     }
-    this.bindMusicButton($('#go-music', el));
   }
 
   private statsHtml() {
@@ -616,7 +640,7 @@ export class UI {
     const p = this.prefs;
     const original = JSON.stringify(p.look);
     let draft: Look = JSON.parse(original);
-    const m = this.infoModal('Máy thay đồ', `${avatarEditorHtml()}<div class="ae-done-row"><span class="ae-dirty" hidden>Chưa lưu</span><button class="primary big ae-done" type="button">Xong</button></div>`,
+    const m = this.infoModal('Máy thay đồ', `${avatarEditorHtml()}<div class="ae-done-row"><span class="ae-dirty" hidden>Chưa lưu</span><button class="primary big ae-done" type="button">Lưu</button></div>`,
       () => { session.lobby.me = { ...session.lobby.me, look: p.look }; this.renderLobbyPeople(); },
       async () => JSON.stringify(draft) === original || this.confirmBox('Bỏ các thay đổi?', 'Trang phục vừa chỉnh chưa được lưu. Muốn lưu thì bấm "Xong".', 'Bỏ', 'Tiếp tục chỉnh'));
     m.querySelector('.sheet')!.classList.add('wardrobe-sheet');
@@ -726,7 +750,8 @@ export class UI {
   private mtStarted = false;
 
   /** Lệnh từ thanh công cụ của màn chia ô (?multitest) */
-  mtCommand(cmd: string, arg?: number) {
+  mtCommand(cmd: string, arg?: number, extra?: { name?: string; role?: string }) {
+    if (cmd === 'role' && extra?.name) { if (!extra.role) this.forcedRoles.delete(extra.name); else this.forcedRoles.set(extra.name, extra.role); return; }
     const w = session.world;
     if (cmd === 'start' && net.host && !net.host.inGame) {
       // chờ đủ các ô vào phòng (tối đa 6 giây) rồi mới bắt đầu, để không ô nào vào muộn bị từ chối
@@ -742,6 +767,20 @@ export class UI {
   private roomEl: HTMLElement | null = null;
   /** Màn chia ô ?multitest: ép một ghế người thật làm Nội gián ở ván tới (-1: không ép) */
   forcedImpSeat = -1;
+  /** Màn chia ô ?multitest: giao vai cho từng người (theo tên "Người N") ở ván tới */
+  forcedRoles = new Map<string, string>();
+  /** Giao vai cho một nhân vật: đổi vai với người đang giữ vai đó (nếu có) để số Nội gián và các vai khác không đổi */
+  private assignRole(w: World, a: Agent, role: string) {
+    const swap = (x: Agent, y: Agent) => { [x.role, y.role] = [y.role, x.role]; [x.dept, y.dept] = [y.dept, x.dept]; [x.tasks, y.tasks] = [y.tasks, x.tasks]; [x.killCd, y.killCd] = [y.killCd, x.killCd]; };
+    if (role === 'impostor') { if (a.role !== 'impostor') { const b = w.agents.find(o => o.role === 'impostor' && !this.forcedRoles.has(o.name)); if (b) swap(a, b); } return; }
+    if (a.role === 'impostor') { const b = w.agents.find(o => o.role === 'crew' && !this.forcedRoles.has(o.name)); if (b) swap(a, b); }
+    const holder = w.agents.find(o => o !== a && o.role === 'crew' && o.dept === role);
+    if (holder) { [a.dept, holder.dept] = [holder.dept, a.dept]; return; }
+    const old = a.dept;
+    a.dept = role as Agent['dept'];
+    w.roleList = w.roleList.filter(r => r !== old);
+    if (role !== 'intern' && !w.roleList.includes(role as never)) w.roleList.push(role as never);
+  }
 
   /** Phiếu ẩn danh: chơi nhiều người thì theo cài đặt phòng, chơi một mình thì theo cài đặt riêng */
   private anonVotesOn() { const st = net.host?.settings ?? net.client?.room?.settings; return net.role !== 'solo' && st ? !!st.anonVotes : this.prefs.anonVotes; }
@@ -800,7 +839,7 @@ export class UI {
     const h = new NetHost(multi, code, this.myProfile(), { timers: false });
     net.host = h; net.role = 'host';
     const pr = this.prefs;
-    h.settings = { fillBots: true, seats: Math.max(4, Math.min(MAX_PLAYERS, pr.bots + 1)), imps: pr.imps === 2 ? 2 : 1, roles: { ...pr.roles }, maxSpecial: pr.maxSpecial, discussTime: 60, voteTime: 30, anonVotes: pr.anonVotes };
+    h.settings = { fillBots: true, seats: Math.max(4, Math.min(MAX_PLAYERS, pr.bots + 1)), imps: pr.imps === 2 ? 2 : 1, roles: { ...pr.roles }, maxSpecial: pr.maxSpecial, discussTime: 60, voteTime: 30, anonVotes: pr.anonVotes, killCd: 0 };
     h.onRoomChange = () => { this.renderRoom(); this.refreshOnlineLobby(); };
     h.onNote = (t) => this.notify(t);
     // chủ phòng tắt tab / tải lại trang: báo cả phòng đóng ngay (không để mọi người chơi tiếp một mình)
@@ -898,6 +937,7 @@ export class UI {
           <label><input type="checkbox" id="rm-bots" ${st.fillBots ? 'checked' : ''} ${host ? '' : 'disabled'}> Ghế trống có bot chơi cùng</label>
           <label>Số ghế <select id="rm-seats" ${host ? '' : 'disabled'}>${[4, 5, 6, 7, 8, 9, 10].map(n => `<option value="${n}" ${n === st.seats ? 'selected' : ''} ${n < room.players.length ? 'disabled' : ''}>${n}</option>`).join('')}</select></label>
           <label>Nội gián <select id="rm-imps" ${host && total > 6 ? '' : 'disabled'}><option value="1" ${imps === 1 ? 'selected' : ''}>1</option><option value="2" ${imps === 2 ? 'selected' : ''}>2</option></select></label>
+          <label>Hồi chiêu gài bẫy <select id="rm-kcd" ${host ? '' : 'disabled'}><option value="0" ${!st.killCd ? 'selected' : ''}>Tự động (${killCooldownFor(total, imps)} giây)</option>${[20, 25, 30, 45, 60].map(n => `<option value="${n}" ${n === st.killCd ? 'selected' : ''}>${n} giây</option>`).join('')}</select></label>
         </section>
         <section><h4>Vai có kỹ năng <small>(tối đa <select id="rm-max" ${host ? '' : 'disabled'}>${[0, 1, 2, 3, 4, 5, 6].map(n => `<option value="${n}" ${n === st.maxSpecial ? 'selected' : ''}>${n}</option>`).join('')}</select> vai mỗi ván)</small></h4>
           <div class="rm-roles">${SPECIAL_ROLES.map(r => `<button type="button" class="rm-role${st.roles[r] !== false ? ' on' : ''}" data-r="${r}" ${host ? '' : 'disabled'} title="${esc(ROLE_INFO[r].name)}">${ROLE_INFO[r].icon} ${esc(ROLE_INFO[r].name)}</button>`).join('')}</div>
@@ -923,6 +963,7 @@ export class UI {
       (el.querySelector('#rm-bots') as HTMLInputElement).onchange = (e) => { host.settings.fillBots = (e.target as HTMLInputElement).checked; host.broadcastRoom(); };
       (el.querySelector('#rm-seats') as HTMLSelectElement).onchange = (e) => { host.settings.seats = Number((e.target as HTMLSelectElement).value); host.broadcastRoom(); };
       (el.querySelector('#rm-imps') as HTMLSelectElement).onchange = (e) => { host.settings.imps = Number((e.target as HTMLSelectElement).value) === 2 ? 2 : 1; host.broadcastRoom(); };
+      (el.querySelector('#rm-kcd') as HTMLSelectElement).onchange = (e) => { host.settings.killCd = Number((e.target as HTMLSelectElement).value); host.broadcastRoom(); };
       (el.querySelector('#rm-max') as HTMLSelectElement).onchange = (e) => { host.settings.maxSpecial = Number((e.target as HTMLSelectElement).value); host.broadcastRoom(); };
       (el.querySelector('#rm-disc') as HTMLSelectElement).onchange = (e) => { host.settings.discussTime = Number((e.target as HTMLSelectElement).value); host.broadcastRoom(); };
       (el.querySelector('#rm-vote') as HTMLSelectElement).onchange = (e) => { host.settings.voteTime = Number((e.target as HTMLSelectElement).value); host.broadcastRoom(); };
@@ -1049,9 +1090,11 @@ export class UI {
     const st = h.settings;
     const roles = Object.fromEntries(SPECIAL_ROLES.map(r => [r, st.roles[r] !== false])) as typeof p.roles;
     const w = new World({ playerName: me.name, playerLook: p.look, roles, maxSpecial: st.maxSpecial, discussTime: st.discussTime, voteTime: st.voteTime,
+      killCd: st.killCd > 0 ? st.killCd : undefined, // 0: tự động theo cỡ ván
       playerRole: p.testRole === 'random' ? 'random' : p.testRole === 'impostor' ? 'impostor' : 'crew',
       playerDept: p.testRole !== 'random' && p.testRole !== 'impostor' ? p.testRole : undefined,
       bots: total - 1, impostors: imps, botProfiles: remote.map(r => ({ name: r.name, look: normalizeLook(r.look), empId: r.empId })), playerEmpId: me.empId });
+    w.anonVotes = !!st.anonVotes; // phiếu ẩn danh: chủ phòng giấu hẳn ai bầu ai trong dữ liệu gửi đi
     const seat = new Map<string, number>([[h.tr.peerId, 0]]);
     remote.forEach((r, i) => { seat.set(r.peer, i + 1); w.setHuman(i + 1, true); });
     // ?multitest: ép một ghế làm Nội gián (đổi vai với một Nội gián khác)
@@ -1059,6 +1102,8 @@ export class UI {
       const a = w.agents[this.forcedImpSeat], b = w.agents.find(o => o.role === 'impostor' && o.id !== a.id)!;
       [a.role, b.role] = [b.role, a.role]; [a.dept, b.dept] = [b.dept, a.dept]; [a.tasks, b.tasks] = [b.tasks, a.tasks]; [a.killCd, b.killCd] = [b.killCd, a.killCd];
     }
+    // ?multitest: giao vai theo yêu cầu (theo tên)
+    for (const [name, role] of this.forcedRoles) { const a = w.agents.find(o => o.name === name); if (a) this.assignRole(w, a, role); }
     this.roomEl?.remove(); this.roomEl = null;
     session.world = w;
     h.startGame(w, seat);
@@ -1115,6 +1160,8 @@ export class UI {
     sfx.stopMusic();
     session.newGameId++;
     session.paused = true;
+    // thống kê chỉ ghi ở chế độ admin (người chơi thường không có, cũng không ghi ngầm)
+    session.gameStats = !ADMIN || net.role === 'client' || !session.world ? null : new GameStats(session.world, session.world.player.id);
     this.buildHud();
     sfx.startAmbient();
     sfx.ambientLevel(0.18);
@@ -1281,7 +1328,7 @@ export class UI {
     // Mọi người phải bấm Sẵn sàng thì mới vào ca. Chơi offline: bot đọc xong phân công rồi tự sẵn sàng.
     // Đủ người thì đếm ngược 2 giây rồi vào ca; trong lúc đó ai bấm hủy thì dừng lại.
     const ready = new Set<number>();
-    let startTimer = 0;
+    let startTimer: { cancel: () => void } | null = null;
     const btn = $('#go', el) as HTMLButtonElement;
     const refresh = () => {
       const left = w.agents.length - ready.size;
@@ -1289,9 +1336,9 @@ export class UI {
       btn.classList.toggle('is-ready', meReady);
       btn.innerHTML = meReady ? esc(fmt('ui.reveal.cancel')) : esc(fmt('ui.reveal.ready'));
       $('.ready-msg', el).textContent = left > 0 ? (meReady ? `Đang chờ ${left} người sẵn sàng…` : 'Mọi người đọc phân công, ai sẵn sàng thì bấm nút. Đủ người là vào ca.') : 'Đủ người! Vào ca sau 2 giây…';
-      clearTimeout(startTimer);
+      startTimer?.cancel(); startTimer = null;
       // Chơi một mình / chủ phòng: đủ người thì 2 giây sau vào ca (chủ phòng báo cả phòng). Người vào phòng chờ lệnh của chủ phòng.
-      if (left === 0 && net.role !== 'client') startTimer = window.setTimeout(() => { if (ready.size === w.agents.length) { el.remove(); session.paused = false; net.host?.go(); } }, 2000);
+      if (left === 0 && net.role !== 'client') startTimer = session.later(() => { if (ready.size === w.agents.length) { el.remove(); session.paused = false; net.host?.go(); } }, 2000);
     };
     const setReady = (id: number, on: boolean) => {
       if (on) ready.add(id); else ready.delete(id);
@@ -1428,7 +1475,7 @@ export class UI {
     if (pl.dept === 'po' && pl.role === 'crew') { this.doPoCall(); return; }
     if (pl.dept === 'admin' && pl.role === 'crew') {
       if (pl.adminViewing) { act('adminClose'); return; }
-      const err = act('adminOpen'); if (err) this.toast(err); else sfx.modem();
+      void actAsync('adminOpen').then(err => { if (err) this.toast(err); else sfx.modem(); });
       return;
     }
     if (pl.dept === 'media' && pl.role === 'crew') { this.openMediaPanel(); return; }
@@ -1446,7 +1493,8 @@ export class UI {
   private screenFx(kind: 'static' | 'boss', ms: number) {
     const el = document.createElement('div');
     el.className = 'screen-fx ' + kind;
-    if (kind === 'boss') el.innerHTML = `<img src="${avatarURL(GUARD_LOOK)}" alt="">`;
+    // Sếp đi tuần: không còn bóng đen đi ngang màn hình; mặt Sếp hiện trên dải thông báo sự cố (xem phần Banner sự cố)
+    if (kind === 'boss') return;
     this.hudEl.appendChild(el);
     setTimeout(() => el.remove(), ms);
   }
@@ -1541,7 +1589,8 @@ export class UI {
   /** Người chơi biết người này là Nội gián (Nội gián thấy đồng bọn, Intern tham vọng thấy mọi Nội gián) */
   private seesAsImpostor(a: { role: string; id: number }) {
     const p = session.world!.player;
-    return a.role === 'impostor' && a.id !== p.id && (p.role === 'impostor' || (p.role === 'crew' && p.dept === 'climber'));
+    // mình là Nội gián: tên mình cũng đỏ (như trên nhân vật); đồng bọn đỏ; Intern tham vọng thấy Nội gián đỏ. Chỉ máy mình thấy.
+    return a.role === 'impostor' && (p.role === 'impostor' || (p.role === 'crew' && p.dept === 'climber'));
   }
 
   private vitalsEl: HTMLElement | null = null;
@@ -1623,9 +1672,10 @@ export class UI {
       });
       wrap.querySelectorAll<HTMLElement>('.md-slot').forEach((sl, k) => sl.onclick = () => { if (chosen[k] !== undefined) { chosen.splice(k, 1); render(); } });
       $('#md-use', wrap).onclick = () => {
-        const e2 = act('mediaSend', target, chosen);
-        if (e2) { this.toast(e2); sfx.fail(); return; }
-        sfx.ting(); close(); this.toast('Đã gửi sticker 📸', 1500);
+        void actAsync('mediaSend', target, chosen).then(e2 => {
+          if (e2) { this.toast(e2); sfx.fail(); return; }
+          sfx.ting(); close(); this.toast('Đã gửi sticker 📸', 1500);
+        });
       };
     };
     // Chỉ cập nhật chữ đếm ngược trên nút Đổi, không dựng lại cả khung
@@ -1650,7 +1700,7 @@ export class UI {
     const ok = await this.confirmBox('Họp gấp?', 'Bạn chỉ có 1 lần họp gấp mỗi ván, và cả phòng sẽ biết bạn là Product Owner.', 'Gọi họp ngay', 'Để sau');
     session.paused = false;
     if (!ok) return;
-    const e2 = act('poCall');
+    const e2 = await actAsync('poCall');
     if (e2) this.toast(e2); else sfx.tingBurst();
   }
 
@@ -1661,9 +1711,13 @@ export class UI {
     const groups = w.groupsInGame().map(id => COLOR_GROUPS.find(g => g.id === id)!);
     const hist = p.artistResults.map(r => { const g = COLOR_GROUPS.find(x => x.id === r.group)!; return { name: g.name, hex: g.hex, has: r.has }; });
     openColorCheck(this.root, groups, hist, on => { act('flag', 'artistScanning', on && p.alive); }, gid => {
-      const e2 = act('artistCheck', gid);
-      if (e2) { this.toast(e2); return null; }
-      return p.artistResults[p.artistResults.length - 1].has;
+      // chờ kết quả (người vào phòng: chủ phòng xử lý xong thì bản sao đã có kết quả mới)
+      return actAsync('artistCheck', gid).then(e2 => {
+        if (e2) { this.toast(e2); return null; }
+        const me = session.world?.player;
+        const last = me?.artistResults[me.artistResults.length - 1];
+        return last && last.group === gid ? last.has : null;
+      });
     });
   }
 
@@ -1803,7 +1857,7 @@ export class UI {
       const sorted = [...w.agents].filter(a => a.alive && a.hidden === null && a.x >= sx && a.x < sx + sw && a.y >= sy && a.y < sy + sh).sort((p, q) => p.y - q.y);
       for (const a of sorted) {
         const img = avatarImage(a.look);
-        const h = CHAR_H * 0.78 * k, wd = 72 * 0.78 * k;
+        const h = CHAR_H * 0.78 * k, wd = CHAR_W * 0.78 * k;
         ctx.save();
         if (a.facing < 0) { ctx.translate(ox + (a.x - sx) * k, 0); ctx.scale(-1, 1); ctx.translate(-(ox + (a.x - sx) * k), 0); }
         ctx.drawImage(img, ox + (a.x - sx) * k - wd / 2, oy + (a.y - sy) * k - h * CHAR_ORIGIN_Y, wd, h);
@@ -1957,7 +2011,7 @@ export class UI {
           sfx.stopBossSteps();
           closeMini(); this.closeOverlays();
           // Nếu đang chiếu cảnh bị gài bẫy thì chờ cảnh đó xong mới hiện kết quả
-          if (!this.meetEl && !this.cutsceneActive) setTimeout(() => this.showGameOver(), 1000);
+          if (!this.meetEl && !this.cutsceneActive) session.later(() => this.showGameOver(), 1000);
           break;
       }
     }
@@ -2002,7 +2056,8 @@ export class UI {
   /** Màn chuyển cảnh trước khi vào họp (đồng hồ cuộc họp tạm dừng) */
   private showMeetingSplash() {
     const w = session.world!;
-    const m = w.meeting!;
+    const m = w.meeting;
+    if (!m) return; // cuộc họp đã kết thúc (gói tin đến trễ)
     const rep = w.agents[m.reporter];
     session.paused = true;
     const el = document.createElement('div');
@@ -2030,12 +2085,15 @@ export class UI {
         </div>`;
     }
     this.root.appendChild(el);
-    setTimeout(() => { el.remove(); session.paused = false; this.showMeeting(); }, 2200);
+    session.later(() => { el.remove(); session.paused = false; this.showMeeting(); }, 2200);
   }
 
+  private recoverPhase = ''; private recoverSince = 0;
   private showMeeting() {
+    if (this.meetEl?.isConnected) return; // không bao giờ mở phòng họp hai lần
     const w = session.world!;
-    const m = w.meeting!;
+    const m = w.meeting;
+    if (!m) return;
     this.selectedVote = null;
     this.resultShown = false;
     this.voteOpened = false;
@@ -2223,7 +2281,7 @@ export class UI {
       if (c.to !== undefined && c.to !== w.player.id) continue; // tin riêng (log Tester) chỉ người nhận thấy
       const a = w.agents[c.from];
       const row = document.createElement('div');
-      row.className = 'msg' + (a.isPlayer && !c.system ? ' me' : '') + (!a.alive ? ' ghost' : '') + (c.system ? ' system' : '');
+      row.className = 'msg' + (a.isPlayer && !c.system && !c.anon ? ' me' : '') + (!a.alive && !c.anon ? ' ghost' : '') + (c.system ? ' system' : '');
       if (c.alert) row.classList.add('alert');
       row.innerHTML = c.alert
         ? `<span class="alert-ic">${iconSvg('warn')}</span><div><p>${esc(c.text)}</p></div>`
@@ -2270,14 +2328,16 @@ export class UI {
         if (holder) holder.innerHTML = html;
         else $('#m-status', el).innerHTML = `Bỏ qua: <span class="skipvoters">${html || '0'}</span>`;
       }
-      setTimeout(() => this.showEjection(), 3200);
+      session.later(() => this.showEjection(), 3200); // chạy đúng giờ dù tab chủ phòng bị ẩn
     }
   }
 
   private showEjection() {
     const w = session.world!;
-    const m = w.meeting!;
-    const r = m.result!;
+    const m = w.meeting;
+    // người vào phòng: chủ phòng có thể đã kết thúc cuộc họp trước khi tới lúc mở màn sa thải
+    if (!m || !m.result) { this.meetEl?.remove(); return; }
+    const r = m.result;
     this.meetEl?.remove();
     this.meetEl = null;
     const el = document.createElement('div');
@@ -2318,7 +2378,7 @@ export class UI {
         }, 1500 / Math.max(10, full.length));
       }, 1300);
     }
-    setTimeout(() => {
+    session.later(() => {
       el.remove();
       if (net.role === 'client') return; // người vào phòng: chủ phòng kết thúc cuộc họp; màn chọn nơi bắt đầu tự mở khi nhận được lựa chọn
       w.finishMeeting();
@@ -2342,7 +2402,7 @@ export class UI {
       if (session.world !== w || w.phase !== 'play') return;
       if (w.spawnOffers.size === 0) { session.paused = false; this.root.querySelector('.spawn-wait')?.remove(); return; }
       if (!this.root.querySelector('.spawn-wait')) { const d = document.createElement('div'); d.className = 'spawn-wait'; d.textContent = 'Đang chờ đồng nghiệp chọn nơi bắt đầu…'; this.root.appendChild(d); }
-      window.setTimeout(tick, 120);
+      session.later(tick, 120);
     };
     tick();
   }
@@ -2392,6 +2452,42 @@ export class UI {
   }
 
   // ================= KẾT THÚC =================
+  /** Thống kê các ván đã chơi từ lúc mở game (chỉ trong phiên, không lưu lâu dài) */
+  private statsLog: string[] = [];
+  private statsPanelHtml(): string {
+    if (!ADMIN) return '';
+    const gs = session.gameStats;
+    if (!gs) return net.role === 'client' ? '<details class="go-stats"><summary>📊 Thống kê ván</summary><p class="small">Thống kê đầy đủ hiện có ở máy chủ phòng.</p></details>' : '';
+    const s = gs.finish();
+    const text = statsText(s, this.statsLog.length + 1);
+    if (this.lastStatsText !== text) { this.statsLog.push(text); this.lastStatsText = text; }
+    const mm = (x: number | null) => x === null ? '–' : `${Math.floor(x / 60)}:${String(Math.round(x % 60)).padStart(2, '0')}`;
+    const me = s.me;
+    const mine = me.role === 'Nội gián'
+      ? `<li>Bạn gài <b>${me.kills}</b> lần · hồi chiêu xong → gài được TB <b>${me.waits.length ? (me.waits.reduce((a, b) => a + b, 0) / me.waits.length).toFixed(1) + 's' : '–'}</b> · phá hoại ${me.sabotages} lần</li>`
+      : `<li>Việc của bạn: <b>${me.tasksDone}/${me.tasksTotal}</b>${me.votes.length ? ` · phiếu trúng Nội gián ${me.votes.filter(v => v.ok).length}/${me.votes.filter(v => v.ok !== null).length}` : ''}</li>`;
+    return `<details class="go-stats"><summary>📊 Thống kê ván</summary>
+      <ul class="gs-list">
+        <li>Kết thúc: <b>${esc(s.endKind)}</b> · KPI ${s.kpiAtEnd}%</li>
+        <li>Chơi <b>${mm(s.play)}</b> (cả ván tính họp ${mm(s.full)}) · vụ gài đầu ${mm(s.firstKill)} · họp đầu ${mm(s.firstMeeting)}</li>
+        <li>${s.kills} vụ gài · ${s.meetings} cuộc họp (${s.noEject} không ai bị sa thải) · sa thải trúng Nội gián ${s.ejectImp}/${s.ejectTotal}</li>
+        <li>Sếp đi tuần: ${s.boss.used ? (s.boss.won ? `<b>thắng</b> (${s.boss.late} người không về kịp)` : 'có dùng, không thắng') : 'không dùng'}${me.bossDoneSec !== null ? ` · bạn về bàn sau ${me.bossDoneSec.toFixed(1)}s` : ''}</li>
+        ${mine}
+      </ul>
+      <ol class="gs-time">${s.timeline.map(e => `<li><time>${mm(e.t)}</time>${esc(e.text)}</li>`).join('')}</ol>
+      <div class="gs-copy"><button type="button" class="ghost-btn" id="gs-one">Sao chép ván này</button><button type="button" class="ghost-btn" id="gs-all">Sao chép tất cả (${this.statsLog.length} ván)</button></div>
+    </details>`;
+  }
+  private lastStatsText = '';
+
+  /** Nơi đặt bàn của người chơi (Sếp đi tuần): "Về bàn: Tầng 3 · Phòng HR" */
+  private deskWhere(p: Agent) {
+    const seat = DESKS[p.desk]?.seat;
+    if (!seat) return 'Về bàn gõ phím!';
+    const x = (seat.x + 0.5) * TILE, y = (seat.y + 0.5) * TILE;
+    return `Về bàn: ${levelName(levelAt(x, y))} · ${roomName(roomAt(x, y) ?? 'open')}`;
+  }
+
   private showGameOver() {
     const w = session.world!;
     if (this.root.querySelector('.gameover')) return;
@@ -2430,10 +2526,23 @@ export class UI {
       <div class="reveal-team">${imps.map(a => `<figure class="mate"><img src="${avatarURL(a.look)}" alt=""><figcaption style="--dc:${a.color};--dt:${tagText(a.color)}">${esc(a.name)} #${a.empId}</figcaption></figure>`).join('')}</div>
       <p class="small">Nội gián ván này: ${imps.map(a => esc(a.name)).join(', ')}. Chuỗi thắng hiện tại: ${s.streak}.</p>
       <div class="go-roles">${w.agents.map(a => `<span><img src="${avatarURL(a.look)}" alt="">${esc(a.name)} #${a.empId}: <b class="${a.role === 'impostor' ? 'bad' : w.isNeutral(a) ? 'neu' : ''}">${a.role === 'impostor' ? 'Nội gián' : ROLE_INFO[a.dept as RoleDept].name}</b></span>`).join('')}</div>
+      ${this.statsPanelHtml()}
       <div class="row"><button class="ghost-btn" id="lobby">Về sảnh</button><button class="primary big" id="again">Chơi ván mới</button></div>
     </div>`;
     this.root.appendChild(el);
     (won ? sfx.taskDone() : sfx.fail());
+    // nút sao chép thống kê
+    const copyBtn = (id: string, text: () => string) => {
+      const b = el.querySelector(id) as HTMLButtonElement | null;
+      if (!b) return;
+      b.onclick = () => {
+        const old = b.textContent;
+        navigator.clipboard?.writeText(text()).then(() => { b.textContent = 'Đã sao chép!'; window.setTimeout(() => { b.textContent = old; }, 1500); })
+          .catch(() => { this.infoModal('Sao chép thống kê', `<textarea class="gs-text" readonly>${esc(text())}</textarea>`); });
+      };
+    };
+    copyBtn('#gs-one', () => this.statsLog[this.statsLog.length - 1] ?? '');
+    copyBtn('#gs-all', () => `# Thống kê ${this.statsLog.length} ván · ${new Date().toLocaleString('vi-VN')}\n\n` + this.statsLog.join('\n\n'));
     if (net.role === 'host') {
       ($('#lobby', el)).textContent = 'Về phòng';
       $('#again', el).onclick = () => this.startNetGame();
@@ -2461,6 +2570,16 @@ export class UI {
         else if (net.client && L.me.look) { net.client.me = { ...net.client.me, look: L.me.look, name: L.me.name }; net.client.join(); }
       }
     }
+    // người vào phòng (vừa vào lại): lỡ sự kiện "bắt đầu họp" / "hết ván" thì tự mở đúng màn đang diễn ra
+    // (chỉ khi trạng thái đó đã kéo dài quá 3,5 giây: lúc bình thường sự kiện tới cùng gói tin và luồng thường tự mở)
+    { const w = session.world;
+      if (net.role === 'client' && w && !document.querySelector('.reveal')) {
+        const now = performance.now();
+        if (w.phase !== this.recoverPhase) { this.recoverPhase = w.phase; this.recoverSince = now; }
+        const stale = now - this.recoverSince > 3500;
+        if (stale && w.phase === 'meeting' && w.meeting && !this.meetEl?.isConnected && !this.root.querySelector('.overlay.splash, .overlay.eject')) { session.paused = false; this.showMeeting(); }
+        if (stale && w.phase === 'ended' && !this.root.querySelector('.gameover') && !this.cutsceneActive && !this.meetEl?.isConnected) this.showGameOver();
+      } }
     // người vào phòng: mở màn chọn nơi bắt đầu khi nhận được lựa chọn (mỗi cuộc họp một lần; ảnh chụp đến trễ không mở lại)
     { const w = session.world; if (net.role === 'client' && w && w.phase === 'play' && w.spawnOffer && !this.spawnPickerOpen && !this.meetEl && this.spawnDoneFor !== w.meetingCount) this.showSpawnPicker(); }
     // Gộp bàn phím và cần điều khiển
@@ -2538,12 +2657,27 @@ export class UI {
     const kill = $('#a-kill', this.hudEl) as HTMLButtonElement;
     {
       const max = isClimber ? CLIMBER_CD : w.killCdBase;
-      this.setAct(kill, { show: (isImp || isClimber) && p.alive, icon: 'trap', label: 'Gài bẫy',
+      // đang trốn: hồi chiêu đứng yên, nút ghi rõ "Tạm dừng"
+      this.setAct(kill, { show: (isImp || isClimber) && p.alive, icon: 'trap', label: p.hidden !== null && p.killCd > 0 ? 'Tạm dừng' : 'Gài bẫy',
         state: p.killCd > 0 ? 'cool' : ctx.kill ? 'target' : 'off', cd: p.killCd, cdMax: Math.max(max, p.killCd) });
+    }
+    // Nội gián: trạng thái đồng bọn (sẵn sàng / còn bao nhiêu giây / đang trốn / đã nghỉ việc), chỉ Nội gián thấy
+    {
+      const card = this.hudEl.querySelector('.tasks') as HTMLElement | null;
+      let line = card?.querySelector('.mate-line') as HTMLElement | null;
+      const mates = isImp ? w.agents.filter(a => a.role === 'impostor' && a.id !== p.id) : [];
+      if (card && mates.length) {
+        if (!line) { line = document.createElement('div'); line.className = 'mate-line'; card.querySelector('.my-dept')?.insertAdjacentElement('afterend', line); }
+        const txt = mates.map(m => `${m.name} #${m.empId}: ${!m.alive ? (m.ejected ? 'bị sa thải' : 'đã nghỉ việc') : m.killCd > 0 ? `còn ${Math.ceil(m.killCd)}s${m.hidden !== null ? ' (đang trốn)' : ''}` : 'sẵn sàng gài'}`).join(' · ');
+        const html = `🐍 Đồng bọn · ${esc(txt)}`;
+        if (line.innerHTML !== html) line.innerHTML = html;
+      } else line?.remove();
     }
     const sab = $('#a-sab', this.hudEl) as HTMLButtonElement;
     this.setAct(sab, { show: isImp, icon: 'sabotage', label: w.sabotage ? 'Đang phá' : 'Phá hoại',
       state: w.sabotage ? 'active' : w.sabCd > 0 ? 'cool' : 'ready', cd: w.sabCd, cdMax: SAB_CD });
+    // như Among Us: đang hồi chiêu phá hoại lớn vẫn mở được bảng (để khóa cửa, cửa có hồi chiêu riêng); số đếm vẫn hiện trên nút
+    if (isImp) sab.disabled = false;
     const hideB = $('#a-hide', this.hudEl) as HTMLButtonElement;
     const isEng = p.role === 'crew' && p.dept === 'engineer';
     this.setAct(hideB, { show: (isImp || isEng || isClimber) && p.alive, icon: 'hide', label: 'Trốn',
@@ -2656,7 +2790,7 @@ export class UI {
       else if (!p.alive) items.push(`<li class="imp-note">Hồn ma OT: làm nốt việc để cứu KPI.</li>`);
       if (w.sabotage) {
         const s = w.sabotage;
-        const txt = s.kind === 'boss' ? `Về bàn gõ phím! (${Math.ceil(s.t)}s) ${p.bossDone || isImp ? '✓' : ''}`
+        const txt = s.kind === 'boss' ? `${this.deskWhere(p)} (${Math.ceil(s.t)}s) ${p.bossDone || isImp ? '✓' : ''}`
           : s.kind === 'wifi' ? 'Khởi động lại router (Phòng Server, Tầng 3)' : 'Bật lại cầu dao (Kho điện, Tầng 1)';
         items.push(`<li class="sab">${SAB_INFO[s.kind].icon} ${txt}</li>`);
       }
@@ -2692,9 +2826,19 @@ export class UI {
       ban.hidden = false;
       const s = w.sabotage;
       ban.className = 'sab-banner ' + s.kind;
-      ban.textContent = s.kind === 'boss'
-        ? fmt('ui.sab.boss', { s: Math.ceil(s.t), done: w.aliveCrew().filter(c => c.bossDone).length, total: w.aliveCrew().length })
+      // điện thoại dựng đứng: nằm ngay dưới khung việc, trải ngang
+      if (window.innerWidth <= 600) { const tb = this.hudEl.querySelector('.tasks')?.getBoundingClientRect(); ban.style.top = `${Math.round((tb?.bottom ?? 120) + 8)}px`; } else ban.style.top = '';
+      const narrow = window.innerWidth < 1000; // điện thoại: bản rút gọn một dòng
+      const txt = s.kind === 'boss'
+        ? (narrow ? `Về bàn · ${Math.ceil(s.t)}s · ${w.aliveCrew().filter(c => c.bossDone).length}/${w.aliveCrew().length} đã ngồi`
+          : fmt('ui.sab.boss', { s: Math.ceil(s.t), done: w.aliveCrew().filter(c => c.bossDone).length, total: w.aliveCrew().length }))
         : s.kind === 'power' ? fmt('ui.sab.power') : fmt('ui.sab.wifi');
+      if (s.kind === 'boss') {
+        // mặt Sếp (màu thật) ở đầu dải thông báo, chữ đếm ngược bên cạnh
+        if (!ban.querySelector('.sab-face')) ban.innerHTML = `<img class="sab-face" src="${avatarURL(GUARD_LOOK)}" alt="Sếp"><span class="sab-txt"></span>`;
+        const t = ban.querySelector('.sab-txt') as HTMLElement;
+        if (t.textContent !== txt) t.textContent = txt;
+      } else if (ban.textContent !== txt) ban.textContent = txt;
     } else ban.hidden = true;
     // Biển tên tầng trượt xuống khi vừa sang tầng mới
     $('#b-map', this.hudEl).classList.toggle('alarm', !!w.sabotage && w.sabotage.kind !== 'boss' && p.role !== 'impostor');
@@ -2854,10 +2998,15 @@ export class UI {
     if (sab === 'boss' && !p.bossDone && onFloor(desk.x, desk.y)) {
       const [X, Y] = M((desk.x + 1) * TILE, (desk.y + 0.5) * TILE);
       ctx.strokeStyle = '#e8443a'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(X, Y, 30 * pulse, 0, Math.PI * 2); ctx.stroke();
+      // nhãn "Bàn của bạn" cạnh vòng tròn
+      ctx.font = '800 15px "Be Vietnam Pro", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const lw = ctx.measureText('Bàn của bạn').width + 16;
+      ctx.fillStyle = '#e8443a'; ctx.beginPath(); ctx.roundRect(X - lw / 2, Y - 58, lw, 22, 11); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.fillText('Bàn của bạn', X, Y - 47);
     }
     $('.mm-note', this.hudEl).textContent = wifiDown
       ? 'Mất kết nối: danh sách việc tạm thời không hiển thị.'
-      : sab === 'boss' ? 'Sếp đi tuần! Về bàn của bạn ở Phòng làm việc tầng 2 (khung xanh) ngay.' : 'Bấm tên tầng ở trên để xem các tầng khác. Số trong ô tầng là số việc của bạn ở tầng đó.';
+      : sab === 'boss' ? `Sếp đi tuần! ${this.deskWhere(p)} (vòng đỏ "Bàn của bạn") ngay.` : 'Bấm tên tầng ở trên để xem các tầng khác. Số trong ô tầng là số việc của bạn ở tầng đó.';
     // Bạn: mặt nhân vật trong vòng tròn, vòng sáng nhấp nháy, nhãn "Bạn"
     if (levelAt(p.x, p.y) === F.id) {
       const [X, Y] = M(p.x, p.y);
@@ -2911,20 +3060,48 @@ export class UI {
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
     // rời cửa sổ hoặc chuyển tab: trình duyệt không gửi "thả phím", nên xóa sạch phím đang giữ và cần điều khiển (không để nhân vật trôi)
+    // Điện thoại: nút trong giao diện chơi nhận lệnh NGAY LÚC CHẠM XUỐNG (không chờ nhấc tay), để vừa giữ cần điều khiển vừa bấm nút
+    const FAST = '.hud .act, .hud .icon-btn, .hud .map-btn, .hud .lchat-btn, .hud .room-chip, .hud .vent-arrow, .hud .vent-exit';
+    document.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'touch') return;
+      const b = (e.target as HTMLElement).closest?.(FAST) as HTMLButtonElement | null;
+      if (!b || b.disabled) return;
+      e.preventDefault();
+      (b as HTMLElement & { _fast?: number })._fast = performance.now();
+      b.click();
+    }, true);
+    document.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest?.(FAST) as (HTMLElement & { _fast?: number }) | null;
+      if (b?._fast && e.isTrusted && performance.now() - b._fast < 700) { e.preventDefault(); e.stopImmediatePropagation(); } // bỏ "click" tự sinh sau khi đã bấm lúc chạm xuống
+    }, true);
     const releaseAll = () => { this.keys.clear(); this.joy.x = 0; this.joy.y = 0; this.joy.active = false; session.input = { x: 0, y: 0 }; };
     window.addEventListener('blur', releaseAll);
     document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); });
   }
 
+  /**
+   * Cần điều khiển "nổi" (điện thoại): vùng nhận chạm là nửa trái màn hình, chạm xuống đâu thì vòng cần điều khiển
+   * hiện ra ngay dưới ngón tay, nhấc tay thì ẩn. Vùng này nằm DƯỚI các nút (nút vẫn nhận chạm trước).
+   * Mỗi ngón theo dõi riêng: ngón đang giữ cần điều khiển không bị ngón khác làm mất.
+   */
   private bindJoystick(el: HTMLElement) {
+    const hud = el.parentElement;
+    if (hud && hud.firstElementChild !== el) hud.prepend(el); // nằm dưới mọi nút trong giao diện
     const knob = $('.joy-knob', el);
+    let base = el.querySelector('.joy-base') as HTMLElement | null;
+    if (!base) { base = document.createElement('div'); base.className = 'joy-base'; base.appendChild(knob); el.appendChild(base); }
     let id: number | null = null, cx = 0, cy = 0;
-    const R = 46;
+    const R = 52;
     el.addEventListener('pointerdown', (e) => {
+      if (id !== null) return; // đã có một ngón điều khiển
       id = e.pointerId; el.setPointerCapture(id);
-      const r = el.getBoundingClientRect(); cx = r.left + r.width / 2; cy = r.top + r.height / 2;
+      cx = e.clientX; cy = e.clientY;
+      const r = el.getBoundingClientRect();
+      base!.style.left = `${cx - r.left}px`; base!.style.top = `${cy - r.top}px`;
+      el.classList.add('on');
       this.joy.active = true; move(e);
       sfx.unlock();
+      e.preventDefault();
     });
     const move = (e: PointerEvent) => {
       if (e.pointerId !== id) return;
@@ -2932,17 +3109,22 @@ export class UI {
       const d = Math.hypot(dx, dy);
       if (d > R) { dx = dx / d * R; dy = dy / d * R; }
       knob.style.transform = `translate(${dx}px, ${dy}px)`;
-      this.joy.x = dx / R; this.joy.y = dy / R;
+      // vùng chết nhỏ ở giữa để chạm nhẹ không làm nhân vật trôi
+      const k = d < 8 ? 0 : 1;
+      this.joy.x = dx / R * k; this.joy.y = dy / R * k;
     };
     el.addEventListener('pointermove', move);
     const end = (e: PointerEvent) => {
       if (e.pointerId !== id) return;
       id = null; this.joy.active = false; this.joy.x = 0; this.joy.y = 0;
       knob.style.transform = '';
+      el.classList.remove('on');
     };
     el.addEventListener('pointerup', end);
     el.addEventListener('pointercancel', end);
+    el.addEventListener('lostpointercapture', end);
   }
+
 }
 
 function fmtTime(s: number) {
@@ -2965,10 +3147,11 @@ const howtoHtml = () => `
     <ul>
       <li><b>Cúp điện:</b> tầm nhìn Nhân viên còn rất nhỏ, thang máy kẹt (ai đang ở trong bị nhốt), camera, máy Face ID và máy so màu ngừng chạy. Việc thường vẫn làm được. Sửa ở tủ cầu dao trong Kho điện (Tầng 1).</li>
       <li><b>Rớt mạng:</b> tắt camera, ẩn danh sách việc. Sửa router ở Phòng Server.</li>
-      <li><b>Sếp đi tuần</b> (1 lần mỗi ván): ai cũng phải về bàn trong 30 giây, không kịp là Nội gián thắng.</li>
+      <li><b>Sếp đi tuần</b> (1 lần mỗi ván): ai cũng phải về bàn trong 45 giây, không kịp là Nội gián thắng.</li>
       <li><b>Khóa cửa</b> một phòng 10 giây. Người bị nhốt quẹt thẻ ở cửa để mở sớm.</li>
     </ul>
     <p>Nội gián không có phòng ban thật nhưng có thể <b>nhận bừa</b> bất kỳ phòng ban nào khi họp.</p>
+    <p><b>Hồi chiêu gài bẫy:</b> hai Nội gián bắt đầu ván và sau mỗi cuộc họp với hồi chiêu như nhau; ai vừa gài thì chỉ người đó phải chờ lại. Hồi chiêu <b>đứng yên khi đang trốn</b> trong lối trốn. Nội gián thấy trạng thái của đồng bọn trên khung việc. Lưu ý: <b>Intern tham vọng</b> (phe thứ ba) cũng gài bẫy được, nên có thể có người nghỉ việc dù Nội gián chưa ra tay.</p>
 
     <h3>Họp</h3>
     <p>60 giây thảo luận rồi 30 giây bỏ phiếu. Gõ tên hoặc mã số (vd: #333) để buộc tội hay bênh vực. Người bị nhiều phiếu nhất bị sa thải; hòa phiếu hoặc đa số bỏ qua thì không ai bị sa thải.</p>
@@ -3026,10 +3209,18 @@ function mountAvatarEditor(root: HTMLElement, get: () => Look, set: (l: Look) =>
   const clone = (l: Look): Look => JSON.parse(JSON.stringify(l));
   const apply = (l: Look) => { history.push(clone(get())); if (history.length > 40) history.shift(); set(l); refresh(); };
 
+  // Ảnh xem trước dùng một nhân vật MẪU cố định (người, da sáng, tóc đen ngắn, đồ cơ bản), chỉ đổi đúng món đang xem;
+  // không lấy theo nhân vật hiện tại của người chơi
+  const baseOf = (src: Look): Look => {
+    const b = clone(src);
+    b.body = 'human'; b.bodyColor = SKINS[1]; b.marks = []; b.hairStyle = HAIR_STYLES[0].id; b.hair = HAIR_COLORS[0];
+    for (const slot of Object.keys(b.items) as Slot[]) { const d = ITEMS[slot][0]; b.items[slot] = { id: d.id, color: defaultColor(d, '#2e9cf0') }; }
+    return b;
+  };
   const thumb = (look: Look, upper: boolean) => {
     const full = characterCanvas(look, 0, upper ? 1.5 : 0.85);
     if (!upper) return full.toDataURL();
-    const c = document.createElement('canvas'); c.width = full.width; c.height = Math.round(full.height * 0.62);
+    const c = document.createElement('canvas'); c.width = full.width; c.height = Math.round((CHAR_TOP + 48.5) * 1.5); // đầu và vai
     c.getContext('2d')!.drawImage(full, 0, 0); return c.toDataURL();
   };
   const swatch = (val: string, on: boolean, label: string) => {
@@ -3066,22 +3257,22 @@ function mountAvatarEditor(root: HTMLElement, get: () => Look, set: (l: Look) =>
     }
     if (tab === 'hair') {
       const hairOk = bodyDef(L.body).hasHair;
-      html = HAIR_STYLES.map(h => { const v = { ...clone(L), hairStyle: h.id }; return cell(h.id, h.name, thumb(hairOk ? v : { ...v, body: 'human' }, true), L.hairStyle === h.id); }).join('');
+      html = HAIR_STYLES.map(h => { const v = { ...baseOf(L), hairStyle: h.id }; return cell(h.id, h.name, thumb(v, true), L.hairStyle === h.id); }).join('');
       colors = `<small>Màu tóc</small><div class="ae-sws">${HAIR_COLORS.map(c => swatch(c, L.hair === c, 'Màu tóc')).join('')}</div>`
         + (hairOk ? '' : `<p class="ae-note">Skin "${bodyDef(L.body).name}" không có tóc. Chọn Skin → Người để thấy kiểu tóc.</p>`);
     } else if (tab === 'skin') {
-      html = `<div class="ae-marks">${MARKS.map(m => `<button type="button" class="ae-mark${L.marks.includes(m.id) ? ' on' : ''}" data-m="${m.id}"><img src="${thumb({ ...clone(L), marks: [m.id] }, true)}" alt=""><span>${m.name}</span></button>`).join('')}</div>`;
+      html = `<div class="ae-marks">${MARKS.map(m => `<button type="button" class="ae-mark${L.marks.includes(m.id) ? ' on' : ''}" data-m="${m.id}"><img src="${thumb({ ...baseOf(L), marks: [m.id] }, true)}" alt=""><span>${m.name}</span></button>`).join('')}</div>`;
       const bd = bodyDef(L.body);
       colors = bd.human
         ? `<small>Màu da · 6 tông tự nhiên và 19 màu vui</small><div class="ae-sws">${SKIN_TONES.map(c => swatch(c, L.bodyColor === c, 'Màu da')).join('')}</div><p class="ae-note">Chi tiết da có thể chọn nhiều cái cùng lúc.</p>`
         : `<p class="ae-note">Đang dùng skin "${bd.name}". Màu chỉnh ở thẻ Skin.</p>`;
     } else if (tab === 'body') {
-      html = BODIES.map(b => { const v = { ...clone(L), body: b.id, bodyColor: b.id === L.body ? L.bodyColor : b.def }; return cell(b.id, b.name, thumb(v, false), L.body === b.id); }).join('');
+      html = BODIES.map(b => { const v = { ...baseOf(L), body: b.id, bodyColor: b.id === 'human' ? SKINS[1] : b.def }; return cell(b.id, b.name, thumb(v, false), L.body === b.id); }).join('');
       colors = L.body === 'human' ? '<p class="ae-note">Người: màu da chỉnh ở thẻ Da. Chọn một skin để biến thành thứ khác cho vui.</p>' : colorRow(bodyDef(L.body), L.bodyColor, 'Màu skin');
     } else {
       const slot = sub as Slot;
       html = ITEMS[slot].map(d => {
-        const v = clone(L); v.items[slot] = { id: d.id, color: d.id === L.items[slot].id ? L.items[slot].color : defaultColor(d, L.items[slot].color) };
+        const v = baseOf(L); v.items[slot] = { id: d.id, color: defaultColor(d, '#2e9cf0') };
         return cell(d.id, d.name, thumb(v, UPPER.includes(slot)), L.items[slot].id === d.id);
       }).join('');
       colors = colorRow(itemDef(slot, L.items[slot].id), L.items[slot].color, `Màu ${SLOT_NAMES[slot].toLowerCase()}`);

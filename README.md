@@ -67,6 +67,26 @@ Kiểm tra: `python3 tests/lobby_reentry.py` (về sảnh nhiều lần vẫn đ
 - **Chọn nơi bắt đầu** (kiểu Airship): Phòng họp luôn có, cộng 2 điểm ngẫu nhiên riêng của mỗi người trong 5 điểm còn lại (Lễ tân, Pantry, Hành lang tầng 3, Studio Art, Vườn mái). 10 giây để chọn, hết giờ thì ở lại Phòng họp. Không ai biết ai chọn gì; bot chọn điểm cùng tầng với việc kế tiếp.
 - **Hồn ma** chỉ bay xuyên tường trong tầng đang ở; cửa thang bộ và thang máy không có tác dụng với hồn ma; đổi tầng bằng nút Lên/Xuống tầng (PageUp/PageDown); chỉ thấy người cùng tầng.
 
+## Bản đồ mới (tầng gọn)
+
+- Tầng 1–3: khung 31×18 ô (trước 38×22), giữ đủ các phòng cũ nhưng nhỏ hơn và đa dạng kích thước; cửa nối thẳng giữa một số phòng (Lễ tân ↔ Bảo vệ, Phòng làm việc ↔ Phòng họp ↔ In ấn, Giám đốc ↔ HR). Sân thượng giữ nguyên.
+- Thang bộ: mỗi tầng một đoạn thang thẳng 5 bậc sát cửa (Tầng 1 → 3: 4,5 giây, trước 12 giây); thang máy vẫn nhanh hơn khi buồng có sẵn.
+- 10 bàn làm việc rải 3 tầng (Tầng 1: 3, Tầng 2: 4, Tầng 3: 3), giao ngẫu nhiên mỗi ván. Sếp đi tuần: dòng "Về bàn: Tầng X · Phòng Y", mũi tên qua cầu thang, vòng "Bàn của bạn" trên sơ đồ, bàn của mình sáng viền vàng.
+- Tầng nhà: tầng có bàn của mình; 2/3 việc ngắn ở tầng nhà.
+- Hồi chiêu gài bẫy (tự động): 1 Nội gián {5: 40, 6: 26, 7: 20, 8: 12, 9: 10, 10: 6} giây; 2 Nội gián {7: 90, 8: 62, 9: 47, 10: 36} giây (300 ván mỗi cỡ: Nội gián thắng 42–52%).
+
+## Giao diện và nhân vật (cập nhật)
+
+- Màn hình chính: thẻ nhân viên (bấm nhân vật để thay đồ), "Chơi với bot", "Chơi nhiều người"; Hướng dẫn (Luật chơi, Điều khiển) và Cài đặt (nhạc nền, âm thanh hiệu ứng).
+- Khung vẽ nhân vật có lề mỗi bên; `python3 tests/skin_edges.py` (cần bản `build:single` chạy ở cổng 8765) kiểm mọi skin, mọi món đồ và kiểu tóc ở 3 nhịp bước không bị cắt.
+- Skin không tay chân mới: Đám mây, Giọt nước, Bánh mochi, Quả trứng, Ngọn lửa, Con rắn (trườn khi đi). Ảnh xem trước trong máy thay đồ dùng nhân vật mẫu cố định.
+- Tầng 1–3: tường ngoài phía trên dày 2 ô; bảng, kanban, máy chấm công, bảng phi tiêu, tủ cầu dao treo trên mặt tường.
+- Hồn ma bay nổi trên đồ vật, chỉ trong phạm vi tòa nhà. Dấu việc của mình hiện cả khi ngoài tầm nhìn (mờ hơn).
+
+## Thống kê ván (chỉ admin, dành cho cân bằng)
+
+Chỉ có khi mở game với **`?admin`** (màn chia ô: `?multitest=4&admin`); người chơi thường không thấy và game không ghi số liệu. Hết mỗi ván, màn kết quả có mục **📊 Thống kê ván** (`src/game/stats.ts`, chỉ quan sát, không đổi luật): cách kết thúc, KPI lúc kết thúc, thời gian chơi và cả ván, vụ gài đầu, họp đầu, số vụ gài, cuộc họp, phá hoại, tỉ lệ sa thải trúng Nội gián, phiếu của Nhân viên trúng Nội gián, Sếp đi tuần có thắng không, chỉ số của bạn (Nội gián: số vụ gài, thời gian từ lúc hồi chiêu xong tới lúc gài được; Nhân viên: việc xong, phiếu đúng/sai) và dòng thời gian. Nút **Sao chép ván này** / **Sao chép tất cả** (các ván từ lúc mở game) để dán cho người làm game. Có ở máy chơi một mình và máy chủ phòng.
+
 ## Chơi nhiều người
 
 - Màn hình chính → **Chơi nhiều người** → Tạo phòng mới (mã 6 ký tự, ví dụ `KPI-482`, kèm link mời) hoặc nhập mã để vào phòng. Mở link mời (`?room=MÃ`) là vào thẳng phòng.
@@ -78,7 +98,8 @@ Kiểm tra: `python3 tests/lobby_reentry.py` (về sảnh nhiều lần vẫn đ
 - **Mã phòng trong ván:** nhãn "Phòng ABC-123" ở góc trên, bấm để sao chép link mời. **Vào lại:** tải lại trang, mở lại link, hoặc bấm nút "Vào lại phòng" ở màn hình chính (hiện trong 10 phút sau khi rời, kể cả đã đóng tab); popup "Đang vào lại phòng làm việc…" trong lúc kết nối. Mất chủ phòng thì có popup đếm ngược.
 - **Thử một mình:** mở game với `?multitest=4` (2–6 ô): mỗi ô là một người chơi; thanh công cụ có Bắt đầu ván, Cả phòng sẵn sàng, Gọi họp ngay, Chơi ván mới, Ép một người làm Nội gián. Bấm vào ô nào thì điều khiển người đó.
 - Mã nguồn: `src/net/` (truyền tin, ảnh chụp có lọc, cửa lệnh, chủ phòng / người vào phòng), `src/devtools/multitest.ts`.
-- Kiểm tra: `npx tsx tests/net_conn_test.ts` (kết nối: sức chứa, tin hồn ma, mất kết nối, vào lại, bot thay, mất chủ phòng), `npx tsx tests/net_test.ts` (mạng giả có độ trễ và mất gói: không lộ bí mật, bản sao khớp chủ phòng, ván kết thúc đúng), `tests/multitest_e2e.py` (trình duyệt thật).
+- **Màn chia ô:** thanh công cụ có "Giao vai (ván tới)" cho từng người (Nội gián, Thực tập sinh, hoặc một trong 15 vai), áp dụng khi chủ phòng bắt đầu ván.
+- Kiểm tra: `npx tsx tests/net_systems_test.ts` (phá hoại, khóa cửa, thang máy, lối trốn, hồn ma, camera), `npx tsx tests/net_meeting_test.ts` (biểu cảm, tố cáo ẩn danh, tin riêng Tester, phiếu bầu và phiếu ẩn danh, bảo lãnh, Director, vào lại giữa họp / sau khi hết ván), `npx tsx tests/net_roles_test.ts` (15 vai và Nội gián khi chơi nhiều người: chủ phòng xử lý đúng, người cầm vai thấy đúng kết quả, người khác không biết điều không nên biết), `npx tsx tests/net_conn_test.ts` (kết nối: sức chứa, tin hồn ma, mất kết nối, vào lại, bot thay, mất chủ phòng), `npx tsx tests/net_test.ts` (mạng giả có độ trễ và mất gói: không lộ bí mật, bản sao khớp chủ phòng, ván kết thúc đúng), `tests/multitest_e2e.py` (trình duyệt thật).
 - **Máy khác, mạng khác (P2P):** dùng WebRTC qua PeerJS (`src/net/peer.ts`): chủ phòng đăng ký tên `ngvp-<mã phòng>` trên máy giới thiệu công cộng `0.peerjs.com`, người vào phòng nối tới đó; có máy chuyển tiếp TURN dự phòng của PeerJS cho mạng chặn kết nối thẳng. Chủ phòng nhận người vào qua cả kênh nội bộ (các tab cùng trình duyệt) lẫn P2P; người vào phòng thử kênh nội bộ trước, 1,2 giây không thấy chủ phòng mới bật P2P. Mỗi tin mang mã máy logic nên vào lại đúng nhân vật dù đi đường khác. Mã phòng trùng phòng khác thì tự đổi mã; mất mạng thì báo rõ. Màn chia ô `?multitest` chỉ dùng kênh nội bộ.
 - **Thử P2P:** cần chạy trên trang GitHub Pages (link chơi thử trên claude.ai chặn kết nối ra ngoài). Kiểm tra tự động: `npx tsx tests/p2p_test.ts` (PeerJS giả).
 - Giai đoạn sau: rà đủ tính năng với nhiều người thật.

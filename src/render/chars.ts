@@ -2,9 +2,12 @@
 // Ngoại hình do người chơi tự chọn: kiểu tóc, màu tóc, màu da, kiểu áo, màu áo, phụ kiện.
 
 export const INK = '#1d1a2b';
-export const CHAR_W = 72;
-export const CHAR_TOP = 16; // chừa chỗ phía trên cho mũ pháp sư, ăng-ten robot...
-export const CHAR_H = 88 + CHAR_TOP;
+/** Vùng vẽ nhân vật rộng 72; khung ảnh chừa lề mỗi bên để không skin nào bị cắt (kiểm bằng tests/skin_edges.py) */
+export const CHAR_PAD_X = 9;
+export const CHAR_PAD_B = 6;
+export const CHAR_W = 72 + 2 * CHAR_PAD_X;
+export const CHAR_TOP = 20; // chừa chỗ phía trên cho mũ pháp sư, ăng-ten robot, ống hút...
+export const CHAR_H = 88 + CHAR_TOP + CHAR_PAD_B;
 /** Điểm neo ở chân nhân vật (tỉ lệ theo chiều cao canvas) */
 export const CHAR_ORIGIN_Y = (83.6 + CHAR_TOP) / CHAR_H;
 
@@ -690,6 +693,76 @@ function drawSkinFull(ctx: CanvasRenderingContext2D, L: Look, frame: 0 | 1 | 2) 
       ctx.strokeStyle = INK; ctx.lineWidth = 1.2; for (let x = 43; x < 54; x += 3) { ctx.beginPath(); ctx.moveTo(x, 35); ctx.lineTo(x, 42); ctx.stroke(); }
       return;
     }
+    // ---------- Skin không tay chân ----------
+    case 'cloud': case 'drop': case 'mochi': case 'egg': case 'flame': case 'snake': {
+      // mặt dễ thương: hai mắt, má hồng, miệng cười (nhìn sang phải như các skin khác)
+      const face = (fx: number, fy: number, k = 1) => {
+        ctx.fillStyle = INK; ctx.beginPath(); ctx.ellipse(fx, fy, 2.6 * k, 3.4 * k, 0, 0, Math.PI * 2); ctx.ellipse(fx + 8 * k, fy, 2.6 * k, 3.4 * k, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(255,120,120,0.45)'; ctx.beginPath(); ctx.ellipse(fx - 3 * k, fy + 7 * k, 3.5 * k, 2.2 * k, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = INK; ctx.lineWidth = 2.2; ctx.beginPath(); ctx.moveTo(fx + 2 * k, fy + 9 * k); ctx.quadraticCurveTo(fx + 5 * k, fy + 10.5 * k, fx + 8 * k, fy + 8.5 * k); ctx.stroke();
+      };
+      const shine = (x: number, y: number, rx: number, ry: number) => { ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.beginPath(); ctx.ellipse(x, y, rx, ry, -0.5, 0, Math.PI * 2); ctx.fill(); };
+      if (L.body === 'cloud') {
+        // đám mây kiểu Google Cloud: thân trắng, viền trên 4 màu; lơ lửng nhún nhẹ
+        const y0 = frame === 0 ? 0 : frame === 1 ? -3 : -1;
+        ctx.translate(0, y0);
+        const path = () => { ctx.beginPath(); ctx.moveTo(16, 70); ctx.arc(18, 58, 12, Math.PI * 0.5, Math.PI * 1.45); ctx.arc(32, 38, 15, Math.PI * 1.05, Math.PI * 1.85); ctx.arc(50, 42, 14, Math.PI * 1.3, Math.PI * 2.1); ctx.arc(58, 60, 10, Math.PI * 1.55, Math.PI * 0.5); ctx.closePath(); };
+        path(); fillStroke(ctx, c1, 3.5);
+        const G = ['#4285f4', '#ea4335', '#fbbc05', '#34a853'];
+        ctx.lineWidth = 4;
+        ([[18, 58, 12, 1.0, 1.45], [32, 38, 15, 1.05, 1.5], [32, 38, 15, 1.5, 1.85], [50, 42, 14, 1.3, 2.1]] as const).forEach(([x, y, r, a, b], i) => { ctx.strokeStyle = G[i]; ctx.beginPath(); ctx.arc(x, y, r - 4, Math.PI * a, Math.PI * b); ctx.stroke(); });
+        face(40, 54); return;
+      }
+      if (L.body === 'drop') {
+        // giọt nước: bước đi thì dẹt xuống một chút rồi nảy lên
+        const sq = frame === 1 ? 0.92 : 1;
+        ctx.translate(38, 84); ctx.scale(1 / sq, sq); ctx.translate(-38, -84);
+        ctx.beginPath(); ctx.moveTo(38, 10); ctx.bezierCurveTo(46, 26, 62, 42, 62, 60); ctx.arc(38, 60, 24, 0, Math.PI); ctx.bezierCurveTo(14, 42, 30, 26, 38, 10); ctx.closePath();
+        fillStroke(ctx, c1, 3.5); shine(28, 50, 5, 9); face(40, 58); return;
+      }
+      if (L.body === 'mochi') {
+        // bánh mochi: dẻo, phồng xẹp khi bước; có đốm bột
+        const w = frame === 0 ? 27 : frame === 1 ? 29 : 25, h = frame === 0 ? 22 : frame === 1 ? 20 : 24;
+        ctx.beginPath(); ctx.moveTo(38 - w, 82); ctx.quadraticCurveTo(38 - w - 2, 82 - h * 2.1, 38, 82 - h * 2.2); ctx.quadraticCurveTo(38 + w + 2, 82 - h * 2.1, 38 + w, 82); ctx.closePath();
+        fillStroke(ctx, c1, 3.5);
+        ctx.fillStyle = 'rgba(255,255,255,0.75)'; for (const [x, y] of [[26, 52], [32, 46], [52, 50], [56, 60], [24, 64]]) { ctx.beginPath(); ctx.arc(x, y, 1.6, 0, Math.PI * 2); ctx.fill(); }
+        face(42, 62); return;
+      }
+      if (L.body === 'egg') {
+        // quả trứng: lắc lư khi đi
+        const tilt = frame === 1 ? -0.08 : frame === 2 ? 0.08 : 0;
+        ctx.translate(38, 84); ctx.rotate(tilt); ctx.translate(-38, -84);
+        ctx.beginPath(); ctx.ellipse(38, 52, 22, 31, 0, 0, Math.PI * 2); fillStroke(ctx, c1, 3.5);
+        ctx.fillStyle = shade(c1, 0.85); for (const [x, y, r] of [[26, 40, 2], [50, 34, 1.6], [30, 70, 1.8], [54, 66, 1.4]]) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); }
+        shine(28, 36, 5, 9); face(41, 50); return;
+      }
+      if (L.body === 'flame') {
+        // ngọn lửa: các chóp lửa nhảy theo nhịp
+        const f = frame === 1 ? 4 : frame === 2 ? -4 : 0;
+        const tip = (x: number, y: number) => [x + f * 0.5, y - Math.abs(f)] as const;
+        const [ax, ay] = tip(36, 6), [bx, by] = tip(22, 26), [cx, cy] = tip(54, 22);
+        ctx.beginPath(); ctx.moveTo(38, 84); ctx.bezierCurveTo(10, 84, 10, 50, bx, by); ctx.quadraticCurveTo(30, 40, ax, ay); ctx.quadraticCurveTo(46, 30, cx, cy); ctx.bezierCurveTo(68, 50, 66, 84, 38, 84); ctx.closePath();
+        fillStroke(ctx, c1, 3.5);
+        ctx.fillStyle = '#ffe36e'; ctx.beginPath(); ctx.moveTo(38, 80); ctx.bezierCurveTo(22, 80, 24, 56, 34 + f * 0.3, 40); ctx.quadraticCurveTo(40, 52, 46, 46); ctx.bezierCurveTo(54, 60, 54, 80, 38, 80); ctx.closePath(); ctx.fill();
+        face(39, 62, 0.9); return;
+      }
+      // con rắn: thân uốn lượn, sóng đổi theo nhịp di chuyển (trườn); đầu bên phải, lưỡi thè
+      const ph = frame === 0 ? 0 : frame === 1 ? 1.3 : 2.6;
+      ctx.lineCap = 'round';
+      const pts: [number, number][] = [];
+      // nằm giữa khung rộng 72: đuôi bắt đầu cách mép trái 10, đầu và lưỡi kết thúc trước mép phải
+      for (let i = 0; i <= 12; i++) { const x = 10 + i * 2.75; pts.push([x, 74 + Math.sin(i * 0.75 + ph) * 5 * (i / 12)]); }
+      const tube = (w: number, col: string) => { ctx.strokeStyle = col; ctx.lineWidth = w; ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke(); };
+      tube(18, INK); tube(12, c1);
+      ctx.fillStyle = shade(c1, 0.75); for (let i = 2; i < 12; i += 2) { const [x, y] = pts[i]; ctx.beginPath(); ctx.ellipse(x, y, 2.4, 3.6, 0, 0, Math.PI * 2); ctx.fill(); }
+      // đầu ngẩng lên
+      const [hx, hy] = pts[12];
+      ctx.strokeStyle = INK; ctx.lineWidth = 18; ctx.beginPath(); ctx.moveTo(hx, hy); ctx.quadraticCurveTo(hx + 6, hy - 4, hx + 6, hy - 22); ctx.stroke();
+      ctx.strokeStyle = c1; ctx.lineWidth = 12; ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(hx + 8, hy - 30, 13, 11, 0, 0, Math.PI * 2); fillStroke(ctx, c1, 3.5);
+      if (frame !== 0) { ctx.strokeStyle = '#e2412f'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(hx + 20, hy - 26); ctx.lineTo(hx + 25, hy - 26); ctx.lineTo(hx + 28, hy - 29); ctx.moveTo(hx + 25, hy - 26); ctx.lineTo(hx + 28, hy - 23); ctx.stroke(); }
+      face(hx + 6, hy - 34, 0.8); return;
+    }
     case 'coffee': case 'toast': case 'plant': case 'slime': case 'matcha': case 'banhmi': {
       const limbCol = L.body === 'slime' ? c1 : '#3b2a20';
       const arms = L.body === 'slime' ? null : stickLimbs(ctx, frame, limbCol, 50);
@@ -749,7 +822,7 @@ function drawSkinFull(ctx: CanvasRenderingContext2D, L: Look, frame: 0 | 1 | 2) 
 /** frame: 0 đứng yên, 1 và 2 là hai nhịp bước chân */
 export function drawCharacter(ctx: CanvasRenderingContext2D, L: Look, frame: 0 | 1 | 2, ox = 0, oy = 0) {
   ctx.save();
-  ctx.translate(ox, oy + CHAR_TOP);
+  ctx.translate(ox + CHAR_PAD_X, oy + CHAR_TOP);
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   // Skin: chỉ còn skin trọn người, không mặc đồ của người
   if (L.body !== 'human') { drawSkinFull(ctx, L, frame); ctx.restore(); return; }

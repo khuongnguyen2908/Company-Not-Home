@@ -7,6 +7,20 @@ export const session = {
   world: null as World | null,
   input: { x: 0, y: 0 },
   paused: false,
+  /** Hẹn giờ quan trọng của ván (màn giới thiệu họp, kết quả bầu, đếm ngược vào ca...): chạy bằng setTimeout VÀ được
+   *  máy bơm nhịp nền kiểm mỗi 50 ms, nên không bị trình duyệt hãm khi tab chủ phòng bị ẩn. Mỗi hẹn chỉ chạy một lần. */
+  timers: [] as { at: number; fn: () => void; done: boolean }[],
+  later(fn: () => void, ms: number) {
+    const t = { at: performance.now() + ms, fn, done: false };
+    this.timers.push(t);
+    const fire = () => { if (t.done) return; t.done = true; this.timers = this.timers.filter(x => x !== t); fn(); };
+    (t as { fire?: () => void }).fire = fire;
+    globalThis.setTimeout(fire, ms);
+    return { cancel: () => { t.done = true; this.timers = this.timers.filter(x => x !== t); } };
+  },
+  runDue() { const now = performance.now(); for (const t of [...this.timers]) if (!t.done && now >= t.at) (t as { fire?: () => void }).fire?.(); },
+  /** thống kê ván đang chơi (chơi một mình / chủ phòng); null ở máy người vào phòng */
+  gameStats: null as null | import('./game/stats').GameStats,
   /** thời điểm khung hình gần nhất của cảnh vẽ (máy bơm nhịp dùng để biết tab có đang bị ẩn không) */
   lastFrameAt: 0, // tạm dừng khi đang mở mini-game? (không: văn phòng không bao giờ dừng)
   onEvents: (_e: GameEvent[]) => {},

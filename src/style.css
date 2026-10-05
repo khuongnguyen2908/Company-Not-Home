@@ -74,7 +74,8 @@ h1, h2, h3 { font-family: var(--display); line-height: 1.05; margin: 0; }
 .name-row input { flex: 1; min-width: 0; }
 .dice { flex: none; width: 52px; border: 3px solid var(--ink); border-radius: 10px; background: var(--postit); font-size: 26px; box-shadow: 0 3px 0 var(--ink); padding: 0; }
 .dice:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
-.dice.dice-roll { animation: roll .45s ease-out; }
+.dice.dice-roll { animation: dicePress .2s ease-out; } /* mọi nút xúc xắc: lún xuống, không xoay */
+@keyframes dicePress { 50% { transform: translateY(3px); box-shadow: 0 0 0 var(--ink); } }
 @keyframes roll { 0% { transform: rotate(0) scale(1); } 50% { transform: rotate(200deg) scale(1.15); } 100% { transform: rotate(360deg) scale(1); } }
 .name-err { margin: 6px 0 0; color: var(--alarm); font-weight: 700; font-size: .85rem; }
 .role-note { margin: 0 0 16px; padding: 10px 12px; background: #eef4ff; border: 2px dashed var(--lanyard); border-radius: 10px; font-size: .88rem; }
@@ -298,6 +299,10 @@ input[type=range] { width: 100%; accent-color: var(--lanyard); }
 .msg.me { flex-direction: row-reverse; }
 .msg.me p { background: var(--postit); border-radius: 12px 4px 12px 12px; }
 .msg.me div { text-align: right; }
+/* bong bóng ôm vừa nội dung (tin ngắn thì bong bóng ngắn), sát về phía ảnh nhân vật */
+.msg > div { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+.msg.me > div { align-items: flex-end; }
+.msg p { width: fit-content; max-width: 100%; text-align: left; }
 .msg.ghost { opacity: .5; }
 .chat-form { display: flex; gap: 6px; padding: 8px; border-top: 2px solid #d9d5c8; }
 .chat-form input { flex: 1; min-width: 0; border: 3px solid var(--ink); border-radius: 10px; padding: 8px; font: inherit; }
@@ -1998,3 +2003,67 @@ body.mt-mode { overflow: hidden; }
 .rm-role.on { border-color: var(--ink); background: #c8f0d2; color: var(--ink); text-decoration: none; }
 .rm-role:disabled { cursor: default; }
 .rm-ro { margin: 0; color: var(--muted); }
+
+/* ================= ĐIỆN THOẠI: CẦN ĐIỀU KHIỂN NỔI, NHIỀU NGÓN ================= */
+/* Vùng nhận chạm: nửa trái màn hình (dưới thanh trên cùng); vòng cần điều khiển hiện dưới ngón tay */
+.joy { left: 0; top: 96px; bottom: 0; width: 50%; height: auto; border: 0; border-radius: 0; background: transparent; }
+.joy-base { position: absolute; width: 130px; height: 130px; margin: -65px 0 0 -65px; border-radius: 50%; border: 3px solid rgba(255, 255, 255, .55); background: rgba(29, 26, 43, .35); opacity: 0; transition: opacity .12s; pointer-events: none; left: 90px; top: calc(100% - 110px); }
+.joy.on .joy-base { opacity: 1; transition: none; }
+.joy .joy-knob { left: 50%; top: 50%; }
+/* Khi chưa chạm: vòng mờ gợi ý ở góc trái dưới */
+@media (pointer: coarse) { .joy:not(.on) .joy-base { opacity: .35; } }
+/* Không cho trình duyệt phóng to / kéo trang khi đang chơi trên điện thoại (ngón thứ hai không làm mất cần điều khiển) */
+@media (pointer: coarse) { .hud, .hud * { touch-action: none; } .hud input, .hud textarea { touch-action: manipulation; } }
+/* các khung cuộn trong giao diện vẫn vuốt dọc được */
+@media (pointer: coarse) { .hud .task-list, .hud .task-list *, .hud .lc-people, .hud .lc-people *, .hud .lchat-log, .hud .lchat-log *, .hud .vt-list, .hud .vt-list * { touch-action: pan-y; } }
+/* Điện thoại: khung danh sách việc chỉ để xem, chạm vào đó là điều khiển nhân vật (cần điều khiển dùng được cả nửa trái) */
+@media (pointer: coarse) { #ui .hud .tasks, #ui .hud .tasks * { pointer-events: none; } }
+/* Lớp hiệu ứng toàn màn hình (Sếp đi tuần, nhiễu sóng mất Wi-Fi) không bao giờ được chặn thao tác chạm */
+#ui .hud > .screen-fx, #ui .hud .screen-fx * { pointer-events: none; }
+/* Sếp đi tuần: mặt Sếp trên dải thông báo sự cố (thay cho bóng đen đi ngang màn hình) */
+.sab-banner.boss { display: flex; align-items: center; gap: 8px; }
+.sab-banner .sab-face { width: 34px; height: 40px; object-fit: contain; flex: none; animation: bossBob .5s ease-in-out infinite alternate; }
+@keyframes bossBob { to { transform: translateY(-3px) rotate(-4deg); } }
+.sab-banner .sab-face { width: 46px; height: 54px; margin: -10px 0 -10px -6px; }
+/* Màn hình hẹp (điện thoại): dải thông báo sự cố nằm gọn giữa khung danh sách việc và nút bên phải, không đè lên khung việc */
+@media (max-width: 1000px) {
+  .sab-banner { left: calc(min(300px, 46vw) + 22px); right: 76px; transform: none; max-width: none; font-size: .82rem; padding: 6px 10px; }
+}
+@media (max-width: 600px) { .sab-banner { left: 10px; right: 10px; } }
+/* Nội gián: dòng trạng thái đồng bọn trên khung việc */
+.mate-line { font-size: .78rem; font-weight: 700; color: #b0261c; margin: 2px 0 4px; }
+/* Thống kê ván ở màn kết quả */
+.go-stats { text-align: left; margin: 8px 0; border: 2px dashed #c9c4b4; border-radius: 10px; padding: 6px 10px; }
+.go-stats summary { cursor: pointer; font-weight: 800; }
+.gs-list { margin: 6px 0; padding-left: 18px; font-size: .86rem; display: flex; flex-direction: column; gap: 2px; }
+.gs-time { margin: 6px 0; padding-left: 0; list-style: none; max-height: 160px; overflow-y: auto; font-size: .78rem; border-top: 1px solid #e3dfd2; }
+.gs-time li { display: flex; gap: 8px; padding: 2px 0; border-bottom: 1px solid #f1eee4; }
+.gs-time time { font-family: monospace; font-weight: 800; color: var(--muted); flex: none; }
+.gs-copy { display: flex; gap: 8px; flex-wrap: wrap; }
+.gs-text { width: 100%; min-height: 240px; font-family: monospace; font-size: .75rem; }
+.mt-roles { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.mt-roles label { white-space: nowrap; }
+/* Máy in: nhóm nút chọn (Khổ giấy, Số mặt, Màu in), số bản căn giữa */
+.pr2-ctrls .pr2-row { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.pr2-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.pr2-seg button { white-space: nowrap; font-size: .88rem; min-height: 40px; border: 3px solid var(--ink); border-radius: 10px; background: #fff; font-weight: 800; box-shadow: 0 3px 0 var(--ink); }
+.pr2-seg button.on { background: #2e9cf0; color: #fff; }
+.pr2-seg button:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+.pr2-num { display: flex; align-items: center; justify-content: center; gap: 14px; }
+.pr2-num .pr2-n { min-width: 28px; text-align: center; font-size: 1.3rem; }
+/* Thông báo sự cố (Sếp đi tuần...): luôn giữa phía trên, ngay dưới tên tầng */
+.sab-banner { top: 50px; bottom: auto; left: 50%; right: auto; transform: translateX(-50%); max-width: min(560px, 60vw); }
+@media (max-width: 1000px) {
+  .sab-banner { top: 44px; left: 50%; right: auto; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 2 * (min(300px, 46vw) + 20px)); white-space: nowrap; font-size: .78rem; padding: 4px 10px; }
+  .sab-banner .sab-face { width: 30px; height: 36px; margin: -6px 0 -6px -4px; }
+}
+@media (max-width: 600px) { .sab-banner { left: 10px; right: 10px; bottom: auto; transform: none; width: auto; max-width: none; white-space: normal; justify-content: center; } }
+/* Màn hình chính: thẻ nhân viên */
+.mm-card { display: flex; gap: 12px; align-items: stretch; margin-bottom: 12px; }
+.mm-av { flex: none; width: 92px; border: 3px solid var(--ink); border-radius: 12px; background: #dff0ff; box-shadow: 0 3px 0 var(--ink); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px 4px; cursor: pointer; }
+.mm-av img { width: 74px; height: 86px; object-fit: contain; }
+.mm-av span { font-weight: 800; font-size: .8rem; }
+.mm-av:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+.mm-fields { flex: 1; min-width: 0; }
+.mm-fields .field { margin-bottom: 6px; }
+.mm-guide { display: flex; flex-direction: column; gap: 10px; min-width: min(360px, 80vw); }

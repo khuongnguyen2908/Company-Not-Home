@@ -59,8 +59,8 @@ if (MT_SLOT && window.parent !== window) {
   void import('./net/room').then(m => { (window as any).__net = m.net; });
   window.addEventListener('message', (e) => {
     if (e.origin !== location.origin) return;
-    const d = e.data as { mt?: string; cmd?: string; arg?: number };
-    if (d?.mt === 'cmd' && d.cmd) ui.mtCommand(d.cmd, d.arg);
+    const d = e.data as { mt?: string; cmd?: string; arg?: number; name?: string; role?: string };
+    if (d?.mt === 'cmd' && d.cmd) ui.mtCommand(d.cmd, d.arg, { name: d.name, role: d.role });
   });
   const report = (on: boolean) => { sfx.setMuted(!on); window.parent.postMessage({ mt: 'focus', slot: Number(MT_SLOT), on }, location.origin); };
   window.addEventListener('focus', () => report(true));
@@ -75,4 +75,4 @@ if (MT_SLOT && window.parent !== window) {
 }
 
 // Công cụ gỡ lỗi: thêm ?debug vào địa chỉ để truy cập trạng thái game từ console
-if (location.search.includes('debug')) { (window as any).__session = session; (window as any).__charCanvas = characterCanvas; void import('./net/room').then(m => { (window as any).__net = m.net; }); }
+if (location.search.includes('debug')) { (window as any).__session = session; (window as any).__charCanvas = characterCanvas; void import('./net/room').then(m => { (window as any).__net = m.net; }); void import('./game/look').then(m => { (window as any).__look = m; }); }

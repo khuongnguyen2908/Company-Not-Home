@@ -46,7 +46,7 @@ for (let g = Number(process.env.G0 ?? 0); g < GAMES; g++) {
       if (j.role === 'crew' && o.role === 'impostor' && allowed && !o.ejected && hw.phase !== 'ended' && real.role === 'impostor') fail(`ván ${g}: Nội gián không thấy đồng bọn`);
       // trường riêng tư: hoặc không gửi, hoặc là giá trị trống
       if (Array.isArray(j.tasks) && (j.tasks as unknown[]).length) fail(`ván ${g}: lộ việc của #${id}`);
-      if (j.killCd !== undefined && j.killCd !== 0) fail(`ván ${g}: lộ hồi chiêu của #${id}`);
+      if (j.killCd !== undefined && j.killCd !== 0 && !(real.role === 'impostor' && o.role === 'impostor')) fail(`ván ${g}: lộ hồi chiêu của #${id}`); // đồng bọn được thấy hồi chiêu của nhau
       for (const k of ['hrResult', 'devBackup', 'killedBy', 'hrPending', 'testTarget', 'prodLast']) if (j[k] !== undefined && j[k] !== null) fail(`ván ${g}: lộ ${k} của #${id}`);
     }
     const mt = m.full.w.meeting as Record<string, unknown> | null;

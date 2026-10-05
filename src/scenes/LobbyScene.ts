@@ -165,7 +165,7 @@ export class LobbyScene extends Phaser.Scene {
     this.doorArrowG = this.add.graphics().setDepth(39995);
     this.doorArrowT = this.add.text(10 * T, 0, 'VÀO CÔNG TY', { fontFamily: '"Baloo 2", sans-serif', fontSize: '18px', fontStyle: '800', color: '#ffe36e', stroke: '#1d1a2b', strokeThickness: 6 }).setOrigin(0.5, 1).setDepth(39996).setVisible(false);
     this.floorText = this.add.text(10 * T, 0.2 * T, 'G', { fontFamily: '"Baloo 2", sans-serif', fontSize: '15px', fontStyle: '800', color: '#ffe36e' }).setOrigin(0.5, 0.5).setDepth(-34);
-    this.screenText = this.add.text(14.8 * T, 0.48 * T, '', { fontFamily: '"Be Vietnam Pro", sans-serif', fontSize: '11px', fontStyle: '700', color: '#bfe6ff', align: 'center', lineSpacing: 2 }).setOrigin(0.5, 0.5).setDepth(-34);
+    this.screenText = this.add.text(14.8 * T, 0.48 * T, '', { fontFamily: '"Be Vietnam Pro", sans-serif', fontSize: '11px', fontStyle: '700', color: '#bfe6ff', align: 'center', lineSpacing: 2 }).setOrigin(0.5, 0.5).setDepth(-34).setVisible(false); // bỏ màn hình thông tin phòng (đã có khung góc trái)
     const onResize = () => this.layout();
     this.scale.on('resize', onResize);
     this.events.once('shutdown', () => { this.scale.off('resize', onResize); session.lobby.nearInfo = null; });
@@ -214,10 +214,6 @@ export class LobbyScene extends Phaser.Scene {
     P.fill(8.25 * T + 4, 0.02 * T + 3, 3.5 * T - 8, 8, shade(0xc9ccd8, 0.3), 1, 4);
     P.box(9.5 * T, 0.03 * T, 1.0 * T, 0.32 * T, 0x1d1a2b, 4, 2.5);
     P.box(11.85 * T, 0.32 * T, 16, 26, 0x9aa1b4, 4, 2.5); P.poly([11.85 * T + 8, 0.32 * T + 6, 11.85 * T + 3, 0.32 * T + 14, 11.85 * T + 13, 0.32 * T + 14], 0xffe36e, 1.5);
-    // Màn hình phòng treo tường: viền dày, vệt sáng
-    P.box(12.55 * T, 0.06 * T, 4.5 * T, 0.84 * T, 0x2d3142, 6, 3.5);
-    P.fill(12.55 * T + 6, 0.06 * T + 6, 4.5 * T - 12, 0.84 * T - 12, 0x1d3557, 1, 3);
-    P.shine(12.55 * T + 12, 0.06 * T + 10, 12.55 * T + 40, 0.06 * T + 10, 2.5);
     // Mặt tiền kính: khung trên dưới, ô kính có vệt sáng chéo
     g.fillStyle(0x9fd6ff, 0.8); g.fillRect(0, 10 * T, W * T, T);
     for (let x = 0; x < W; x++) {
@@ -630,11 +626,28 @@ export class LobbyScene extends Phaser.Scene {
     const me = this.me; if (!me) return;
     if (key.startsWith('sit:')) { const i = Number(key.slice(4)); if (this.sit(me, i)) sfx.pop(); return; }
     if (key === 'bell' || key === 'cat' || key === 'fish' || key.startsWith('plant:')) { this.playFx(key); if (session.lobby.online) session.lobby.sendFx?.(key); return; }
-    if (key === 'water') { me.cupUntil = this.time.now + 20000; sfx.splash(); return; }
+    if (key === 'water') {
+      me.cupUntil = this.time.now + 20000; sfx.splash();
+      this.say(me, 'Ực ực… 💧', true);
+      this.waterFx();
+      if (session.lobby.online) session.lobby.sendFx?.('water');
+      return;
+    }
     if (key === 'bus') { this.say(me, BUS_JOKES[Math.floor(Math.random() * BUS_JOKES.length)], true); return; }
+  }
+  /** Bình nước: bọt nước sủi lên trong bình, giọt nước bay lên */
+  private waterFx() {
+    const x = 18.5 * T, y = 6.2 * T;
+    for (let k = 0; k < 6; k++) {
+      const b = this.add.circle(x + (Math.random() - 0.5) * 14, y + 6, 3 + Math.random() * 3, 0xbfe6ff, 0.95).setStrokeStyle(1.5, 0x2e9cf0).setDepth(40000);
+      this.tweens.add({ targets: b, y: y - 34 - Math.random() * 16, alpha: 0, scale: 0.6, duration: 650 + k * 90, delay: k * 70, ease: 'Sine.easeOut', onComplete: () => b.destroy() });
+    }
+    const d = this.add.text(x, y - 20, '💧', { fontSize: '22px' }).setOrigin(0.5).setDepth(40001);
+    this.tweens.add({ targets: d, y: y - 70, alpha: 0, duration: 1100, ease: 'Sine.easeOut', onComplete: () => d.destroy() });
   }
   /** Hiệu ứng nghịch đồ dùng chung (mình làm, hoặc người khác làm trong sảnh online) */
   private playFx(key: string) {
+    if (key === 'water') { this.waterFx(); return; }
     if (key === 'bell') { sfx.ting(); this.fx.push({ kind: 'ring', x: 5.6 * T, y: 4.2 * T, t: 0 }); this.popText(5.6 * T, 3.6 * T, 'ting!'); return; }
     if (key === 'cat') {
       sfx.meow(); this.catT = 1.2; this.popText(SEATS[this.catSeat].x * T + T / 2, SEATS[this.catSeat].y * T - 6, 'meo~');

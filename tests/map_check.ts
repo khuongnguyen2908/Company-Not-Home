@@ -1,5 +1,5 @@
 // Kiểm tra bản đồ nhiều tầng: mọi điểm quan trọng nằm trên sàn và đi tới được (qua thang bộ)
-import { STATIONS, HIDE_SPOTS, DESKS, SPAWNS, isFloor, GRID, MAP_W, levelAt, tileCenter, BELL_STAND, LIFT_DOORS, PORTALS, CABIN } from '../src/game/map';
+import { station, STATIONS, HIDE_SPOTS, DESKS, SPAWNS, isFloor, GRID, MAP_W, levelAt, tileCenter, BELL_STAND, LIFT_DOORS, PORTALS, CABIN } from '../src/game/map';
 import { findPath } from '../src/game/path';
 let bad = 0;
 const start = tileCenter(SPAWNS[0].x, SPAWNS[0].y);
@@ -20,6 +20,6 @@ for (const p of PORTALS) { check('cổng ' + p.label, p.from.x, p.from.y); check
 const roofTarget = { x: 40 + 4, y: 24 + 4 };
 const pth = findPath(start, roofTarget);
 console.log('Đường từ phòng họp lên vườn mái:', pth ? pth.length + ' bước' : 'KHÔNG CÓ');
-const t1 = findPath(start, { x: 34, y: 15 });
+const t1 = findPath(start, station('power').stand); // vị trí cầu dao thật (bản đồ mới)
 console.log('Đường từ phòng họp xuống cầu dao tầng 1:', t1 ? t1.length + ' bước' : 'KHÔNG CÓ');
 console.log(bad ? `${bad} lỗi` : 'Bản đồ ổn: mọi điểm đều trên sàn và đi tới được');

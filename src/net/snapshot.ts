@@ -67,6 +67,10 @@ function maskAgent(w: World, v: Agent, o: Agent, withStatic: boolean): J {
   }
   for (const k of PUBLIC) out[k] = round2(o[k]);
   if (withStatic) { for (const k of STATIC) out[k] = o[k]; for (const k of MOTION) out[k] = round2(o[k]); Object.assign(out, PRIVATE_NEUTRAL); }
+  // Animator: được biết người này "bị gài" (để chọn làm lại anim) nhưng KHÔNG được biết ai gài (-1)
+  if (v.dept === 'animator' && v.role === 'crew' && o.killedBy !== null && !o.alive) out.killedBy = -1;
+  // đồng bọn Nội gián: thấy hồi chiêu của nhau (để biết ai sẵn sàng gài); người khác không thấy
+  if (v.role === 'impostor' && o.role === 'impostor') out.killCd = half(o.killCd);
   if (!knowsRole(w, v, o)) out.role = 'crew';
   if (!knowsDept(w, v, o)) out.dept = out.role === 'impostor' ? null : 'intern';
   // đang trốn: chỉ đồng bọn Nội gián biết trốn ở đâu; người khác chỉ biết "không thấy"
@@ -88,6 +92,8 @@ export interface FullSnap {
   kpi: { done: number; total: number };
   impAlive: number;
   crewAlive: { n: number; bossDone: number };
+  /** có người đang xem camera (đèn đỏ trên camera nhấp nháy: thông tin công khai, ai đi ngang cũng thấy) */
+  camsOn: boolean;
   spawnOffer: number[] | null;
   me: number;
 }
@@ -105,9 +111,11 @@ export function buildFull(w: World, viewerId: number, withStatic = false): FullS
   if (w.meeting) {
     const m = w.meeting;
     const votes = new Map<number, number | 'skip'>();
-    for (const [k, x] of m.votes) votes.set(k, m.result || k === viewerId ? x : 'skip');
+    // trước khi có kết quả: chỉ biết ai đã bầu; phiếu ẩn danh: kể cả sau kết quả cũng không biết ai bầu ai
+    for (const [k, x] of m.votes) votes.set(k, (m.result && !w.anonVotes) || k === viewerId ? x : 'skip');
+    const result = m.result && w.anonVotes ? { ...m.result, tally: new Map([...m.result.tally].map(([t, vs]) => [t, vs.map(() => -1)])) } : m.result;
     out.meeting = enc({
-      ...m, t: Math.round(m.t * 4) / 4, queue: [], reactQueue: [], votes,
+      ...m, t: Math.round(m.t * 4) / 4, queue: [], reactQueue: [], votes, result,
       protect: v.dept === 'producer' ? m.protect : null,
       // tin riêng chỉ người nhận thấy; tin của hồn ma chỉ người đã chết thấy
       chat: m.chat.filter(c => (c.to === undefined || c.to === viewerId) && (!c.ghost || !v.alive || c.from === viewerId)).map(c => (c.anon && c.from !== viewerId ? { ...c, from: viewerId } : c)),
@@ -120,6 +128,7 @@ export function buildFull(w: World, viewerId: number, withStatic = false): FullS
     kpi: w.crewTasksDone(),
     impAlive: w.aliveImp().length,
     crewAlive: { n: crew.length, bossDone: crew.filter(c => c.bossDone).length },
+    camsOn: w.camsInUse(),
     spawnOffer: w.spawnOffers.get(viewerId) ?? null,
     me: viewerId,
   };
@@ -164,7 +173,8 @@ export function applyFull(r: World, full: FullSnap) {
   if (meOld && r.agents[full.me]) reconcileMe(meOld, r.agents[full.me]);
   r.spawnOffers = new Map(full.spawnOffer ? [[full.me, full.spawnOffer]] : []);
   // các con số tổng hợp do chủ phòng tính (bản sao không có đủ dữ liệu bí mật để tự tính)
-  const kpi = full.kpi, impN = full.impAlive, crew = full.crewAlive;
+  const kpi = full.kpi, impN = full.impAlive, crew = full.crewAlive, camsOn = !!full.camsOn;
+  r.camsInUse = () => camsOn;
   r.crewTasksDone = () => kpi;
   r.aliveImp = () => Array.from({ length: impN }, (_, i) => ({ id: -1 - i, alive: true, role: 'impostor' }) as unknown as Agent);
   r.aliveCrew = () => Array.from({ length: crew.n }, (_, i) => ({ id: -100 - i, alive: true, role: 'crew', bossDone: i < crew.bossDone }) as unknown as Agent);

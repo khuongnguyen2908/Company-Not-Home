@@ -7,7 +7,7 @@ import { characterCanvas, chairCanvas, lightCanvas, glowCanvas, shadowCanvas, lo
 import { visibilityPolygon } from '../game/vision';
 import { furnitureArt, drawAnim, Pen, ventArt, ventKind, type Anim } from '../render/furniture';
 import { GRID as MAP_GRID } from '../game/map';
-import { DOOR_BLOCK, CAMERAS, FLOORS, PORTALS, LIFT_DOORS, CABIN, CABIN_DOOR, levelAt, levelName, ELEV_BLOCK, STAIRWELL, STAIRS_LEVEL, LANDINGS, STAIR_FLIGHTS } from '../game/map';
+import { DOOR_BLOCK, CAMERAS, FLOORS, TOP_WALL, PORTALS, LIFT_DOORS, CABIN, CABIN_DOOR, levelAt, levelName, ELEV_BLOCK, STAIRWELL, STAIRS_LEVEL, LANDINGS, STAIR_FLIGHTS } from '../game/map';
 import { STICKERS } from '../game/data';
 import { session } from '../session';
 import { net } from '../net/room';
@@ -98,7 +98,7 @@ export class GameScene extends Phaser.Scene {
       const t = this.add.text(s.mark.x * TILE, s.mark.y * TILE, '!', {
         fontFamily: '"Baloo 2", "Trebuchet MS", sans-serif', fontSize: '34px', fontStyle: '800',
         color: (s.id === 'router' || s.id === 'power') ? '#ff4d4d' : '#ffd23f', stroke: '#1d1a2b', strokeThickness: 6,
-      }).setOrigin(0.5, 1).setDepth(40000).setVisible(false);
+      }).setOrigin(0.5, 1).setDepth(50001).setVisible(false); // nổi trên lớp sương che tầm nhìn
       this.markers.set(s.id, t);
     }
     HIDE_SPOTS.forEach((h) => {
@@ -277,19 +277,23 @@ export class GameScene extends Phaser.Scene {
       const ox = f.ox, oy = f.oy;
       if (f.id <= 3) {
         // Cửa sổ kính dọc tường ngoài phía trên
-        for (const x of [3, 9, 15, 23, 29, 34]) {
-          this.box(g, (ox + x) * TILE + 4, oy * TILE + 8, TILE * 1.6, TILE - 22, 0x9fd6ff, 3, 3);
-          g.lineStyle(2, 0xffffff, 0.7); g.lineBetween((ox + x) * TILE + 12, oy * TILE + 30, (ox + x) * TILE + 26, oy * TILE + 14);
+        // hàng tường dưới hành lang (chỗ cửa thang máy, cửa thoát hiểm) của tầng này; bản đồ mới có thể khác nhau giữa các tầng
+        const hy = (LIFT_DOORS.find(l => l.level === f.id)?.tiles[0].y ?? oy + 13) - oy;
+        const wy = oy + TOP_WALL(f.id); // mặt tường ngoài (tầng 1–3: hàng thứ hai)
+        const onWall = (x: number) => FURNITURE.some(u => u.y === wy && u.x < ox + x + 2 && u.x + u.w > ox + x); // đồ treo trên tường ngoài
+        for (const x of [3, 9, 15, 23, 29, 34].filter(x => x + 2 <= f.w && !onWall(x))) {
+          this.box(g, (ox + x) * TILE + 4, wy * TILE + 8, TILE * 1.6, TILE - 22, 0x9fd6ff, 3, 3);
+          g.lineStyle(2, 0xffffff, 0.7); g.lineBetween((ox + x) * TILE + 12, wy * TILE + 30, (ox + x) * TILE + 26, wy * TILE + 14);
         }
         // Đồng hồ hành lang
-        const cx = (ox + 32.5) * TILE, cy = (oy + 13.5) * TILE;
+        const cx = (ox + Math.min(32.5, f.w - 3.5)) * TILE, cy = (oy + hy + 0.5) * TILE;
         g.fillStyle(0xffffff, 1); g.fillCircle(cx, cy, 13); g.lineStyle(3, INK, 1); g.strokeCircle(cx, cy, 13);
         g.lineBetween(cx, cy, cx, cy - 9); g.lineBetween(cx, cy, cx + 6, cy + 2);
         // Lõi thang: khung inox quanh cửa thang máy và biển số tầng
-        this.box(g, (ox + 15.8) * TILE, (oy + 13) * TILE - 4, 2.4 * TILE, 10, 0xc9ccd8, 2, 2);
-        this.box(g, (ox + 18.1) * TILE, (oy + 13) * TILE + 6, 0.8 * TILE, 0.8 * TILE, 0x2e9cf0, 6, 3);
+        this.box(g, (ox + 15.8) * TILE, (oy + hy) * TILE - 4, 2.4 * TILE, 10, 0xc9ccd8, 2, 2);
+        this.box(g, (ox + 18.1) * TILE, (oy + hy) * TILE + 6, 0.8 * TILE, 0.8 * TILE, 0x2e9cf0, 6, 3);
         // Cửa thoát hiểm vào giếng thang bộ
-        this.exitDoor(g, (ox + 20) * TILE, (oy + 13) * TILE);
+        this.exitDoor(g, (ox + 20) * TILE, (oy + hy) * TILE);
       }
       if (f.id === 2) {
         // Bảng KPI trên tường Phòng làm việc
@@ -305,11 +309,11 @@ export class GameScene extends Phaser.Scene {
       }
     }
     // Giếng thang bộ: bậc thang trên các đoạn cầu thang, cửa ra ở mỗi chiếu nghỉ
-    for (const f of STAIR_FLIGHTS) for (let c = 0; c < STAIRWELL.w; c++) {
-      // bậc thang: vạch dọc, đậm dần theo chiều đi xuống
-      const X = (STAIRWELL.x + c) * TILE, Y = f.y * TILE;
-      g.lineStyle(2, INK, 0.45); g.lineBetween(X + 8, Y + 4, X + 8, Y + TILE - 4); g.lineBetween(X + 32, Y + 4, X + 32, Y + TILE - 4);
-      if (c % 3 === 1) { g.fillStyle(0xffe36e, 0.5); g.fillTriangle(X + 18 + f.dir * 8, Y + TILE / 2, X + 18 - f.dir * 4, Y + TILE / 2 - 7, X + 18 - f.dir * 4, Y + TILE / 2 + 7); }
+    for (const f of STAIR_FLIGHTS) for (let r = 0; r < f.h; r++) {
+      // bậc thang thẳng đứng: vạch ngang trên mỗi bậc, mũi tên vàng chỉ hướng lên
+      const X = f.x * TILE, Y = (f.y + r) * TILE, W = f.w * TILE;
+      g.lineStyle(2, INK, 0.45); g.lineBetween(X + 4, Y + 10, X + W - 4, Y + 10); g.lineBetween(X + 4, Y + 32, X + W - 4, Y + 32);
+      if (r === 1) { g.fillStyle(0xffe36e, 0.55); g.fillTriangle(X + W / 2, Y + 12, X + W / 2 - 9, Y + 28, X + W / 2 + 9, Y + 28); }
     }
     for (const l of LANDINGS) this.exitDoor(g, (STAIRWELL.x - 1) * TILE, l.y * TILE, true);
     // Buồng thang máy: vách inox, tay vịn, nắp trần
@@ -338,6 +342,7 @@ export class GameScene extends Phaser.Scene {
     const dt = Math.min(0.05, deltaMs / 1000);
     session.onFrame(dt);
     markFrame();
+    session.runDue();
     if (!world) return;
     if (this.gameId !== session.newGameId) this.resetViews();
 
@@ -355,6 +360,7 @@ export class GameScene extends Phaser.Scene {
       world.playerInput = session.input;
       world.update(dt);
       const ev = world.drainEvents();
+      if (session.gameStats) { session.gameStats.tick(dt); if (ev.length) session.gameStats.onEvents(ev); }
       if (ev.length) this.worldFx(world, ev);
       if (ev.length) session.onEvents(ev);
       net.host?.tick(deltaMs, ev);
@@ -396,7 +402,7 @@ export class GameScene extends Phaser.Scene {
       v.sprite.setPosition(a.x, a.y + 6 + floatY + skinFloat);
       if (a.look.body === 'slime') v.sprite.setScale(CHAR_SCALE * (1 + Math.sin(this.time.now / 260 + a.id) * 0.025), CHAR_SCALE * (1 - Math.sin(this.time.now / 260 + a.id) * 0.03));
       v.sprite.setAlpha(a.alive ? 1 : 0.42);
-      v.sprite.setDepth(a.y);
+      v.sprite.setDepth(a.alive ? a.y : 39000 + a.y / 100); // hồn ma bay nổi trên mọi đồ vật
       v.shadow.setPosition(a.x, a.y + 4).setDepth(a.y - 1);
       // người thật mất kết nối: thẻ tên báo rõ, mờ đi
       const label = a.away ? `${a.name} #${a.empId} · mất kết nối` : `${a.name} #${a.empId}`;
@@ -426,7 +432,10 @@ export class GameScene extends Phaser.Scene {
       const s = station(id);
       t.setVisible(on && world.phase === 'play');
       t.setY(s.mark.y * TILE - 12 + bounce);
-      t.setAlpha(p.role === 'impostor' && !isFix ? 0.55 : 1);
+      // ngoài tầm nhìn: mờ và nhỏ hơn (vẫn thấy chỗ có việc)
+      const far = Math.hypot((s.mark.x + 0.5) * TILE - p.x, s.mark.y * TILE - p.y) > world.visionOf(p) || levelAt((s.stand.x + 0.5) * TILE, (s.stand.y + 0.5) * TILE) !== levelAt(p.x, p.y);
+      t.setScale(far ? 0.78 : 1);
+      t.setAlpha((p.role === 'impostor' && !isFix ? 0.55 : 1) * (far ? 0.55 : 1));
     }
     // Dấu chỗ trốn: Nội gián luôn thấy; Engineer và Intern tham vọng thấy xanh khi dùng được, xám kèm số giây khi đang hồi chiêu
     const hideUser = p.alive && world.phase === 'play' && world.canHide(p);
@@ -554,6 +563,16 @@ export class GameScene extends Phaser.Scene {
 
     // Mũi tên chỉ đường tới việc gấp (sự cố, sếp đi tuần), giống Among Us
     this.urgent.clear();
+    // Sếp đi tuần: bàn của mình sáng viền vàng nhấp nháy, mã số trên bàn to và vàng
+    { const mine = world.player, d = DESKS[mine.desk];
+      const on = world.sabotage?.kind === 'boss' && mine.alive && mine.role === 'crew' && !mine.bossDone && !!d;
+      if (on) {
+        const a = 0.55 + 0.45 * Math.sin(this.time.now / 150);
+        this.urgent.lineStyle(5, 0xffd23f, a); this.urgent.strokeRoundedRect(d.x * TILE - 8, d.y * TILE - 8, 2 * TILE + 16, 2 * TILE + 16, 10);
+      }
+      const lbl = this.deskLabels[mine.id];
+      if (lbl) { lbl.setColor(on ? '#ffd23f' : '#ffffff').setScale(on ? 1.35 + 0.1 * Math.sin(this.time.now / 150) : 1).setDepth(on ? 30001 : lbl.depth); }
+    }
     this.floorTags.forEach(t => t.setVisible(false));
     if (world.phase === 'play' && pAlive && p.role === 'crew') {
       const targets: { x: number; y: number }[] = [];

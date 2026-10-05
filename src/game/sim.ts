@@ -2,8 +2,8 @@
 // nên sau này có thể chạy trên máy chủ phòng (host) khi làm nhiều người chơi.
 
 import {
-  TILE, DESKS, STATIONS, TASKS, HIDE_SPOTS, SPAWNS, BELL, BELL_STAND, MAP_W, MAP_H, station, taskDef,
-  PORTAL_AT, LIFT_DOORS, CABIN, CABIN_DOOR, ELEV_BLOCK, LIFT_FLOORS, STAIRS_LEVEL, levelAt,
+  TILE, ghostOk, DESKS, STATIONS, TASKS, HIDE_SPOTS, SPAWNS, BELL, BELL_STAND, MAP_W, MAP_H, station, taskDef,
+  PORTAL_AT, LIFT_DOORS, CABIN, CABIN_DOOR, ELEV_BLOCK, LIFT_FLOORS, STAIRS_LEVEL, STAIR_STEP, levelAt,
   canStand, roomAt, roomName, tileCenter, isFloor, ROOMS, lineOfSight, DOOR_BLOCK, DOOR_GROUPS, LOCKABLE_ROOMS, MAP_W as MW, type RoomId, type Station, type MiniKind,
 } from './map';
 import { findPath, type Pt } from './path';
@@ -52,8 +52,9 @@ export const BOSS_TIME = 45; // tòa nhiều tầng: cần thêm thời gian đ�
  * Chọn bằng cách chạy 150 ván bot cho từng cỡ, nhắm tỉ lệ Nội gián thắng khoảng 40–52%.
  */
 export function killCooldownFor(players: number, imps: number): number {
-  if (imps <= 1) return ({ 5: 57, 6: 35, 7: 23, 8: 18, 9: 12 } as Record<number, number>)[players] ?? (players < 5 ? 60 : 8);
-  return ({ 7: 128, 8: 80, 9: 60 } as Record<number, number>)[players] ?? (players < 7 ? 128 : 50);
+  // Bản đồ mới (tầng gọn, thang bộ một đoạn, tầng nhà): Nhân viên chạy KPI nhanh hơn nên hồi chiêu ngắn lại (đo lại 300 ván mỗi cỡ)
+  if (imps <= 1) return ({ 5: 40, 6: 26, 7: 20, 8: 12, 9: 10, 10: 6 } as Record<number, number>)[players] ?? (players < 5 ? 45 : 6);
+  return ({ 7: 90, 8: 62, 9: 47, 10: 36 } as Record<number, number>)[players] ?? (players < 7 ? 90 : 36);
 }
 export const USE_RANGE = 1.15 * TILE;
 export const REPORT_RANGE = 1.7 * TILE;
@@ -315,6 +316,8 @@ export class World {
   visionMul = 1;
   /** Danh sách phòng ban có năng lực trong ván (công khai) */
   roleList: RoleDept[] = [];
+  /** Phiếu ẩn danh (cài đặt phòng khi chơi nhiều người): dữ liệu gửi đi không cho biết ai bầu ai */
+  anonVotes = false;
   /** Thời gian họp (giây), chủ phòng chỉnh được */
   discussTime = DISCUSS_TIME;
   voteTime = VOTE_TIME;
@@ -417,8 +420,11 @@ export class World {
       // 1 việc chung + 3 việc ngắn + 1 việc dài
       const shuffle = <T,>(arr: T[]) => [...arr].sort(() => this.rng() - 0.5);
       const common = TASKS.filter(t => t.type === 'common');
-      // Gom việc theo khu: mỗi người làm ở 2 tầng liền kề (tầng 1–2 hoặc 2–3, sân thượng tính chung với tầng 3)
-      const zone = this.rng() < 0.5 ? [1, 2] : [2, 3, 4];
+      // Tầng nhà = tầng có bàn của mình (bàn giao ngẫu nhiên): phần lớn việc ngắn ở tầng nhà, bớt chạy lên chạy xuống
+      const seat = DESKS[a.desk]?.seat;
+      const home = seat ? levelAt((seat.x + 0.5) * TILE, (seat.y + 0.5) * TILE) : 2;
+      // khu cho việc dài: quanh tầng nhà (tầng 1 → 1–2; tầng 2/3 → 2–3 và sân thượng)
+      const zone = home === 1 ? [1, 2] : [2, 3, 4];
       const floorOfStep = (k: string) => { const st = station(k); return levelAt((st.stand.x + 0.5) * TILE, (st.stand.y + 0.5) * TILE); };
       const inZone = (t: (typeof TASKS)[number]) => t.steps.every(k => zone.includes(floorOfStep(k)));
       // Mỗi người tối đa 1 việc khó (tính cả việc ngắn lẫn việc dài): ưu tiên việc trong khu, bỏ qua việc khó thứ hai
@@ -431,7 +437,13 @@ export class World {
       const longAll = shuffle(TASKS.filter(t => t.type === 'long'));
       const long = take([...longAll.filter(inZone), ...longAll.filter(t => !inZone(t))], 1);
       const shortAll = shuffle(TASKS.filter(t => t.type === 'short'));
-      const short = take([...shortAll.filter(inZone), ...shortAll.filter(t => !inZone(t))], this.shortTasks);
+      // việc ngắn: khoảng 2/3 ở tầng nhà, phần còn lại ở tầng khác; thiếu thì lấy bù chỗ khác
+      const onHome = (t: (typeof TASKS)[number]) => t.steps.every(k => floorOfStep(k) === home);
+      const nHome = Math.ceil(this.shortTasks * 2 / 3);
+      const shortHome = take(shortAll.filter(onHome), nHome);
+      const shortAway = take(shortAll.filter(t => !onHome(t) && !shortHome.includes(t)), this.shortTasks - shortHome.length);
+      const short = [...shortHome, ...shortAway];
+      if (short.length < this.shortTasks) short.push(...take(shortAll.filter(t => !short.includes(t)), this.shortTasks - short.length));
       const maint = a.role === 'crew' && a.dept === 'engineer' ? shuffle(TASKS.filter(t => t.type === 'maint')).slice(0, 2) : [];
       a.tasks = [...common, ...short, ...long, ...maint].map(t => ({ taskId: t.id, step: 0, done: false }));
       a.brain.thinkT = this.rng() * 1.5;
@@ -1354,8 +1366,11 @@ export class World {
       const lv = levelAt(a.x, a.y);
       if (lv >= 0) a.ghostLv = lv;
       const r = ghostRegion(a.ghostLv);
-      a.x = Math.max(r.x0, Math.min(r.x1, a.x + dx));
-      a.y = Math.max(r.y0, Math.min(r.y1, a.y + dy));
+      // trong khung tầng, và chỉ trong phạm vi tòa nhà (đang lạc ra ngoài thì vẫn cho bay để quay vào)
+      const nx = Math.max(r.x0, Math.min(r.x1, a.x + dx)), ny = Math.max(r.y0, Math.min(r.y1, a.y + dy));
+      const lost = !ghostOk(a.x, a.y);
+      if (lost || ghostOk(nx, a.y)) a.x = nx;
+      if (lost || ghostOk(a.x, ny)) a.y = ny;
     } else {
       if (canStand(a.x + dx, a.y)) a.x += dx;
       if (canStand(a.x, a.y + dy)) a.y += dy;
@@ -1368,7 +1383,7 @@ export class World {
   ghostFloor(a: Agent, dir: 1 | -1): string | null {
     if (a.alive) return 'Chỉ hồn ma mới bay đổi tầng được';
     const cur = levelAt(a.x, a.y);
-    let base = cur >= 1 && cur <= 4 ? cur : cur === 0 ? Math.round(this.lift.pos) : cur === STAIRS_LEVEL ? Math.max(1, Math.min(4, 4 - Math.floor((a.y / TILE - STAIRWELL.y) / 8))) : a.ghostLv;
+    let base = cur >= 1 && cur <= 4 ? cur : cur === 0 ? Math.round(this.lift.pos) : cur === STAIRS_LEVEL ? Math.max(1, Math.min(4, 4 - Math.floor((a.y / TILE - STAIRWELL.y) / STAIR_STEP))) : a.ghostLv;
     if (base < 1 || base > 4) base = 2;
     const target = base + dir;
     if (target < 1 || target > 4) return dir > 0 ? 'Đã ở tầng cao nhất' : 'Đã ở tầng thấp nhất';

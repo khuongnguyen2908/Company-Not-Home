@@ -221,26 +221,34 @@ const printdoc: Builder = (c) => {
       <ul><li>Khổ <b>${want.size}</b></li><li><b>${want.copies}</b> bản</li><li><b>${want.duplex ? 'In 2 mặt' : 'In 1 mặt'}</b></li><li><b>${want.color ? 'In màu' : 'Đen trắng'}</b></li></ul></div>
     <div class="pr2-panel"><div class="pr2-lcd"></div>
       <div class="pr2-ctrls">
-        <div><span>Khổ giấy</span><button type="button" data-c="size">A4</button></div>
-        <div><span>Số bản</span><button type="button" data-c="minus">−</button><b class="pr2-n">1</b><button type="button" data-c="plus">+</button></div>
-        <div><span>2 mặt</span><button type="button" data-c="duplex">Tắt</button></div>
-        <div><span>Màu</span><button type="button" data-c="color">Màu</button></div>
+        <div class="pr2-row"><span>Khổ giấy</span><div class="pr2-seg" data-k="size"><button type="button" data-v="A4">A4</button><button type="button" data-v="A3">A3</button></div></div>
+        <div class="pr2-row"><span>Số bản</span><div class="pr2-num"><button type="button" data-c="minus" aria-label="Bớt một bản">−</button><b class="pr2-n">1</b><button type="button" data-c="plus" aria-label="Thêm một bản">+</button></div></div>
+        <div class="pr2-row"><span>Số mặt</span><div class="pr2-seg" data-k="duplex"><button type="button" data-v="0">1 mặt</button><button type="button" data-v="1">2 mặt</button></div></div>
+        <div class="pr2-row"><span>Màu in</span><div class="pr2-seg" data-k="color"><button type="button" data-v="0">Đen trắng</button><button type="button" data-v="1">Màu</button></div></div>
       </div><button type="button" class="primary pr2-go">IN</button></div>
   </div>`;
   const lcd = $(c.body, '.pr2-lcd');
   const render = () => {
-    ($(c.body, '[data-c="size"]')).textContent = set.size; ($(c.body, '.pr2-n')).textContent = String(set.copies);
-    ($(c.body, '[data-c="duplex"]')).textContent = set.duplex ? 'Bật' : 'Tắt'; ($(c.body, '[data-c="color"]')).textContent = set.color ? 'Màu' : 'Đen trắng';
+    ($(c.body, '.pr2-n')).textContent = String(set.copies);
+    // nút đang chọn của từng nhóm
+    const cur: Record<string, string> = { size: set.size, duplex: set.duplex ? '1' : '0', color: set.color ? '1' : '0' };
+    $$(c.body, '.pr2-seg').forEach(g => g.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === cur[(g as HTMLElement).dataset.k!])));
     lcd.textContent = `${set.size} · ${set.copies} bản · ${set.duplex ? '2 mặt' : '1 mặt'} · ${set.color ? 'MÀU' : 'Đ/T'}`;
   };
   $$(c.body, '[data-c]').forEach(b => (b as HTMLButtonElement).onclick = () => {
     if (c.isDone()) return;
     const k = (b as HTMLElement).dataset.c!;
-    if (k === 'size') set.size = set.size === 'A4' ? 'A3' : 'A4';
     if (k === 'minus') set.copies = Math.max(1, set.copies - 1);
     if (k === 'plus') set.copies = Math.min(9, set.copies + 1);
-    if (k === 'duplex') set.duplex = !set.duplex;
-    if (k === 'color') set.color = !set.color;
+    sfx.click(); render();
+  });
+  // nhóm nút chọn: Khổ giấy, Số mặt, Màu in
+  $$(c.body, '.pr2-seg button').forEach(b => (b as HTMLButtonElement).onclick = () => {
+    if (c.isDone()) return;
+    const k = ((b as HTMLElement).parentElement as HTMLElement).dataset.k!, v = (b as HTMLElement).dataset.v!;
+    if (k === 'size') set.size = v as typeof set.size;
+    if (k === 'duplex') set.duplex = v === '1';
+    if (k === 'color') set.color = v === '1';
     sfx.click(); render();
   });
   $<HTMLButtonElement>(c.body, '.pr2-go').onclick = () => {

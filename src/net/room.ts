@@ -25,8 +25,10 @@ export interface RoomSettings {
   roles: Record<string, boolean>; maxSpecial: number;
   /** cuộc họp: thời gian thảo luận / bỏ phiếu (giây), phiếu ẩn danh */
   discussTime: number; voteTime: number; anonVotes: boolean;
+  /** hồi chiêu gài bẫy (giây); 0 = tự động theo cỡ ván và số Nội gián */
+  killCd: number;
 }
-export const DEFAULT_SETTINGS: RoomSettings = { fillBots: true, seats: 8, imps: 1, roles: {}, maxSpecial: 3, discussTime: 60, voteTime: 30, anonVotes: false };
+export const DEFAULT_SETTINGS: RoomSettings = { fillBots: true, seats: 8, imps: 1, roles: {}, maxSpecial: 3, discussTime: 60, voteTime: 30, anonVotes: false, killCd: 0 };
 /** Trạng thái một người trong sảnh tầng G (gửi 10 lần/giây khi chưa vào ca) */
 export interface LobbyState { x: number; y: number; f: 1 | -1; m: 0 | 1; seat: number | null; cup: 0 | 1; arrived: 0 | 1 }
 
@@ -47,7 +49,7 @@ export type ToClient =
   | { t: 'start'; full: FullSnap }
   | { t: 'full'; full: FullSnap; ev?: GameEvent[] }
   | { t: 'pos'; p: PosRow[]; time: number }
-  | { t: 'actRes'; id: number; err: string }
+  | { t: 'actRes'; id: number; err: string | null }
   | { t: 'ready'; ids: number[] }
   | { t: 'go' }
   | { t: 'end' }
@@ -78,6 +80,14 @@ export const net = {
   /** báo lỗi của lệnh (người vào phòng nhận lỗi từ chủ phòng) */
   onError: (_m: string) => {},
 };
+
+/** Như act() nhưng chờ được kết quả: người vào phòng chờ chủ phòng xử lý xong (bản sao đã cập nhật); một mình / chủ phòng có ngay */
+export function actAsync(name: string, ...args: unknown[]): Promise<string | null> {
+  const w = session.world;
+  if (!w) return Promise.resolve(null);
+  if (net.role === 'client' && net.client) return net.client.sendActWait(name, args);
+  return Promise.resolve(runAction(w, w.player.id, name, args));
+}
 
 /** Cửa lệnh duy nhất cho giao diện: chạy thẳng (một mình / chủ phòng) hoặc gửi lên chủ phòng */
 export function act(name: string, ...args: unknown[]): string | null {
@@ -203,8 +213,11 @@ export class NetHost {
       case 'act': {
         if (typeof m.name !== 'string') return;
         const err = runAction(w, id, m.name, Array.isArray(m.args) ? m.args : []);
-        if (err) this.tr.send(from, { t: 'actRes', id: m.id, err } satisfies ToClient);
-        this.fullT = 999; // gửi trạng thái mới ngay
+        // gửi trạng thái mới cho riêng người này TRƯỚC, rồi mới gửi kết quả: kênh giữ thứ tự nên lúc nhận kết quả bản sao đã cập nhật
+        // (sự kiện của lệnh vẫn nằm trong hàng đợi, vòng lặp chung phát cho mọi người như bình thường)
+        this.tr.send(from, { t: 'full', full: buildFull(w, id) } satisfies ToClient);
+        this.tr.send(from, { t: 'actRes', id: m.id, err } satisfies ToClient);
+        this.fullT = 999; // gửi trạng thái mới cho cả phòng ở khung hình tới
         return;
       }
       case 'ready': this.onReadyMsg(id, m.on !== false); return;
@@ -381,7 +394,11 @@ export class NetClient {
         return;
       }
       case 'pos': { const r = this.replica; if (r) { applyPos(r, m.p, this.targets); r.time = m.time; } return; }
-      case 'actRes': net.onError(m.err); return;
+      case 'actRes': {
+        const res = this.pending.get(m.id);
+        if (res) { this.pending.delete(m.id); res(m.err); } else if (m.err) net.onError(m.err);
+        return;
+      }
       case 'ready': this.onReady(m.ids); return;
       case 'go': this.onGo(); return;
       case 'end': this.replica = null; this.onEnd(); return;
@@ -401,6 +418,16 @@ export class NetClient {
   sendLobbyChat(text: string) { this.tr.send(this.hostPeer ?? '*', { t: 'lchat', text } satisfies ToHost); }
   sendLobbyFx(key: string) { this.tr.send(this.hostPeer ?? '*', { t: 'lfx', key } satisfies ToHost); }
   sendAct(name: string, args: unknown[]) { this.tr.send(this.hostPeer ?? '*', { t: 'act', id: ++this.actId, name, args } satisfies ToHost); }
+  /** Gửi lệnh và chờ chủ phòng trả kết quả (bản sao đã cập nhật khi nhận được). Quá 4 giây không thấy thì coi như không có lỗi. */
+  private pending = new Map<number, (err: string | null) => void>();
+  sendActWait(name: string, args: unknown[]): Promise<string | null> {
+    const id = ++this.actId;
+    return new Promise(resolve => {
+      this.pending.set(id, resolve);
+      this.tr.send(this.hostPeer ?? '*', { t: 'act', id, name, args } satisfies ToHost);
+      globalThis.setTimeout(() => { if (this.pending.delete(id)) resolve(null); }, 4000);
+    });
+  }
   sendReady(on = true) { this.tr.send(this.hostPeer ?? '*', { t: 'ready', on } satisfies ToHost); }
   /** Gửi điều khiển khi đổi hướng, và nhắc lại 5 lần/giây cho chắc */
   sendInput(x: number, y: number, dtMs: number) {
@@ -424,7 +451,7 @@ export class NetClient {
 }
 
 /** Nghịch đồ được báo cho cả phòng (ngồi, cốc nước đi theo trạng thái nên không cần) */
-export const LOBBY_FX = new Set(['bell', 'cat', 'fish', 'plant:0', 'plant:1']);
+export const LOBBY_FX = new Set(['bell', 'cat', 'fish', 'plant:0', 'plant:1', 'water']);
 function sanitizeLobby(s: LobbyState): LobbyState {
   const n = (v: unknown, lo: number, hi: number) => { const x = typeof v === 'number' && Number.isFinite(v) ? v : 0; return Math.max(lo, Math.min(hi, x)); };
   const seat = s?.seat === null || s?.seat === undefined ? null : Math.round(n(s.seat, 0, 20));

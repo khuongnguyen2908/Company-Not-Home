@@ -252,3 +252,70 @@ async def main6():
         print("lỗi:", errs[:3])
         await b.close()
 print('=== Phần 6: bot không sót khi chuyển sang phòng online, nút sao chép, xe không chồng nhau, cài đặt phòng ==='); asyncio.run(main6())
+
+async def main7():
+    async with async_playwright() as p:
+        b = await p.chromium.launch(args=["--disable-gpu","--disable-webgl"])
+        ctx = await b.new_context(viewport={"width":1500,"height":900}); pg = await ctx.new_page()
+        await pg.goto("http://localhost:8765/index.html?multitest=3"); await pg.wait_for_timeout(9000)
+        F = sorted([f for f in pg.frames if 'mt=' in f.url], key=lambda f: f.url)
+        for f in F: await f.evaluate("window.addEventListener('error', e => (window.__errs ||= []).push(e.message))")
+        await pg.select_option(".mt-roles select[data-name='Người 2']", "artist")
+        await pg.select_option(".mt-roles select[data-name='Người 3']", "animator")
+        await pg.wait_for_timeout(300)
+        await pg.click(".mt-bar button[data-c='start']"); await pg.wait_for_timeout(3000)
+        await pg.click(".mt-bar button[data-c='ready']"); await pg.wait_for_timeout(8000)
+        print("vai sau khi giao:", [await f.evaluate("(() => { const p=__session.world.player; return p.name+': '+(p.role==='impostor'?'Nội gián':p.dept); })()") for f in F])
+        # ---- Artist ở máy người 2: mở máy so màu, giữ 3 giây
+        await F[0].evaluate("(() => { const w=__session.world; w.meetingCount=1; const a=w.agents.find(o=>o.name==='Người 2'); a.artistNext=0; })()"); await pg.wait_for_timeout(600)
+        await F[1].evaluate("__ui.openColorCheck()"); await pg.wait_for_timeout(400)
+        await F[1].click(".cc-g"); await pg.wait_for_timeout(300)   # bước 1: chọn màu
+        hb = await (await F[1].query_selector(".cc-scan .hold")).bounding_box()      # bước 2: giữ nút quét 3 giây
+        await pg.mouse.move(hb['x']+hb['width']/2, hb['y']+hb['height']/2); await pg.mouse.down(); await pg.wait_for_timeout(3500); await pg.mouse.up(); await pg.wait_for_timeout(900)
+        res = await F[1].evaluate("document.querySelector('.cc-result')?.innerText.replace(/\\s+/g,' ')")
+        host_res = await F[0].evaluate("(() => { const a=__session.world.agents.find(o=>o.name==='Người 2'); const r=a.artistResults.at(-1); return r ? r.group+':'+(r.has?'CÓ':'KHÔNG CÓ') : 'không có'; })()")
+        print("Artist (máy người 2) thấy:", res, "| chủ phòng ghi:", host_res)
+        await pg.screenshot(path="/tmp/role_artist.png")
+        await F[1].evaluate("document.querySelectorAll('.modal').forEach(m=>m.remove())")
+        # ---- Animator ở máy người 3: có người bị gài mà Animator đã biết
+        await F[0].evaluate("""(() => { const w=__session.world; const an=w.agents.find(o=>o.name==='Người 3'); const k=w.agents.find(o=>o.role==='impostor'); const v=w.agents.find(o=>!o.human && o.role==='crew' && o.alive);
+          v.alive=false; v.killedBy=k.id; w.bodies.push({victim:v.id,x:v.x,y:v.y,room:null,t:w.time}); an.knownDead.push(v.id); window.__victim=v.name; })()"""); await pg.wait_for_timeout(600)
+        await F[2].evaluate("__ui.openAnimator()"); await pg.wait_for_timeout(500)
+        print("Animator (máy người 3) thấy:", await F[2].evaluate("document.querySelector('.modal')?.innerText.replace(/\\s+/g,' ').slice(0,160) ?? 'không mở'"))
+        await pg.screenshot(path="/tmp/role_anim.png")
+        for i,f in enumerate(F): print(f"lỗi ô {i+1}:", await f.evaluate("(window.__errs||[]).slice(0,3)"))
+        await b.close()
+print('=== Phần 7: giao vai qua thanh công cụ; Artist so màu và Animator ở máy người vào phòng ==='); asyncio.run(main7())
+
+THROTTLE8 = """(() => { const st = window.setTimeout.bind(window); window.setTimeout = (f, ms, ...a) => st(f, (ms||0) + 60000, ...a); window.requestAnimationFrame = () => 0;
+  Object.defineProperty(document, 'hidden', { get: () => true, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); })()"""
+async def main8():
+    async with async_playwright() as p:
+        b = await p.chromium.launch(args=["--disable-gpu","--disable-webgl"])
+        ctx = await b.new_context(viewport={"width":1500,"height":900}); pg = await ctx.new_page()
+        await pg.goto("http://localhost:8765/index.html?multitest=3"); await pg.wait_for_timeout(9000)
+        F = lambda: sorted([f for f in pg.frames if 'mt=' in f.url], key=lambda f: f.url)
+        await pg.select_option(".mt-roles select[data-name='Người 2']", "climber"); await pg.wait_for_timeout(300)
+        await pg.click(".mt-bar button[data-c='start']"); await pg.wait_for_timeout(3000)
+        await pg.click(".mt-bar button[data-c='ready']"); await pg.wait_for_timeout(8000)
+        fr = F()
+        for f in fr: await f.evaluate("window.addEventListener('error', e => (window.__errs ||= []).push(e.message))")
+        # ---- 1. họp, người 3 tải lại trang giữa họp
+        await pg.click(".mt-bar button[data-c='meeting']"); await pg.wait_for_timeout(3500)
+        await fr[2].evaluate("location.reload()"); await pg.wait_for_timeout(6000)
+        fr = F()
+        print("1. người 3 vào lại giữa họp: phase =", await fr[2].evaluate("__session.world?.phase"), "| phòng họp mở:", await fr[2].evaluate("!!document.querySelector('.meet')"))
+        # ---- 3. Intern tham vọng (người 2) tố cáo ẩn danh, xem ở người 3
+        await fr[1].evaluate("(async () => { const w=__session.world; const t=w.agents.find(o=>o.alive && o.id!==w.player.id).id; await __net.client.sendActWait('anonAccuse',[t]); })()"); await pg.wait_for_timeout(1500)
+        print("3. tin ẩn danh ở người 3: có =", await fr[2].evaluate("!!document.querySelector('.chat-log .msg.anon')"), "| bị hiện như tin của mình (.me):", await fr[2].evaluate("!!document.querySelector('.chat-log .msg.anon.me')"))
+        # ---- 2. chủ phòng ẩn tab (hẹn giờ bị hãm thêm 60 giây, vòng lặp vẽ dừng); tua cuộc họp tới kết quả
+        await fr[0].evaluate(THROTTLE8)
+        await fr[0].evaluate("(() => { const m=__session.world.meeting; m.t = m.duration - 0.2; })()")
+        for t in range(14):
+            await pg.wait_for_timeout(1000)
+            ph = await fr[0].evaluate("__session.world.phase")
+            if ph == 'play': break
+        print(f"2. chủ phòng ở tab ẩn: sau {t+1} giây cuộc họp kết thúc? phase chủ phòng = {ph} | người 2 thấy phase =", await fr[1].evaluate("__session.world.phase"))
+        for i,f in enumerate(F()): print(f"lỗi ô {i+1}:", await f.evaluate("(window.__errs||[]).slice(0,3)"))
+        await b.close()
+print('=== Phần 8: vào lại giữa họp, tin ẩn danh, chủ phòng ở tab ẩn (hẹn giờ bị hãm) vẫn kết thúc họp ==='); asyncio.run(main8())

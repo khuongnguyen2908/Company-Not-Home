@@ -2,12 +2,14 @@
 // Mỗi ô là một trang game riêng (?mt=k), các ô nói chuyện với nhau trong trình duyệt (không qua mạng).
 // Bấm vào ô nào thì điều khiển người đó; chỉ ô đang chọn phát âm thanh.
 import { newRoomCode } from '../net/room';
+import { SPECIAL_ROLES, ROLE_INFO } from '../game/data';
 
 export function openMultitest(root: HTMLElement, n: number) {
   n = Math.max(2, Math.min(6, n));
   const code = newRoomCode();
   document.body.classList.add('mt-mode');
   const base = `${location.origin}${location.pathname}`;
+  const admin = new URLSearchParams(location.search).has('admin') ? '&admin' : ''; // ?multitest=4&admin: các ô đều ở chế độ admin
   const cols = n <= 2 ? 2 : n <= 4 ? 2 : 3;
   root.innerHTML = `<div class="mt">
     <div class="mt-bar">
@@ -17,9 +19,10 @@ export function openMultitest(root: HTMLElement, n: number) {
       <button type="button" data-c="meeting">Gọi họp ngay</button>
       <button type="button" data-c="again">Chơi ván mới</button>
       <label>Ép làm Nội gián: <select id="mt-imp"><option value="-1">ngẫu nhiên</option>${Array.from({ length: n }, (_, i) => `<option value="${i}">Người ${i + 1}</option>`).join('')}</select></label>
+      <span class="mt-roles">Giao vai (ván tới): ${Array.from({ length: n }, (_, i) => `<label>Người ${i + 1} <select data-name="Người ${i + 1}"><option value="">ngẫu nhiên</option><option value="impostor">🐍 Nội gián</option><option value="intern">Thực tập sinh</option>${SPECIAL_ROLES.map(r => `<option value="${r}">${ROLE_INFO[r].icon} ${ROLE_INFO[r].name}</option>`).join('')}</select></label>`).join(' ')}</span>
       <span class="mt-hint">Bấm vào một ô để điều khiển người đó (bàn phím chỉ vào ô đang chọn).</span>
     </div>
-    <div class="mt-grid" style="--cols:${cols}">${Array.from({ length: n }, (_, i) => `<div class="mt-cell" data-slot="${i + 1}"><div class="mt-tag"><b>Người ${i + 1}</b>${i === 0 ? ' · chủ phòng' : ''}<span class="mt-st"></span></div><iframe title="Người ${i + 1}" src="${base}?mt=${i + 1}&room=${code}" allow="clipboard-write"></iframe></div>`).join('')}</div>
+    <div class="mt-grid" style="--cols:${cols}">${Array.from({ length: n }, (_, i) => `<div class="mt-cell" data-slot="${i + 1}"><div class="mt-tag"><b>Người ${i + 1}</b>${i === 0 ? ' · chủ phòng' : ''}<span class="mt-st"></span></div><iframe title="Người ${i + 1}" src="${base}?mt=${i + 1}&room=${code}${admin}" allow="clipboard-write"></iframe></div>`).join('')}</div>
   </div>`;
   const frames = [...root.querySelectorAll<HTMLIFrameElement>('iframe')];
   const send = (k: number, cmd: string, arg?: number) => frames[k]?.contentWindow?.postMessage({ mt: 'cmd', cmd, arg }, location.origin);
@@ -29,6 +32,9 @@ export function openMultitest(root: HTMLElement, n: number) {
     else send(0, c, c === 'start' ? n : undefined); // các lệnh điều khiển ván gửi cho chủ phòng (ô 1); bắt đầu thì chờ đủ n ô
   });
   (root.querySelector('#mt-imp') as HTMLSelectElement).onchange = (e) => send(0, 'imp', Number((e.target as HTMLSelectElement).value));
+  // giao vai: gửi cho chủ phòng (ô 1), áp dụng khi bắt đầu ván tới
+  root.querySelectorAll<HTMLSelectElement>('.mt-roles select').forEach(sel => sel.onchange = () =>
+    frames[0]?.contentWindow?.postMessage({ mt: 'cmd', cmd: 'role', name: sel.dataset.name, role: sel.value }, location.origin));
   window.addEventListener('message', (e) => {
     if (e.origin !== location.origin) return;
     const d = e.data as { mt?: string; slot?: number; on?: boolean; phase?: string; role?: string; alive?: boolean };

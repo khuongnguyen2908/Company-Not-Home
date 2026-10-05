@@ -784,7 +784,7 @@ export function openColorCheck(
   groups: { id: string; name: string; hex: string }[],
   history: { name: string; hex: string; has: boolean }[],
   onHold: (on: boolean) => void,
-  onDone: (group: string) => boolean | null,
+  onDone: (group: string) => boolean | null | Promise<boolean | null>,
 ) {
   closeMini();
   const wrap = document.createElement('div');
@@ -825,7 +825,10 @@ export function openColorCheck(
       if (Math.random() < 0.12) sfx.click();
       if (t >= 3) {
         finished = true; onHold(false);
-        const has = onDone(g.id);
+        const r0 = scan.querySelector('.cc-result') as HTMLElement;
+        r0.hidden = false; r0.className = 'cc-result'; r0.innerHTML = '<span>Đang đối chiếu…</span>';
+        void Promise.resolve(onDone(g.id)).then(has => {
+        if (!wrap.isConnected) return;
         if (has === null) { closeMini(); return; }
         has ? sfx.fail() : sfx.taskDone();
         const r = scan.querySelector('.cc-result') as HTMLElement;
@@ -833,6 +836,7 @@ export function openColorCheck(
         r.hidden = false;
         r.className = 'cc-result ' + (has ? 'bad' : 'good');
         r.innerHTML = has ? `<b>CÓ</b><span>Ít nhất một Nội gián có màu ${g.name.toLowerCase()} trên người.</span>` : `<b>KHÔNG CÓ</b><span>Không Nội gián nào có màu ${g.name.toLowerCase()} trên người.</span>`;
+        });
       }
     }, 50);
   });

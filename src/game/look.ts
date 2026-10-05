@@ -46,6 +46,13 @@ export const BODIES: BodyDef[] = [
   { id: 'toast', name: 'Lát bánh mì', color: ['#f6d79c/#b8742f', '#ffe9c4/#8a5a35'], def: '#f6d79c/#b8742f', hasHair: false, human: false },
   { id: 'plant', name: 'Chậu cây', color: ['#d97b4a/#3fa66b', '#2e9cf0/#7cc84a', '#f4f4f4/#2f9e5e'], def: '#d97b4a/#3fa66b', hasHair: false, human: false },
   { id: 'slime', name: 'Cục slime', color: 'free', def: '#4ee1a0', hasHair: false, human: false },
+  // skin không tay chân (lạ mắt hơn)
+  { id: 'cloud', name: 'Đám mây', color: 'free', def: '#ffffff', hasHair: false, human: false },
+  { id: 'drop', name: 'Giọt nước', color: 'free', def: '#5ab8ff', hasHair: false, human: false },
+  { id: 'mochi', name: 'Bánh mochi', color: 'free', def: '#ffd6e6', hasHair: false, human: false },
+  { id: 'egg', name: 'Quả trứng', color: 'free', def: '#fff4dc', hasHair: false, human: false },
+  { id: 'flame', name: 'Ngọn lửa', color: 'free', def: '#ff7a2f', hasHair: false, human: false },
+  { id: 'snake', name: 'Con rắn', color: 'free', def: '#7cc84a', hasHair: false, human: false },
   { id: 'matcha', name: 'Ly matcha', color: 'fixed', def: '#7cbf4a/#f4f1e0', hasHair: false, human: false },
   { id: 'banhmi', name: 'Bánh mì Việt Nam', color: 'fixed', def: '#e0a052/#9a5a1f', hasHair: false, human: false },
   { id: 'shark', name: 'Cá mập', color: ['#8a97ad/#f4f4f4', '#3d6fb5/#e6f3ff', '#e889b0/#fff0f6'], def: '#8a97ad/#f4f4f4', hasHair: false, human: false },
