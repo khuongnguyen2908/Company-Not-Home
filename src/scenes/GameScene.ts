@@ -168,7 +168,7 @@ export class GameScene extends Phaser.Scene {
     // Bản có đủ đồ đạc (vẽ phẳng) cho màn hình camera an ninh
     for (const f of FURNITURE) {
       const art = furnitureArt(f.kind, f.w * TILE, f.h * TILE, { low: this.againstSouthWall(f) });
-      const pen = new Pen(g, f.x * TILE, f.y * TILE);
+      const pen = new Pen(g, f.x * TILE, f.y * TILE + this.wallDy(f, art.up));
       art.draw(pen);
       for (const a of art.anims) drawAnim(pen, a, 0, { power: true, wifi: false, seed: 0 });
     }
@@ -208,7 +208,8 @@ export class GameScene extends Phaser.Scene {
         g.generateTexture(key, tw, th);
         g.destroy();
       }
-      const X = f.x * TILE, Y = f.y * TILE;
+      // đồ treo trên mặt tường: bỏ phần nhô lên, nằm gọn giữa mặt tường
+      const X = f.x * TILE, Y = f.y * TILE + this.wallDy(f, art.up);
       // Món cho người ngồi lên (sofa): xếp theo mép trên để người ngồi nằm trên; còn lại theo mép dưới
       const depth = art.seatDepth ? Y + 2 : Y + H;
       this.add.image(X - art.pad - art.left, Y - art.up - art.pad, key).setOrigin(0, 0).setDepth(depth);
@@ -217,6 +218,10 @@ export class GameScene extends Phaser.Scene {
         this.furnAnims.push({ g, x: X, y: Y, cx: X + W / 2, cy: Y + H / 2, rx: W / 2 + 1.6 * TILE, ry: H / 2 + 1.6 * TILE, anims: art.anims, level: levelAt(X + W / 2, Y + H / 2), bx: X - art.left - 30, by: Y - art.up - 40, bw: W + art.left + art.right + 60, bh: H + art.up + 60, seed: i * 1.37 });
       }
     });
+  }
+  /** Đồ treo trên mặt tường (không chặn đường, nằm trên ô tường): hình vẽ vốn nhô lên trên, nên dời xuống cho nằm gọn trên mặt tường */
+  private wallDy(f: { x: number; y: number; blocking: boolean }, up: number) {
+    return !f.blocking && isWallTile(f.x, f.y) ? Math.max(0, up - 6) : 0;
   }
   /** Đồ đặt sát tường phía dưới (cả cạnh dưới đều là tường) */
   private againstSouthWall(f: { x: number; y: number; w: number; h: number }) {
@@ -281,7 +286,7 @@ export class GameScene extends Phaser.Scene {
         const hy = (LIFT_DOORS.find(l => l.level === f.id)?.tiles[0].y ?? oy + 13) - oy;
         const wy = oy + TOP_WALL(f.id); // mặt tường ngoài (tầng 1–3: hàng thứ hai)
         const onWall = (x: number) => FURNITURE.some(u => u.y === wy && u.x < ox + x + 2 && u.x + u.w > ox + x); // đồ treo trên tường ngoài
-        for (const x of [3, 9, 15, 23, 29, 34].filter(x => x + 2 <= f.w && !onWall(x))) {
+        for (const x of [3, 9, 15, 23, 29, 34].filter(x => x + 2 <= f.w - 1 && !onWall(x))) { // không đè lên cột tường ngoài cùng
           this.box(g, (ox + x) * TILE + 4, wy * TILE + 8, TILE * 1.6, TILE - 22, 0x9fd6ff, 3, 3);
           g.lineStyle(2, 0xffffff, 0.7); g.lineBetween((ox + x) * TILE + 12, wy * TILE + 30, (ox + x) * TILE + 26, wy * TILE + 14);
         }
@@ -297,9 +302,9 @@ export class GameScene extends Phaser.Scene {
       }
       if (f.id === 2) {
         // Bảng KPI trên tường Phòng làm việc
-        this.box(g, (ox + 6) * TILE + 6, oy * TILE + 6, 2.6 * TILE, TILE - 16, 0xffffff, 3, 3);
+        this.box(g, (ox + 6) * TILE + 6, (oy + TOP_WALL(f.id)) * TILE + 6, 2.6 * TILE, TILE - 16, 0xffffff, 3, 3);
         g.lineStyle(3, 0xe2412f, 1);
-        g.beginPath(); g.moveTo((ox + 6.3) * TILE, (oy + 0.65) * TILE); g.lineTo((ox + 7) * TILE, (oy + 0.45) * TILE); g.lineTo((ox + 7.6) * TILE, (oy + 0.55) * TILE); g.lineTo((ox + 8.4) * TILE, (oy + 0.25) * TILE); g.strokePath();
+        g.beginPath(); g.moveTo((ox + 6.3) * TILE, (oy + TOP_WALL(f.id) + 0.65) * TILE); g.lineTo((ox + 7) * TILE, (oy + TOP_WALL(f.id) + 0.45) * TILE); g.lineTo((ox + 7.6) * TILE, (oy + TOP_WALL(f.id) + 0.55) * TILE); g.lineTo((ox + 8.4) * TILE, (oy + TOP_WALL(f.id) + 0.25) * TILE); g.strokePath();
       }
       if (f.id === 4) {
         // Sân thượng: lan can ngoài trời

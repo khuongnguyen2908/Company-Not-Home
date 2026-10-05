@@ -232,7 +232,7 @@ export const STATIONS: Station[] = [
   S(1, 'camera', 'Xem camera an ninh', 'security', 17, 2, 18, 1),
   S(1, 'power', 'Bật lại cầu dao', 'power', 6, 12, 6.5, 11.4),
   S(1, 'mt_cab', 'Sửa khóa tủ đồ', 'reception', 2, 6, 1.5, 6.5),
-  S(1, 'darts', 'Ném phi tiêu', 'fun', 24, 3, 23.5, 0.4),
+  S(1, 'darts', 'Ném phi tiêu', 'fun', 23, 1, 23.5, 0.4), // đứng ngay dưới bia
   S(1, 'claw', 'Gắp thú bông', 'fun', 29, 3, 28, 1),
   S(1, 'fishfeed', 'Cho cá ăn', 'fun', 24, 7, 24.5, 6),
   // Tầng 2
@@ -246,7 +246,7 @@ export const STATIONS: Station[] = [
   S(2, 'copier', 'Gỡ kẹt photocopy', 'print', 24, 2, 25, 1),
   S(2, 'printdoc', 'In tài liệu', 'print', 28, 2, 29, 1),
   S(2, 'minutes', 'Lấy biên bản họp', 'print', 27, 4, 28, 4), // đứng cạnh tủ, không đứng sau tủ
-  S(2, 'mt_desk', 'Gia cố gầm bàn họp', 'meeting', 21, 6, 21.5, 5.5),
+  S(2, 'mt_desk', 'Gia cố gầm bàn họp', 'meeting', 21, 3, 20.8, 3.5), // đứng sát cạnh bàn họp
   S(2, 'mt_wc', 'Sửa ống gió', 'print', 29, 5, 29.5, 5.5),
   // Tầng 3
   S(3, 'stamp', 'Ký duyệt hồ sơ', 'director', 5, 4, 5, 3),
