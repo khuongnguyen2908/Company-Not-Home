@@ -230,7 +230,6 @@ export interface Meeting {
   votes: Map<number, number | 'skip'>;
   voteAt: Map<number, number>;
   result: null | { ejected: number | null; tie: boolean; tally: Map<number | 'skip', number[]>; saved?: number };
-  readyVote?: number[]; // người thật đã bấm Sẵn sàng bỏ phiếu
 }
 
 export interface WorldOptions {
@@ -2062,6 +2061,7 @@ export class World {
   }
 
   private say(m: Meeting, from: number, text: string, effects: Effect[] = [], at?: number, extra: { claim?: { target: number; imp: boolean }; reveal?: boolean } = {}) {
+    if (!this.botVoice(this.agents[from])) return; // cổng chung: không bao giờ nói thay ghế của người thật
     const last = m.queue.length ? m.queue[m.queue.length - 1].at : 1.2;
     m.queue.push({ at: at ?? last + 2 + this.rng() * 1.8, from, text, effects, ...extra });
     m.queue.sort((p, q) => p.at - q.at);
@@ -2349,7 +2349,7 @@ export class World {
       }
     }
     if (!mentioned.length && this.rng() < 0.4) {
-      const s = this.agents.filter(a => a.alive && !(a.isPlayer || a.human));
+      const s = this.agents.filter(a => a.alive && this.botVoice(a));
       if (s.length) this.say(m, pick(s, this.rng).id, pick(FILLER_LINES, this.rng), [], m.t + 2 + this.rng() * 2);
     }
   }
@@ -2394,7 +2394,8 @@ export class World {
     if (m.queue.length && m.queue[0].at <= m.t && m.t - lastT >= CHAT_GAP) {
       const q = m.queue.shift()!;
       const sp = this.agents[q.from];
-      if (sp.alive && q.reveal) {
+      if (!this.botVoice(sp)) { /* ghế này vừa có người thật cầm lại: bỏ câu bot đã xếp hàng */ }
+      else if (sp.alive && q.reveal) {
         if (!sp.directorRevealed) this.revealDirector(sp);
       } else if (sp.alive) {
         m.chat.push({ from: q.from, text: q.text, t: m.t });
@@ -2409,7 +2410,7 @@ export class World {
       if (this.agents[r.from].alive) m.reactions.push({ from: r.from, emoji: r.emoji, t: m.t });
     }
     for (const [id, at] of m.voteAt) {
-      if (m.t >= m.discussEnd + at && !m.votes.has(id) && this.agents[id].alive) {
+      if (m.t >= m.discussEnd + at && !m.votes.has(id) && this.agents[id].alive && !this.agents[id].human) { // người thật đã quay lại: tự bỏ phiếu
         m.votes.set(id, this.agents[id].seatOfHuman ? 'skip' : this.botVote(this.agents[id])); // ghế của người thật: bot không tự quyết phiếu
       }
     }
@@ -2420,12 +2421,7 @@ export class World {
 
   /** Người chơi bấm "Sẵn sàng bỏ phiếu": mở bỏ phiếu ngay */
   /** Một người thật bấm "Sẵn sàng bỏ phiếu": đủ mọi người thật còn sống thì mới mở bỏ phiếu sớm */
-  readyToVote(a: Agent) {
-    const m = this.meeting;
-    if (!m || m.result || m.t >= m.discussEnd || !a.human || !a.alive) return;
-    (m.readyVote ??= []).includes(a.id) || m.readyVote.push(a.id);
-    if (this.agents.filter(h => h.human && h.alive).every(h => m.readyVote!.includes(h.id))) this.skipDiscussion();
-  }
+  /** Mở bỏ phiếu ngay (dùng cho công cụ thử) */
   skipDiscussion() {
     const m = this.meeting;
     if (!m || m.result || m.t >= m.discussEnd) return;

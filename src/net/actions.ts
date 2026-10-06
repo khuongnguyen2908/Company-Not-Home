@@ -26,7 +26,6 @@ export const ACTIONS: Record<string, Fn> = {
   vote: (w, a, [t]) => { const v = t === 'skip' ? 'skip' : num(t); if (v === 'skip' || Number.isInteger(v)) w.vote(a, v as number | 'skip'); },
   chat: (w, a, [text]) => { if (typeof text === 'string' && text.trim()) w.chatFrom(a, text.slice(0, 160)); },
   react: (w, a, [e]) => { if (typeof e === 'string' && e.length <= 8) w.react(a.id, e); },
-  skipDiscussion: (w, a) => w.readyToVote(a),
   chooseSpawn: (w, a, [i]) => w.chooseSpawnFor(a, Number.isInteger(num(i)) ? num(i) : -1),
   // phá hoại, cửa, thang máy
   sabotage: (w, a, [k]) => (typeof k === 'string' ? w.triggerSabotage(a, k as SabotageKind) : 'Lệnh sai'),

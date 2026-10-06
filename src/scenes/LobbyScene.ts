@@ -8,6 +8,7 @@ import { ICON_ART } from '../ui/icons';
 import { furnitureArt, drawAnim, Pen, shade } from '../render/furniture';
 import { drawVehicle, drawCat } from '../render/street';
 import { sfx } from '../audio';
+import { net } from '../net/room';
 import { LOBBY_LINES, LOBBY_REPLIES, BUS_JOKES, normalize } from '../game/data';
 
 const T = 48;
@@ -134,6 +135,8 @@ export class LobbyScene extends Phaser.Scene {
   private session = 0;
   private live = -1;
   private alive(token: number) { return token === this.live; }
+  /** đang ở sảnh của phòng chơi nhiều người mà mình không phải chủ phòng */
+  private guestOnline() { return session.lobby.online && net.role === 'client'; }
 
   constructor() { super('lobby'); }
 
@@ -850,6 +853,7 @@ export class LobbyScene extends Phaser.Scene {
     if (me.arrived && !this.cut && me.seat === null) {
       let best = 1.1 * T;
       for (const k of Object.keys(LOBBY_SPOTS) as SpotKey[]) {
+        if (k === 'elevator' && this.guestOnline()) continue; // người vào phòng: chỉ chủ phòng bắt đầu ca, không có nút E ở đây
         const sp = LOBBY_SPOTS[k];
         const cx = Math.max(sp.x0 * T, Math.min(sp.x1 * T, hx)), cy = Math.max(sp.y0 * T, Math.min(sp.y1 * T, hy));
         const d = Math.hypot(cx - hx, cy - hy) + 0.15 * T; // biển lớn nhường món nhỏ khi đứng ngang nhau
@@ -879,12 +883,15 @@ export class LobbyScene extends Phaser.Scene {
       const sp = LOBBY_SPOTS[k], on = k === near;
       const pad = on ? 8 : 4;
       this.glow.lineStyle(on ? 6 : 3, 0xffd23f, on ? 1 : pulse * 0.6);
-      this.glow.strokeRoundedRect(sp.x0 * T - pad, sp.y0 * T - pad, (sp.x1 - sp.x0) * T + pad * 2, (sp.y1 - sp.y0) * T + pad * 2, 12);
+      if (!(k === 'elevator' && this.guestOnline())) this.glow.strokeRoundedRect(sp.x0 * T - pad, sp.y0 * T - pad, (sp.x1 - sp.x0) * T + pad * 2, (sp.y1 - sp.y0) * T + pad * 2, 12);
       const bob = Math.sin(this.time.now / (on ? 170 : 420) + sp.x) * (on ? 5 : 3);
       const ico = this.spotIcons.get(k);
       if (ico) ico.setY(sp.y - 6 + bob).setDisplaySize(on ? 70 : 56, on ? 70 : 56).setVisible(!this.cut);
       if (on) { this.signGlow.fillStyle(0xffe36e, 0.25 + 0.15 * Math.sin(this.time.now / 160)); this.signGlow.fillCircle(sp.x, sp.y - 6 + bob, 44); }
-      this.spotLabels.get(k)!.setY(sp.y + 34 + bob).setColor(on ? '#ffe36e' : '#ffffff').setScale(on ? 1.08 : 1).setVisible(!this.cut);
+      const lab = this.spotLabels.get(k)!;
+      const want = k === 'elevator' && this.guestOnline() ? 'CHỜ CHỦ PHÒNG BẮT ĐẦU' : sp.label.toUpperCase();
+      if (lab.text !== want) lab.setText(want);
+      lab.setY(sp.y + 34 + bob).setColor(on ? '#ffe36e' : '#ffffff').setScale(on ? 1.08 : 1).setVisible(!this.cut);
     }
     this.fxTick(dt);
     this.doorArrowTick();

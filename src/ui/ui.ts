@@ -18,6 +18,7 @@ import { Peer } from 'peerjs';
 /** Màn chia ô chỉ dùng kênh nội bộ (chạy cả khi không có mạng); bình thường thêm P2P để máy khác vào được */
 const USE_P2P = !new URLSearchParams(location.search).get('mt');
 import { startPump } from '../net/pump';
+import { netLog, netLogText, netLogCount, netMeter } from '../net/netlog';
 import { DirectoryAnnouncer, fetchRooms, cleanRoomName, type RoomEntry } from '../net/directory';
 
 /** Mã máy cố định cho từng tab (giữ nguyên khi tải lại trang) để vào lại đúng nhân vật; mỗi ô ?multitest một mã riêng */
@@ -172,6 +173,54 @@ export class UI {
     session.onEvents = (e) => this.onEvents(e);
     session.onFrame = (dt) => this.frame(dt);
     this.showMainMenu();
+    if (ADMIN) this.startNetMeter();
+  }
+
+  /** Đồng hồ mạng (chỉ admin): khung hình/giây, độ trễ, lượng gửi/nhận, dữ liệu kẹt chờ gửi, nút sao chép nhật ký kết nối */
+  private p2pT: PeerTransport | null = null;
+  private startNetMeter() {
+    netMeter.on = true;
+    const el = document.createElement('div');
+    el.className = 'net-meter';
+    el.innerHTML = '<span class="nm-txt"></span><button type="button" class="nm-copy" title="Sao chép nhật ký kết nối để gửi cho người làm game">📋 Nhật ký</button>';
+    document.body.appendChild(el);
+    const txt = el.querySelector('.nm-txt') as HTMLElement;
+    (el.querySelector('.nm-copy') as HTMLButtonElement).onclick = () => {
+      const c = net.client, h = net.host;
+      const head = [
+        `Văn Phòng Hạnh Phúc · nhật ký mạng · ${new Date().toLocaleString('vi-VN')}`,
+        `Vai trò: ${net.role}${h ? ` · phòng ${h.code} · ${h.players.length} người` : c ? ` · phòng ${c.code}` : ''} · ${navigator.userAgent}`,
+        `Hiện tại: ${txt.textContent}`,
+        h ? `Chủ phòng: gói đầy đủ ${h.stats.kf}, bỏ lượt vì nghẽn ${h.stats.skipBusy}` : c ? `Người vào phòng: gói đầy đủ ${c.stats.kf}, lỡ gói ${c.stats.miss}` : '',
+        '---',
+      ].join('\n');
+      const all = head + '\n' + netLogText();
+      navigator.clipboard?.writeText(all).then(() => this.toast(`Đã sao chép ${netLogCount()} dòng nhật ký`, 1800)).catch(() => this.infoModal('Nhật ký mạng', `<textarea class="nm-area" readonly>${esc(all)}</textarea>`));
+    };
+    let frames = 0;
+    const loop = () => { frames++; requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+    let choppy = false;
+    window.setInterval(() => {
+      const fps = frames; frames = 0;
+      if (net.role !== 'solo' && !document.hidden) {
+        if (!choppy && fps < 20) { choppy = true; netLog(`[máy này] ${fps} khung hình/giây (giật)`); }
+        else if (choppy && fps >= 30) { choppy = false; netLog(`[máy này] ${fps} khung hình/giây (ổn lại)`); }
+      }
+      el.hidden = net.role === 'solo';
+      const up = netMeter.up / 1024, down = netMeter.down / 1024; netMeter.up = 0; netMeter.down = 0;
+      if (el.hidden) return;
+      const pend = (this.p2pT?.pending() ?? 0) / 1024;
+      const c = net.client;
+      const parts = [`${fps} fps`];
+      if (c) parts.push(`trễ ${Math.round(c.rtt)} ms`);
+      parts.push(`↑${up.toFixed(1)} ↓${down.toFixed(1)} KB/s`);
+      parts.push(`kẹt ${pend.toFixed(1)} KB`);
+      if (c) parts.push(`lỡ gói ${c.stats.miss}`);
+      if (net.host) parts.push(`nghẽn ${net.host.stats.skipBusy}`);
+      txt.textContent = parts.join(' · ');
+      el.classList.toggle('bad', fps < 20 || pend > 16 || (c?.rtt ?? 0) > 400);
+    }, 1000);
   }
 
   // ================= SẢNH =================
@@ -289,7 +338,21 @@ export class UI {
       this.inviteUsed = true;
       const code = normalizeCode(invite);
       if (p.name) { if (!nameIn.value) nameIn.value = p.name; window.setTimeout(() => { if (profileOk()) this.joinRoom(code); }, 150); }
-      else { $('#go-online', el).onclick = () => { if (profileOk()) this.openOnlineMenu(code); }; nameIn.focus(); }
+      else {
+        // chưa có tên (mở link lần đầu trên máy này, trong trình duyệt của Zalo/Messenger, tab ẩn danh...):
+        // nút chính thành "Vào phòng MÃ", nhập tên rồi bấm (hoặc Enter) là vào thẳng phòng
+        const join = () => { if (profileOk()) this.joinRoom(code); };
+        const ib = document.createElement('button');
+        ib.className = 'primary big invite-btn'; ib.type = 'button'; ib.id = 'go-invite';
+        ib.innerHTML = `🚪 Vào phòng ${esc(code)}<small>Bạn được mời chơi cùng · nhập tên rồi bấm vào đây</small>`;
+        ib.onclick = join;
+        const off = $('#go-offline', el);
+        off.insertAdjacentElement('beforebegin', ib);
+        off.classList.remove('primary'); off.classList.add('ghost-btn');
+        nameIn.onkeydown = (e) => { if (e.key === 'Enter') join(); };
+        $('#go-online', el).onclick = () => { if (profileOk()) this.openOnlineMenu(code); };
+        nameIn.focus();
+      }
     }
     // Màn chia ô ?multitest: ô 1 tự tạo phòng, các ô khác tự vào phòng
     if (MT_SLOT && !this.mtStarted) {
@@ -342,12 +405,13 @@ export class UI {
   }
 
   /** Chuyển cảnh Phaser giữa sảnh tầng G và văn phòng */
-  private switchScene(to: 'lobby' | 'game') {
+  private switchScene(to: 'lobby' | 'game', fresh = false) {
     const g = session.phaser;
     if (!g) return;
     const other = to === 'lobby' ? 'game' : 'lobby';
     if (g.scene.isActive(other) || g.scene.isPaused(other)) g.scene.stop(other);
-    if (!g.scene.isActive(to)) g.scene.start(to);
+    // fresh: dựng lại cảnh từ đầu kể cả khi đang chạy (ván mới ngay từ màn kết quả đi đúng đường sạch như ván đầu)
+    if (fresh || !g.scene.isActive(to)) g.scene.start(to);
   }
 
   // ================= SẢNH CHỜ TẦNG G =================
@@ -863,7 +927,8 @@ export class UI {
     this.dirAnn?.stop(); this.dirAnn = null; // gỡ khỏi danh sách Phòng Public
     if (net.host) net.host.close();
     if (net.client) { net.client.leave(); session.world = null; } // bản sao không bao giờ được tự chạy như ván chơi một mình
-    net.host = null; net.client = null; net.role = 'solo';
+    if (net.role !== 'solo') netLog(`[máy này] rời phòng (${net.role})`);
+    net.host = null; net.client = null; net.role = 'solo'; this.p2pT = null;
     session.lobby.online = false; session.lobby.remote.clear(); session.lobby.sendState = session.lobby.sendChat = session.lobby.sendFx = null;
     this.onlineLobbyOn = false;
     sessionStorage.removeItem(ROOM_KEY);
@@ -884,10 +949,10 @@ export class UI {
     this.p2pStatus = USE_P2P ? 'connecting' : null;
     if (USE_P2P) {
       const p2p = new PeerTransport(tab.peerId, 'host', code, Peer as unknown as PeerCtor);
-      multi.add(p2p);
+      multi.add(p2p); this.p2pT = p2p;
       p2p.onStatus = (st) => {
         if (st === 'taken' && net.host?.code === code && net.host.players.length === 1) { this.createRoom(newRoomCode(), opts); return; } // mã trùng phòng khác: đổi mã
-        this.p2pStatus = st; this.renderRoom();
+        this.p2pStatus = st; netLog('[P2P chủ phòng] ' + st); this.renderRoom();
       };
     }
     const h = new NetHost(multi, code, this.myProfile(), { timers: false });
@@ -928,9 +993,9 @@ export class UI {
     if (USE_P2P) window.setTimeout(() => {
       if (net.client !== c || c.room) return;
       const p2p = new PeerTransport(myPeer, 'client', code, Peer as unknown as PeerCtor);
-      multi.add(p2p);
+      multi.add(p2p); this.p2pT = p2p;
       this.p2pStatus = 'connecting';
-      p2p.onStatus = (st) => { this.p2pStatus = st; this.renderRoom(); };
+      p2p.onStatus = (st) => { this.p2pStatus = st; netLog('[P2P] ' + st); this.renderRoom(); };
       c.join();
     }, 1200);
     sessionStorage.setItem(ROOM_KEY, code);
@@ -1223,12 +1288,12 @@ export class UI {
 
   /** Phần giao diện chung khi vào ván (một mình, chủ phòng, người vào phòng) */
   private enterGameUi() {
-    this.doneSeen = new Set(); this.lastFloorBanner = -1; this.lastDeptTxt = ''; this.lastRoomTitle = '';
+    this.doneSeen = new Set(); this.lastFloorBanner = -1; this.bannerMeet = 0; this.lastDeptTxt = ''; this.lastRoomTitle = '';
     this.lobbyHud = null;
     this.spawnPickerOpen = false;
     this.root.innerHTML = '';
     closeMini();
-    this.switchScene('game');
+    this.switchScene('game', true);
     sfx.stopMusic();
     session.newGameId++;
     session.paused = true;
@@ -2196,7 +2261,6 @@ export class UI {
           <span class="fake-ctl" title="Camera bị IT khóa">📷 Tắt camera</span>
           <div class="vote-status" id="m-status"></div>
           <button class="ghost-btn dir-btn" id="m-director" hidden>✅ Công bố chức vụ Director</button>
-          <button class="ghost-btn" id="m-ready">Sẵn sàng bỏ phiếu</button>
           <button class="ghost-btn" id="m-skip" disabled>Bỏ qua, chưa đủ bằng chứng</button>
           <button class="primary danger" id="m-vote" disabled>Vote sa thải</button>
         </div>
@@ -2251,11 +2315,9 @@ export class UI {
         sfx.click();
       });
     }
-    $('#m-ready', el).onclick = () => { act('skipDiscussion'); sfx.click(); };
     const dirBtn = $('#m-director', el) as HTMLButtonElement;
     dirBtn.hidden = !(w.player.role === 'crew' && w.player.dept === 'director' && w.player.alive && !w.player.directorRevealed);
     dirBtn.onclick = () => { act('revealDirector'); dirBtn.hidden = true; sfx.stamp(); };
-    if (!w.player.alive) ($('#m-ready', el) as HTMLButtonElement).disabled = true;
     $('#m-vote', el).onclick = () => { if (this.selectedVote !== null) this.castVote(this.selectedVote); };
     if (!w.player.alive) { ($('#m-skip', el) as HTMLButtonElement).disabled = true; }
     let chatReadyAt = 0;
@@ -2341,8 +2403,6 @@ export class UI {
       if (urgent && left > 0) { clock.classList.remove('tick'); void clock.offsetWidth; clock.classList.add('tick'); sfx.click(); }
     }
     el.classList.toggle('voting', !discussing && !m.result);
-    const ready = $('#m-ready', el) as HTMLButtonElement;
-    ready.hidden = !discussing;
     const canVote = !discussing && !m.result && w.player.alive && !m.votes.has(w.player.id);
     ($('#m-skip', el) as HTMLButtonElement).disabled = !canVote;
     if (!discussing && !this.voteOpened) { this.voteOpened = true; sfx.ting(); }
@@ -2416,7 +2476,7 @@ export class UI {
     el.className = 'overlay eject';
     if (r.ejected !== null) {
       const a = w.agents[r.ejected];
-      const impLeft = w.aliveImp().filter(x => x.id !== a.id).length;
+      const impLeft = Math.max(0, w.aliveImp().length - (a.role === 'impostor' && a.alive ? 1 : 0)); // bản sao của người vào phòng không có mã thật của Nội gián: trừ theo vai
       el.innerHTML = `<div class="eject-stage">
           <div class="door"><span>Lối ra</span></div>
           <div class="drag"><img class="victim" src="${avatarURL(a.look)}" alt=""><img class="guard" src="${avatarURL(GUARD_LOOK)}" alt=""></div>
@@ -2923,10 +2983,13 @@ export class UI {
     } else ban.hidden = true;
     // Biển tên tầng trượt xuống khi vừa sang tầng mới
     $('#b-map', this.hudEl).classList.toggle('alarm', !!w.sabotage && w.sabotage.kind !== 'boss' && p.role !== 'impostor');
+    // sau mỗi cuộc họp: đóng màn chọn nơi bắt đầu, game chạy lại thì luôn hiện tầng đang đứng một lần (kể cả cùng tầng cũ)
     { const lvb = levelAt(p.x, p.y);
-      if (lvb >= 1 && lvb <= 4 && lvb !== this.lastFloorBanner && w.phase === 'play') {
-        const first = this.lastFloorBanner === -1;
-        this.lastFloorBanner = lvb;
+      const afterMeet = w.meetingCount !== this.bannerMeet;
+      const blocked = session.paused || this.spawnPickerOpen || !!this.root.querySelector('.spawn-modal, .spawn-wait, .overlay.eject');
+      if (lvb >= 1 && lvb <= 4 && w.phase === 'play' && !blocked && (lvb !== this.lastFloorBanner || afterMeet)) {
+        const first = this.lastFloorBanner === -1 && !afterMeet;
+        this.lastFloorBanner = lvb; this.bannerMeet = w.meetingCount;
         if (!first) this.floorBanner(lvb);
       } }
     { const lv = levelAt(p.x, p.y); const rn = roomName(roomAt(p.x, p.y)); const t = lv === 0 ? `🛗 Thang máy · tầng ${Math.round(w.lift.pos)}${w.lift.stuck ? ' · ĐANG KẸT' : ''}` : lv === 5 ? '🪜 Thang bộ' : lv === 4 ? rn : `${levelName(lv)} · ${rn}`; const el = $('.room-name', this.hudEl); if (this.lastRoomTitle !== t) { this.lastRoomTitle = t; el.textContent = t; } }
@@ -2943,6 +3006,8 @@ export class UI {
   private lastRoomTitle = '';
   private doneSeen = new Set<string>();
   private lastFloorBanner = -1;
+  /** cuộc họp thứ mấy đã hiện biển tầng sau họp */
+  private bannerMeet = 0;
   private renderMapFloors() {
     const w = session.world!, p = w.player;
     // Đang mở sơ đồ mà đổi tầng: sơ đồ nhảy theo tầng mới

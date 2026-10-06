@@ -128,6 +128,12 @@ export class PeerTransport implements Transport {
     const c = this.conns.get(to);
     if (c?.open && !(drop && backlog(c) > BACKLOG_LIMIT)) c.send(pkt);
   }
+  busy(to: string) {
+    const c = this.mode === 'client' ? this.hostConn : this.conns.get(to);
+    return !!c?.open && backlog(c) > BACKLOG_LIMIT;
+  }
+  /** tổng dữ liệu đang chờ gửi trên mọi đường (đồng hồ mạng của admin) */
+  pending() { let n = 0; for (const c of this.mode === 'client' ? [this.hostConn] : [...this.all]) if (c?.open) n += Math.min(backlog(c), 1e8); return n; }
   /** Chủ phòng: mã máy logic này có đang nối qua P2P không */
   knows(id: string) { return this.conns.has(id); }
   onMessage(fn: (from: string, msg: unknown) => void) { this.handlers.push(fn); }

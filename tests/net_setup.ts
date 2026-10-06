@@ -28,8 +28,8 @@ export async function setup(seed: number, dept: string | 'impostor'): Promise<Ct
   const B = new NetClient(hub.join('B'), 'ROL-234', prof('Bình', '303'), { timers: false });
   A.clock = B.clock = () => now;
   const evA: GameEvent[] = [], evB: GameEvent[] = [];
-  A.tr.onMessage((_f, m) => { const x = m as ToClient; if (x.t === 'full' && x.ev) evA.push(...x.ev); });
-  B.tr.onMessage((_f, m) => { const x = m as ToClient; if (x.t === 'full' && x.ev) evB.push(...x.ev); });
+  A.tr.onMessage((_f, m) => { const x = m as ToClient; if ((x.t === 'full' || x.t === 'dfull') && x.ev) evA.push(...x.ev); });
+  B.tr.onMessage((_f, m) => { const x = m as ToClient; if ((x.t === 'full' || x.t === 'dfull') && x.ev) evB.push(...x.ev); });
   A.join(); B.join();
   for (let t = 0; t < 400; t += 20) { now += 20; hub.tick(now); }
   const w = new World({ playerName: 'Chủ', playerLook: randomLook(), roles: {}, maxSpecial: 0, playerRole: 'crew', bots: 7, impostors: 1, seed });
@@ -68,7 +68,7 @@ export async function setup(seed: number, dept: string | 'impostor'): Promise<Ct
     ctx.A.tr.close();
     const A2 = new NetClient(hub.join('A'), 'ROL-234', ctx.A.me, { timers: false });
     A2.clock = () => now;
-    A2.tr.onMessage((_f, m) => { const x = m as ToClient; if (x.t === 'full' && x.ev) evA.push(...x.ev); });
+    A2.tr.onMessage((_f, m) => { const x = m as ToClient; if ((x.t === 'full' || x.t === 'dfull') && x.ev) evA.push(...x.ev); });
     ctx.A = A2;
     A2.join(); await run(0.6);
     return A2;

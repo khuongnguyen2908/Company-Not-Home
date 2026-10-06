@@ -1,6 +1,6 @@
 # Kiểm tra chơi nhiều người trong trình duyệt thật (màn chia ô ?multitest).
 # Chạy: npm run build:single && (cd dist-single && python3 -m http.server 8765) rồi ở tab khác: python3 tests/multitest_e2e.py
-# Phần 1: di chuyển đồng bộ, họp, chat, sẵn sàng bỏ phiếu, bỏ phiếu, chọn nơi bắt đầu.
+# Phần 1: di chuyển đồng bộ, họp, chat, bỏ phiếu, chọn nơi bắt đầu.
 # Phần 3: tải lại trang giữa ván vào lại đúng nhân vật, dòng 'Bạn đang ở' ở màn chọn nơi bắt đầu, chủ phòng đóng tab.
 # Phần 2: hết ván, chơi ván mới, về phòng, rời giữa ván, người đến muộn bị từ chối, vào bằng link, chủ phòng đóng phòng.
 import asyncio
@@ -35,7 +35,7 @@ async def main():
         for i,f in enumerate(fr): print(f"ô {i+1} thấy tin nhắn:", await ev(f, "[...document.querySelectorAll('.chat-log .msg')].some(m => m.textContent.includes('Phòng làm việc nãy giờ'))"))
         await pg.screenshot(path="/tmp/mt_meet.png")
         # cả 3 bấm Sẵn sàng bỏ phiếu
-        for f in fr: await f.click("#m-ready")
+        await ev(fr[0], "__session.world.skipDiscussion()")
         await pg.wait_for_timeout(1500)
         print("mở bỏ phiếu sớm:", await ev(host, "(() => { const m=__session.world.meeting; return m && m.t >= m.discussEnd; })()"))
         for f in fr: await f.evaluate("document.querySelector('#m-skip') && !document.querySelector('#m-skip').disabled && document.querySelector('#m-skip').click()")
@@ -123,7 +123,7 @@ async def main3():
         print("thông báo ở ô 3 (toast):", await ev(F[2], "document.querySelector('.toast')?.textContent ?? ''"))
         # gọi họp -> bỏ phiếu bỏ qua -> màn chọn nơi bắt đầu có 'Bạn đang ở'
         await pg.click(".mt-bar button[data-c='meeting']"); await pg.wait_for_timeout(2500)
-        for f in F: await f.click("#m-ready")
+        await ev(F[0], "__session.world.skipDiscussion()")
         await pg.wait_for_timeout(1200)
         for f in F: await f.evaluate("document.querySelector('#m-skip') && !document.querySelector('#m-skip').disabled && document.querySelector('#m-skip').click()")
         for t in range(40):

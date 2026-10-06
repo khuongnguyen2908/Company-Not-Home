@@ -93,10 +93,20 @@ PeerJS cho mỗi kênh dồn tới 8 MB chưa gửi: mạng chậm hơn lượng
 
 ## An toàn khi mạng chập chờn
 
-- Ghế của người thật (kể cả khi bot tạm cầm lái vì mất tín hiệu): bot không chat trong họp, không phản bác, bỏ phiếu "bỏ qua".
+- Ghế của người thật (kể cả khi bot tạm cầm lái vì mất tín hiệu): bot không chat trong họp, không phản bác (kể cả khi bị nhắc tên), bỏ phiếu "bỏ qua"; người đó quay lại giữa họp thì tự bỏ phiếu.
 - Chủ phòng lỡ gỡ người chơi vì mất tín hiệu mà họ vẫn gửi tin tới: trả lại đúng nhân vật, gửi lại trạng thái ván (tự rời phòng thì không).
 - Máy người vào phòng chỉ áp gói trạng thái mới nhất mỗi khung hình (gói dồn dập không làm đơ trình duyệt); sự kiện không bao giờ bị bỏ.
 - Kiểm tra: `npx tsx tests/net_fix_test.ts`.
+
+## Gói thay đổi (giảm lag)
+
+Chủ phòng nhớ gói trạng thái đã gửi cho từng máy và chỉ gửi phần khác (`dfull`, đánh số `b` → `s`); gói đầy đủ (`full`) chỉ gửi lần đầu, 10 giây một lần, hoặc khi máy kia báo lỡ gói (`kf`). Khoảng 18 KB/giây mỗi máy → dưới 0,5 KB/giây. Đường tới máy nào đang nghẽn thì lượt gửi định kỳ bỏ qua máy đó (lượt sau gửi bù). Mỗi ván mới (kể cả "Chơi ván mới" từ màn kết quả) xóa sạch trạng thái mạng và dựng lại cảnh từ đầu như ván đầu tiên.
+
+## Đồng hồ mạng + nhật ký kết nối (chỉ admin)
+
+Mở với `?admin`: khi ở trong phòng, giữa trên màn hình có dòng `fps · trễ · ↑↓ KB/s · kẹt · lỡ gói` (đỏ khi giật/nghẽn) và nút **📋 Nhật ký** sao chép nhật ký kết nối (ai vào/rớt/được trả nhân vật, độ trễ tăng vọt, lỡ gói, máy giật) để dán cho người làm game.
+
+Kiểm tra đợt sửa sau buổi team test: `npx tsx tests/team8_test.ts`.
 
 ## Phòng Public / Private
 

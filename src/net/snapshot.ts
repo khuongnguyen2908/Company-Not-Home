@@ -49,6 +49,7 @@ const PRIVATE_NEUTRAL: Partial<Record<keyof Agent, unknown>> = {
 /** Người xem v có được biết vai thật của o không */
 function knowsRole(w: World, v: Agent, o: Agent) {
   if (o.id === v.id || w.phase === 'ended' || o.ejected) return true;
+  if (w.meeting?.result?.ejected === o.id) return true; // vừa bị bầu ra: cả phòng thấy vai thật cùng lúc (không chờ hết đoạn kéo ra cửa)
   if (o.role === 'impostor' && (v.role === 'impostor' || (v.role === 'crew' && v.dept === 'climber'))) return true; // đồng bọn; Intern tham vọng biết mặt Nội gián
   return false;
 }
@@ -227,4 +228,41 @@ export function filterEvent(w: World, v: Agent, e: GameEvent): GameEvent | null 
     case 'anon_accuse': return e.by === v.id ? e : null;
     default: return e;
   }
+}
+
+// =============================================================================================
+// GÓI THAY ĐỔI: chỉ gửi phần khác so với gói trước đã gửi cho máy đó (gói đầy đủ ~5 KB → thường vài trăm byte)
+// =============================================================================================
+/** Ảnh chụp ở dạng cây (danh sách nhân vật thành đối tượng theo số thứ tự) để so từng trường */
+export type SnapTree = Record<string, J>;
+export interface Patch { s?: Record<string, J>; d?: string[]; o?: Record<string, Patch> }
+export function toTree(f: FullSnap): SnapTree {
+  const agents: Record<string, J> = {};
+  f.agents.forEach((a, i) => { agents[i] = a; });
+  return { ...(f as unknown as Record<string, J>), agents };
+}
+export function fromTree(t: SnapTree): FullSnap {
+  const ag = t.agents as Record<string, J>;
+  const agents = Object.keys(ag).map(Number).sort((a, b) => a - b).map(i => ag[i]);
+  return { ...(t as unknown as FullSnap), agents };
+}
+const isObj = (x: J): x is Record<string, J> => !!x && typeof x === 'object' && !Array.isArray(x);
+/** Phần khác giữa hai cây (đi sâu tối đa `depth` tầng đối tượng); giống hệt thì trả về null */
+export function diffTree(a: Record<string, J>, b: Record<string, J>, depth = 3): Patch | null {
+  const p: Patch = {};
+  for (const k of Object.keys(b)) {
+    const x = a[k], y = b[k];
+    if (k in a && x === y) continue;
+    if (k in a && depth > 0 && isObj(x) && isObj(y)) { const sub = diffTree(x, y, depth - 1); if (sub) (p.o ??= {})[k] = sub; continue; }
+    if (k in a && JSON.stringify(x) === JSON.stringify(y)) continue;
+    (p.s ??= {})[k] = y;
+  }
+  for (const k of Object.keys(a)) if (!(k in b)) (p.d ??= []).push(k);
+  return p.s || p.d || p.o ? p : null;
+}
+/** Áp phần khác vào cây (sửa tại chỗ) */
+export function applyPatch(t: Record<string, J>, p: Patch) {
+  if (p.d) for (const k of p.d) delete t[k];
+  if (p.s) for (const [k, v] of Object.entries(p.s)) t[k] = v;
+  if (p.o) for (const [k, sub] of Object.entries(p.o)) { const x = t[k]; if (isObj(x)) applyPatch(x, sub); else throw new Error('patch base'); }
 }

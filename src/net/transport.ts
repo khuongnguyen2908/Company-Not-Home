@@ -1,3 +1,4 @@
+import { netMeter } from './netlog';
 // Lớp truyền tin: tách riêng để đổi được cách kết nối mà không đụng phần còn lại của game.
 // - TabTransport: các tab cùng trình duyệt nói chuyện trực tiếp (BroadcastChannel), không cần mạng.
 // - MemoryHub: dùng trong kiểm tra tự động, giả lập độ trễ và mất gói tin.
@@ -11,6 +12,8 @@ export interface Transport {
   send(to: string | '*', msg: unknown): void;
   onMessage(fn: (from: string, msg: unknown) => void): void;
   close(): void;
+  /** đường tới máy này đang tồn đọng (gửi thêm chỉ làm trễ thêm) */
+  busy?(to: string): boolean;
 }
 
 export function newPeerId(): string {
@@ -104,14 +107,17 @@ export class MultiTransport implements Transport {
       // người này đang dùng đường khác: bỏ bản trùng; trừ khi đường cũ đã im quá 3 giây (đường cũ chết) thì chuyển sang đường mới
       if (cur && cur !== t && now - (this.heard.get(from) ?? 0) < 3000) return;
       this.route.set(from, t); this.heard.set(from, now);
+      if (netMeter.on) netMeter.down += JSON.stringify(msg)?.length ?? 0;
       for (const h of this.handlers) h(from, msg);
     });
   }
   send(to: string | '*', msg: unknown) {
+    if (netMeter.on) netMeter.up += JSON.stringify(msg)?.length ?? 0;
     if (to === '*') { for (const t of this.subs) t.send('*', msg); return; }
     const t = this.route.get(to);
     if (t) t.send(to, msg); else for (const s of this.subs) s.send(to, msg);
   }
+  busy(to: string) { const t = this.route.get(to); return !!t?.busy?.(to); }
   forget(id: string) { this.route.delete(id); this.heard.delete(id); }
   onMessage(fn: (from: string, msg: unknown) => void) { this.handlers.push(fn); }
   close() { for (const t of this.subs) t.close(); this.handlers = []; }

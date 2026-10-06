@@ -9,6 +9,7 @@ import { findPath } from '../src/game/path';
 import { MemoryHub } from '../src/net/transport';
 import { NetHost, NetClient, type ToClient } from '../src/net/room';
 import { session } from '../src/session';
+import { toTree, fromTree, applyPatch, type FullSnap, type SnapTree } from '../src/net/snapshot';
 import { slotStation } from '../src/game/sim';
 import { runAction } from '../src/net/actions';
 
@@ -25,14 +26,20 @@ for (let g = Number(process.env.G0 ?? 0); g < GAMES; g++) {
   const clients = [new NetClient(t1, 'ABC-234', { name: 'Một', look: randomLook(), empId: '202' }), new NetClient(t2, 'ABC-234', { name: 'Hai', look: randomLook(), empId: '202' })];
 
   // --- soi mọi tin nhắn người vào phòng nhận được: không được lộ bí mật
-  let msgs = 0, bytes = 0;
+  let msgs = 0, bytes = 0, dBytes = 0;
+  const trees: ({ t: SnapTree; s: number } | null)[] = [null, null];
   const peerIds = ['c1', 'c2'];
   [t1, t2].forEach((t, k) => t.onMessage((_f, raw) => {
     const m = raw as ToClient; msgs++; bytes += JSON.stringify(m).length;
-    if (m.t !== 'full' && m.t !== 'start') return;
-    const me = m.full.me, hw = session.world!;
+    // gói thay đổi: dựng lại ảnh chụp đầy đủ như máy người vào phòng rồi soi y như gói đầy đủ
+    let full: FullSnap;
+    if (m.t === 'full') { full = m.full; if (typeof m.s === 'number') trees[k] = { t: toTree(m.full), s: m.s }; }
+    else if (m.t === 'start') { full = m.full; trees[k] = null; }
+    else if (m.t === 'dfull') { const tr = trees[k]; if (!tr || tr.s !== m.b) { fail(`ván ${g}: gói thay đổi không khớp gói trước (${peerIds[k]})`); return; } if (m.d) applyPatch(tr.t, m.d); tr.s = m.s; full = fromTree(JSON.parse(JSON.stringify(tr.t))); dBytes += JSON.stringify(m).length; }
+    else return;
+    const me = full.me, hw = session.world!;
     const real = hw.agents[me];
-    for (const j of m.full.agents as Record<string, unknown>[]) {
+    for (const j of full.agents as Record<string, unknown>[]) {
       const id = j.id as number;
       if (id === me) {
         if (j.role !== real.role) fail(`ván ${g}: ${peerIds[k]} nhận sai vai của chính mình`);
@@ -41,7 +48,7 @@ for (let g = Number(process.env.G0 ?? 0); g < GAMES; g++) {
       }
       if (m.t === 'start' && !(Number.isFinite(j.x as number) && j.look)) fail(`ván ${g}: ảnh chụp đầu tiên thiếu vị trí/ngoại hình của #${id}`);
       const o = hw.agents[id];
-      const allowed = o.ejected || hw.phase === 'ended' || (o.role === 'impostor' && (real.role === 'impostor' || real.dept === 'climber'));
+      const allowed = o.ejected || hw.meeting?.result?.ejected === id || hw.phase === 'ended' || (o.role === 'impostor' && (real.role === 'impostor' || real.dept === 'climber'));
       if (j.role !== 'crew' && !allowed) fail(`ván ${g}: lộ vai của #${id} cho ${peerIds[k]}`);
       if (j.role === 'crew' && o.role === 'impostor' && allowed && !o.ejected && hw.phase !== 'ended' && real.role === 'impostor') fail(`ván ${g}: Nội gián không thấy đồng bọn`);
       // trường riêng tư: hoặc không gửi, hoặc là giá trị trống
@@ -49,9 +56,9 @@ for (let g = Number(process.env.G0 ?? 0); g < GAMES; g++) {
       if (j.killCd !== undefined && j.killCd !== 0 && !(real.role === 'impostor' && o.role === 'impostor')) fail(`ván ${g}: lộ hồi chiêu của #${id}`); // đồng bọn được thấy hồi chiêu của nhau
       for (const k of ['hrResult', 'devBackup', 'killedBy', 'hrPending', 'testTarget', 'prodLast']) if (j[k] !== undefined && j[k] !== null) fail(`ván ${g}: lộ ${k} của #${id}`);
     }
-    const mt = m.full.w.meeting as Record<string, unknown> | null;
+    const mt = full.w.meeting as Record<string, unknown> | null;
     if (mt && (mt.queue as unknown[]).length) fail(`ván ${g}: lộ lời thoại bot sắp nói`);
-    if (m.t === 'full') for (const e of m.ev ?? []) {
+    if (m.t === 'full' || m.t === 'dfull') for (const e of m.ev ?? []) {
       if ((e.type === 'task' || e.type === 'hr_result' || e.type === 'artist_result') && e.agent !== me) fail(`ván ${g}: lộ sự kiện riêng ${e.type}`);
       if (e.type === 'sabotage' && e.by !== -1 && real.role !== 'impostor') fail(`ván ${g}: lộ người gây sự cố`);
     }
@@ -149,7 +156,8 @@ for (let g = Number(process.env.G0 ?? 0); g < GAMES; g++) {
       }
     }
   }
-  for (let t = 0; t < 600; t += 20) { now += 20; hub.tick(now); for (const c of clients) c.flush(); }
+  // chủ phòng vẫn chạy vòng lặp sau khi hết ván (như ứng dụng thật): ván kết thúc do lệnh của người vào phòng cũng tới mọi máy
+  for (let t = 0; t < 600; t += 20) { now += 20; host.tick(20, w.drainEvents()); hub.tick(now); for (const c of clients) c.flush(); }
   const endOk = w.phase === 'ended' && clients.every(c => c.replica?.phase === 'ended');
   if (w.phase !== 'ended') {
     fail(`ván ${g}: ván không kết thúc`);
@@ -162,7 +170,7 @@ for (let g = Number(process.env.G0 ?? 0); g < GAMES; g++) {
   else if (!endOk) fail(`ván ${g}: máy người vào phòng không thấy ván kết thúc`);
   const devPct = devSamples ? (bigDev / devSamples * 100).toFixed(1) : '0';
   const secs = (now - t0) / 1000;
-  console.log(`ván ${g}: ${w.winner} thắng sau ${Math.round(w.time)}s chơi · ${msgs} tin · ${((bytes - bytes0) / 1024 / secs / 2).toFixed(1)} KB/giây mỗi máy · lệch vị trí lớn nhất ${(maxDev / TILE).toFixed(2)} ô, lệch > 3 ô: ${devPct}% mẫu`);
+  console.log(`ván ${g}: ${w.winner} thắng sau ${Math.round(w.time)}s chơi · ${msgs} tin · ${((bytes - bytes0) / 1024 / secs / 2).toFixed(1)} KB/giây mỗi máy (gói thay đổi ${(dBytes / 1024 / secs / 2).toFixed(1)}) · lệch vị trí lớn nhất ${(maxDev / TILE).toFixed(2)} ô, lệch > 3 ô: ${devPct}% mẫu`);
   if (Number(devPct) > 2) fail(`ván ${g}: bản sao lệch vị trí nhiều (${devPct}% mẫu lệch > 3 ô)`);
 }
 console.log(fails ? `CÓ ${fails} LỖI` : 'Tất cả đạt');
