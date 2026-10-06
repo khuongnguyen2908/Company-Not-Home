@@ -136,6 +136,7 @@ for (let g = Number(process.env.G0 ?? 0); g < GAMES; g++) {
     if (w.phase === 'meeting' && w.meeting?.result) { resultT += DT; if (resultT > 4.8) { w.finishMeeting(); resultT = 0; } } else resultT = 0;
     host.tick(DT * 1000, w.drainEvents());
     hub.tick(now);
+    for (const c of clients) c.flush(); // như một khung hình: áp gói trạng thái mới nhất
     for (const c of clients) c.replica?.drainEvents();
     // độ khớp vị trí: nhân vật khác trên bản sao so với chủ phòng (bỏ qua ngay sau khi dịch chuyển)
     if (step % 30 === 0 && w.phase === 'play') for (const c of clients) {
@@ -148,7 +149,7 @@ for (let g = Number(process.env.G0 ?? 0); g < GAMES; g++) {
       }
     }
   }
-  for (let t = 0; t < 600; t += 20) { now += 20; hub.tick(now); }
+  for (let t = 0; t < 600; t += 20) { now += 20; hub.tick(now); for (const c of clients) c.flush(); }
   const endOk = w.phase === 'ended' && clients.every(c => c.replica?.phase === 'ended');
   if (w.phase !== 'ended') {
     fail(`ván ${g}: ván không kết thúc`);

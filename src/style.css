@@ -2112,3 +2112,7 @@ body.mt-mode { overflow: hidden; }
 .lc-copy + .lc-copy { margin-left: 4px; }
 .online-menu .big small { display: block; }
 .online-menu .om-back { width: auto; align-self: flex-start; display: inline-block; }
+/* Cảnh báo mạng chậm (người vào phòng) */
+.net-slow { position: absolute; left: 50%; bottom: calc(10px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: rgba(176, 38, 28, .92); color: #fff; font-weight: 800; font-size: .82rem; border-radius: 10px; padding: 4px 12px; pointer-events: none; z-index: 30; }
+/* Thiết bị cảm ứng: khung việc trong suốt với thao tác chạm, trừ hàng tiêu đề và nút ▾ (bấm được) */
+@media (pointer: coarse) { #ui .hud .tasks .kpi, #ui .hud .tasks .kpi * { pointer-events: auto; } }

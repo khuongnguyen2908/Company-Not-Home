@@ -740,7 +740,7 @@ export class UI {
   private p2pText(): string {
     const host = !!net.host;
     switch (this.p2pStatus) {
-      case 'ready': return host ? '🌐 Bạn bè ở máy khác vào được bằng mã hoặc link mời' : '🌐 Đã kết nối qua mạng';
+      case 'ready': return host ? '🌐 Bạn bè ở máy khác vào được bằng mã hoặc link mời' : `🌐 Đã kết nối qua mạng${net.client?.rtt ? ` · độ trễ ${Math.round(net.client.rtt)} ms` : ''}`;
       case 'connecting': return host ? '🌐 Đang mở cổng cho máy khác vào…' : '🌐 Đang kết nối tới chủ phòng qua mạng…';
       case 'notfound': return '🌐 Chưa thấy chủ phòng, đang thử lại…';
       case 'offline': return host ? '⚠️ Không kết nối được máy giới thiệu: chỉ chơi được các tab trong trình duyệt này' : '⚠️ Không kết nối được máy giới thiệu, kiểm tra mạng của bạn';
@@ -2641,6 +2641,15 @@ export class UI {
         if (net.host) { const mine = net.host.players.find(x => x.host); if (mine && L.me.look) { mine.look = L.me.look; mine.name = L.me.name; net.host.broadcastRoom(); } }
         else if (net.client && L.me.look) { net.client.me = { ...net.client.me, look: L.me.look, name: L.me.name }; net.client.join(); }
       }
+    }
+    // người vào phòng: mạng chậm (độ trễ đi về trên 400 ms) thì hiện cảnh báo nhỏ, để biết lag do mạng
+    { const c = net.role === 'client' ? net.client : null;
+      let nb = this.hudEl?.querySelector('.net-slow') as HTMLElement | null;
+      if (c && c.rtt > 400 && this.hudEl) {
+        if (!nb) { nb = document.createElement('div'); nb.className = 'net-slow'; this.hudEl.appendChild(nb); }
+        const t = `⚠ Mạng chậm: ${(c.rtt / 1000).toFixed(1).replace('.', ',')} giây`;
+        if (nb.textContent !== t) nb.textContent = t;
+      } else nb?.remove();
     }
     // người vào phòng (vừa vào lại): lỡ sự kiện "bắt đầu họp" / "hết ván" thì tự mở đúng màn đang diễn ra
     // (chỉ khi trạng thái đó đã kéo dài quá 3,5 giây: lúc bình thường sự kiện tới cùng gói tin và luồng thường tự mở)

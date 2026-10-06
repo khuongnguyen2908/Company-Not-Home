@@ -87,6 +87,17 @@ Kiểm tra: `python3 tests/lobby_reentry.py` (về sảnh nhiều lần vẫn đ
 
 Chỉ có khi mở game với **`?admin`** (màn chia ô: `?multitest=4&admin`); người chơi thường không thấy và game không ghi số liệu. Hết mỗi ván, màn kết quả có mục **📊 Thống kê ván** (`src/game/stats.ts`, chỉ quan sát, không đổi luật): cách kết thúc, KPI lúc kết thúc, thời gian chơi và cả ván, vụ gài đầu, họp đầu, số vụ gài, cuộc họp, phá hoại, tỉ lệ sa thải trúng Nội gián, phiếu của Nhân viên trúng Nội gián, Sếp đi tuần có thắng không, chỉ số của bạn (Nội gián: số vụ gài, thời gian từ lúc hồi chiêu xong tới lúc gài được; Nhân viên: việc xong, phiếu đúng/sai) và dòng thời gian. Nút **Sao chép ván này** / **Sao chép tất cả** (các ván từ lúc mở game) để dán cho người làm game. Có ở máy chơi một mình và máy chủ phòng.
 
+## Chống lag khi chơi qua mạng
+
+PeerJS cho mỗi kênh dồn tới 8 MB chưa gửi: mạng chậm hơn lượng gửi thì độ trễ tăng mãi (sau vài phút thành "đứng im"). `src/net/peer.ts` bỏ qua gói "chỉ cần bản mới nhất" (vị trí, điều khiển, trạng thái sảnh, trạng thái định kỳ không kèm sự kiện) khi kênh tồn đọng quá 16 KB; gói quan trọng luôn gửi. Nhịp tim đo độ trễ đi về: sảnh hiện "độ trễ … ms", trong ván trên 400 ms hiện "⚠ Mạng chậm". Kiểm tra: `npx tsx tests/p2p_lag_test.ts` (mạng giả 18 KB/giây).
+
+## An toàn khi mạng chập chờn
+
+- Ghế của người thật (kể cả khi bot tạm cầm lái vì mất tín hiệu): bot không chat trong họp, không phản bác, bỏ phiếu "bỏ qua".
+- Chủ phòng lỡ gỡ người chơi vì mất tín hiệu mà họ vẫn gửi tin tới: trả lại đúng nhân vật, gửi lại trạng thái ván (tự rời phòng thì không).
+- Máy người vào phòng chỉ áp gói trạng thái mới nhất mỗi khung hình (gói dồn dập không làm đơ trình duyệt); sự kiện không bao giờ bị bỏ.
+- Kiểm tra: `npx tsx tests/net_fix_test.ts`.
+
 ## Phòng Public / Private
 
 Chơi nhiều người → **Tạo phòng mới** (tên phòng, công tắc Public, mặc định Public) / **Phòng Public** (danh sách phòng đang mở: tên, chủ phòng, số người, Đang chờ/Đang chơi; tự làm mới mỗi 5 giây) / **Phòng Private** (nhập mã). Danh bạ phòng không cần máy chủ riêng (`src/net/directory.ts`): một trình duyệt giữ mã cố định làm quầy danh bạ trên PeerJS, chủ phòng Public báo danh mỗi 5 giây, quầy xác nhận; người giữ quầy thoát thì người khác tự nhận thay; phòng ngừng báo danh quá 20 giây bị dọn. Các tab cùng trình duyệt / `?multitest` thấy nhau qua BroadcastChannel. Kiểm tra: `npx tsx tests/directory_test.ts`.

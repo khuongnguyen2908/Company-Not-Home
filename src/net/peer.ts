@@ -30,6 +30,17 @@ export type PeerCtor = new (id?: string, opts?: Record<string, unknown>) => Peer
 /** Trạng thái đường P2P để giao diện hiện cho người chơi */
 export type P2PStatus = 'connecting' | 'ready' | 'offline' | 'taken' | 'notfound';
 
+/** Chống dồn hàng đợi: PeerJS cho dồn tới 8 MB chưa gửi; mạng chậm hơn lượng gửi thì độ trễ tăng mãi (vài phút sau thành "đứng im").
+ *  Gói "chỉ cần bản mới nhất" bị bỏ qua khi kênh còn tồn đọng quá ngưỡng; gói quan trọng (lệnh, sự kiện, bắt đầu/kết thúc...) luôn gửi. */
+export const BACKLOG_LIMIT = 16 * 1024; // khoảng 1 giây ở mạng rất chậm (18 KB/giây); Wi-Fi bình thường không chạm tới
+export function droppable(m: unknown): boolean {
+  const t = (m as { t?: string; p?: number } | null)?.t;
+  return t === 'pos' || t === 'input' || t === 'lst' || (t === 'full' && (m as { p?: number }).p === 1);
+}
+export function backlog(c: ConnLike): number {
+  const x = c as unknown as { dataChannel?: { bufferedAmount?: number }; bufferSize?: number };
+  return (x.dataChannel?.bufferedAmount ?? 0) + ((x.bufferSize ?? 0) > 0 ? 1e9 : 0);
+}
 export const hostPeerName = (code: string) => 'ngvp-' + code.toLowerCase().replace(/[^a-z0-9]/g, '');
 
 export class PeerTransport implements Transport {
@@ -105,15 +116,17 @@ export class PeerTransport implements Transport {
   send(to: string | '*', msg: unknown) {
     if (this.closed) return;
     const pkt = { f: this.peerId, m: msg };
+    const drop = droppable(msg);
     if (this.mode === 'client') {
       // người vào phòng chỉ có một đường: tới chủ phòng (chưa mở thì xếp hàng, tối đa 50 tin)
-      if (this.hostConn?.open) this.hostConn.send(pkt);
+      if (this.hostConn?.open) { if (!(drop && backlog(this.hostConn) > BACKLOG_LIMIT)) this.hostConn.send(pkt); }
       else if ((msg as { t?: string })?.t !== 'pos' && (msg as { t?: string })?.t !== 'input' && this.queue.length < 50) this.queue.push(pkt);
       return;
     }
-    if (to === '*') { for (const c of this.all) if (c.open) c.send(pkt); return; }
+    // đường nào đang tồn đọng: bỏ qua gói "chỉ cần bản mới nhất" (vị trí, điều khiển, trạng thái định kỳ), không để hàng đợi phình
+    if (to === '*') { for (const c of this.all) if (c.open && !(drop && backlog(c) > BACKLOG_LIMIT)) c.send(pkt); return; }
     const c = this.conns.get(to);
-    if (c?.open) c.send(pkt);
+    if (c?.open && !(drop && backlog(c) > BACKLOG_LIMIT)) c.send(pkt);
   }
   /** Chủ phòng: mã máy logic này có đang nối qua P2P không */
   knows(id: string) { return this.conns.has(id); }

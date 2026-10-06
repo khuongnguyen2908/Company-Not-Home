@@ -16,6 +16,7 @@ const step = (ms: number, host?: NetHost, clients: NetClient[] = []) => {
   while (now < end) {
     now = Math.min(end, now + 50);
     hub.tick(now);
+    clients.forEach(c => c.flush()); // như một khung hình: áp gói trạng thái mới nhất
     if (now % 1000 < 50) { host?.watch(); clients.forEach(c => c.watch()); }
   }
 };

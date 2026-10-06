@@ -163,6 +163,8 @@ export interface Agent {
   itCamT: number; // còn bao lâu đang xem camera bằng laptop
   itCd: number;
   brain: Brain;
+  /** ghế này thuộc một người thật (kể cả khi bot đang tạm cầm lái vì mất kết nối): bot không chat, không tự bỏ phiếu thay */
+  seatOfHuman?: boolean;
 }
 
 export interface Ctx {
@@ -456,7 +458,9 @@ export class World {
   /** Điều khiển di chuyển của người thật ở máy khác (chủ phòng nhận qua mạng) */
   inputs = new Map<number, { x: number; y: number }>();
   /** Biến một nhân vật thành người thật (điều khiển qua mạng) hoặc trả lại cho bot */
-  setHuman(id: number, on: boolean) { const a = this.agents[id]; if (a) { a.human = on; if (!on) this.inputs.delete(id); } }
+  setHuman(id: number, on: boolean) { const a = this.agents[id]; if (a) { a.human = on; if (on) a.seatOfHuman = true; if (!on) this.inputs.delete(id); } }
+  /** Bot được nói trong họp: không phải người thật, và không phải ghế của người thật đang được bot tạm cầm lái */
+  private botVoice(a: Agent) { return !a.human && !a.seatOfHuman; }
 
   // ---------- Truy vấn ----------
   crewTasksDone() {
@@ -2070,11 +2074,11 @@ export class World {
   private planStatements(m: Meeting) {
     const A = this.agents;
     const nm = (id: number) => A[id].name;
-    const speakers = A.filter(a => a.alive && !a.human);
+    const speakers = A.filter(a => a.alive && this.botVoice(a)); // không nói thay người thật (kể cả khi bot đang tạm cầm lái ghế của họ)
     const recent = this.time - 35;
     // Người báo cáo nói trước
     const rep = A[m.reporter];
-    if (!rep.human) {
+    if (this.botVoice(rep)) {
       if (m.victim !== null) {
         this.say(m, rep.id, fmt('bot.report.body', { victim: nm(m.victim), room: roomName(m.room) }));
       } else if (rep.brain.witnessed !== null) {
@@ -2273,13 +2277,13 @@ export class World {
     if (target >= 0 && imp && A[target].alive) this.botReact(m, target, '😡', 0.5);
     // Phản bác
     const T = target >= 0 ? A[target] : null;
-    if (T && imp && T.role === 'impostor' && !T.human && !T.brain.claimedHr && this.rng() < 0.8) {
+    if (T && imp && T.role === 'impostor' && this.botVoice(T) && !T.brain.claimedHr && this.rng() < 0.8) {
       T.brain.claimedHr = true;
       this.say(m, T.id, fmt('bot.hr.counterFake', { liar: A[by].name }), [], m.t + 2.2, { claim: { target: by, imp: true } });
-    } else if (T && imp && T.role === 'crew' && !T.human) {
+    } else if (T && imp && T.role === 'crew' && this.botVoice(T)) {
       this.say(m, T.id, fmt('bot.hr.deny', { liar: A[by].name }), [{ target: by, delta: 25 }], m.t + 2.2);
     }
-    const realHr = A.find(o => o.alive && o.role === 'crew' && o.dept === 'hr' && o.id !== by && !o.human);
+    const realHr = A.find(o => o.alive && o.role === 'crew' && o.dept === 'hr' && o.id !== by && this.botVoice(o));
     if (realHr && !m.hrClaims.some(c => c.by === realHr.id) && A[by].dept !== 'hr' && this.rng() < 0.9) {
       const r = realHr.hrResult;
       if (r && A[r.target].alive) {
@@ -2406,7 +2410,7 @@ export class World {
     }
     for (const [id, at] of m.voteAt) {
       if (m.t >= m.discussEnd + at && !m.votes.has(id) && this.agents[id].alive) {
-        m.votes.set(id, this.botVote(this.agents[id]));
+        m.votes.set(id, this.agents[id].seatOfHuman ? 'skip' : this.botVote(this.agents[id])); // ghế của người thật: bot không tự quyết phiếu
       }
     }
     const aliveCount = this.agents.filter(a => a.alive).length;
@@ -2434,7 +2438,7 @@ export class World {
     const m = this.meeting;
     if (!m || m.result || m.t < m.discussEnd) return;
     for (const [id] of m.voteAt) {
-      if (!m.votes.has(id) && this.agents[id].alive) m.votes.set(id, this.botVote(this.agents[id]));
+      if (!m.votes.has(id) && this.agents[id].alive && !this.agents[id].human) m.votes.set(id, this.agents[id].seatOfHuman ? 'skip' : this.botVote(this.agents[id]));
     }
   }
 

@@ -59,6 +59,7 @@ export async function setup(seed: number, dept: string | 'impostor'): Promise<Ct
       if (w.phase === 'play' || w.phase === 'meeting') w.update(1 / 30);
       host.tick(1000 / 30, w.drainEvents());
       hub.tick(now);
+      ctx.A.flush(); B.flush(); // như một khung hình: áp gói trạng thái mới nhất
       ctx.A.replica?.drainEvents(); B.replica?.drainEvents();
       if (i % 6 === 0) await new Promise(r => setTimeout(r, 0)); // cho các Promise chờ kết quả chạy
     }

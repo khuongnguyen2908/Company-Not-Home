@@ -40,7 +40,7 @@ export type ToHost =
   | { t: 'input'; x: number; y: number }
   | { t: 'act'; id: number; name: string; args: unknown[] }
   | { t: 'ready'; on: boolean }
-  | { t: 'hb' }
+  | { t: 'hb'; ts?: number }
   | { t: 'lst'; s: LobbyState }
   | { t: 'lchat'; text: string }
   | { t: 'lfx'; key: string }
@@ -49,7 +49,10 @@ export type ToClient =
   | { t: 'room'; code: string; players: RoomPlayer[]; settings: RoomSettings; inGame: boolean }
   | { t: 'reject'; reason: string }
   | { t: 'start'; full: FullSnap }
-  | { t: 'full'; full: FullSnap; ev?: GameEvent[] }
+  /** p: ảnh chụp định kỳ không kèm sự kiện, được phép bỏ qua khi đường truyền nghẽn (gói sau mang trạng thái mới hơn) */
+  | { t: 'full'; full: FullSnap; ev?: GameEvent[]; p?: 1 }
+  /** trả lời nhịp tim: người vào phòng tính độ trễ đi về */
+  | { t: 'pong'; ts: number }
   | { t: 'pos'; p: PosRow[]; time: number }
   | { t: 'actRes'; id: number; err: string | null }
   | { t: 'ready'; ids: number[] }
@@ -163,6 +166,19 @@ export class NetHost {
   private onMsg(from: string, m: ToHost) {
     if (!m || typeof m !== 'object') return;
     this.lastSeen.set(from, this.clock());
+    // bị gỡ vì mất tín hiệu (không phải tự rời) mà vẫn gửi tin tới trong ván: trả lại đúng nhân vật, gửi lại toàn bộ trạng thái
+    if (this.inGame && m.t !== 'leave' && this.dropped.has(from) && !this.players.some(p => p.peer === from) && session.world) {
+      const d = this.dropped.get(from)!; this.dropped.delete(from);
+      const w = session.world;
+      this.players.push({ ...d.profile, peer: from, host: false });
+      this.agentOf.set(from, d.id); w.setHuman(d.id, true); w.agents[d.id].away = false;
+      this.fixEmpIds(); this.broadcastRoom();
+      this.tr.send(from, { t: 'start', full: buildFull(w, d.id, true) } satisfies ToClient);
+      if (this.revealDone) this.tr.send(from, { t: 'go' } satisfies ToClient);
+      this.lastFull.delete(from);
+      this.tr.send(from, { t: 'note', text: 'Mạng vừa chập chờn, đã trả lại nhân vật cho bạn.' } satisfies ToClient);
+      if (m.t === 'hello') return;
+    }
     const pl = this.players.find(p => p.peer === from);
     // người đang mất kết nối gửi tin lại: đã kết nối lại
     if (pl?.lost) {
@@ -190,7 +206,7 @@ export class NetHost {
         }
         return;
       }
-      case 'hb': return;
+      case 'hb': if (typeof m.ts === 'number') this.tr.send(from, { t: 'pong', ts: m.ts } satisfies ToClient); return;
       case 'lst': if (pl && !this.inGame) this.lobby.set(from, sanitizeLobby(m.s)); return;
       case 'lchat': {
         if (!pl || typeof m.text !== 'string') return;
@@ -200,7 +216,7 @@ export class NetHost {
         return;
       }
       case 'lfx': if (pl && typeof m.key === 'string' && LOBBY_FX.has(m.key)) { this.tr.send('*', { t: 'lfx', peer: from, key: m.key } satisfies ToClient); this.onLobbyFx(from, m.key); } return;
-      case 'leave': { const p = this.players.find(x => x.peer === from); if (p) this.note(this.inGame ? `${p.name} #${p.empId} đã rời phòng, bot làm thay` : `${p.name} #${p.empId} đã rời phòng`); this.dropPeer(from); return; }
+      case 'leave': { const p = this.players.find(x => x.peer === from); if (p) this.note(this.inGame ? `${p.name} #${p.empId} đã rời phòng, bot làm thay` : `${p.name} #${p.empId} đã rời phòng`); this.dropPeer(from, true); return; }
     }
     if (!pl || !this.inGame) return;
     const id = this.agentOf.get(from);
@@ -227,11 +243,13 @@ export class NetHost {
   }
 
   /** Người rời phòng: trong ván thì bot chơi thay */
-  dropPeer(peer: string) {
+  dropPeer(peer: string, voluntary = false) {
     const i = this.players.findIndex(p => p.peer === peer && !p.host);
     if (i < 0) return;
-    this.players.splice(i, 1);
+    const [gone] = this.players.splice(i, 1);
     const id = this.agentOf.get(peer);
+    // mất tín hiệu (không tự rời): nhớ lại để trả nhân vật nếu họ vẫn còn đó
+    if (!voluntary && this.inGame && id !== undefined) this.dropped.set(peer, { id, profile: { name: gone.name, look: gone.look, empId: gone.empId } });
     if (id !== undefined && session.world) { session.world.setHuman(id, false); session.world.agents[id].away = false; this.agentOf.delete(peer); }
     this.lastSeen.delete(peer);
     this.broadcastRoom();
@@ -296,7 +314,7 @@ export class NetHost {
         const key = JSON.stringify(full);
         const last = this.lastFull.get(peer);
         if (ev.length || !last || last.key !== key || nowMs - last.at > 2000) {
-          this.tr.send(peer, ev.length ? { t: 'full', full, ev } satisfies ToClient : { t: 'full', full } satisfies ToClient);
+          this.tr.send(peer, ev.length ? { t: 'full', full, ev } satisfies ToClient : { t: 'full', full, p: 1 } satisfies ToClient);
           this.lastFull.set(peer, { key, at: nowMs });
         }
       }
@@ -321,7 +339,9 @@ export class NetHost {
   /** Cả phòng sẵn sàng ở tờ phân công: báo mọi máy đóng tờ phân công */
   go() { this.revealDone = true; this.tr.send('*', { t: 'go' } satisfies ToClient); }
   /** Hết ván: cả phòng về màn hình phòng */
-  endGame() { this.inGame = false; this.agentOf.clear(); this.tr.send('*', { t: 'end' } satisfies ToClient); this.broadcastRoom(); }
+  /** người bị gỡ vì mất tín hiệu trong ván (để trả lại nhân vật nếu họ vẫn còn đó) */
+  private dropped = new Map<string, { id: number; profile: Profile }>();
+  endGame() { this.inGame = false; this.agentOf.clear(); this.dropped.clear(); this.tr.send('*', { t: 'end' } satisfies ToClient); this.broadcastRoom(); }
   close() { clearInterval(this.timer); this.tr.send('*', { t: 'closed' } satisfies ToClient); this.tr.close(); }
 }
 
@@ -365,7 +385,7 @@ export class NetClient {
   /** Mỗi giây: gửi nhịp "còn sống"; lâu không nghe chủ phòng thì báo mất kết nối, quá lâu thì coi như phòng đóng */
   watch() {
     if (this.gone) return;
-    if (this.hostPeer) this.tr.send(this.hostPeer, { t: 'hb' } satisfies ToHost);
+    if (this.hostPeer) this.tr.send(this.hostPeer, { t: 'hb', ts: this.clock() } satisfies ToHost);
     if (!this.room) return; // chưa vào được phòng: việc gõ cửa do giao diện lo
     const quiet = this.clock() - this.lastHost;
     if (!this.hostLost && quiet > HOST_LOST_MS) { this.hostLost = true; this.onHostLost(true); }
@@ -382,37 +402,42 @@ export class NetClient {
     switch (m.t) {
       case 'reject': this.onReject(m.reason); return;
       case 'start': {
+        this.pendFull = null; this.pendPos = null; this.pendEv = [];
         this.targets.clear();
         this.replica = createReplica(m.full);
         this.onStart(this.replica);
         return;
       }
       case 'full': {
-        const r = this.replica; if (!r) return;
-        applyFull(r, m.full);
-        // sau khi áp ảnh chụp, các nhân vật khác đứng ở vị trí trượt hiện tại (không giật về vị trí cũ)
-        for (const [id, t] of this.targets) { const a = r.agents[id]; if (a && id !== r.meId && t.cx !== undefined && t.cy !== undefined) { a.x = t.cx; a.y = t.cy; } }
-        if (m.ev?.length) r.events.push(...m.ev);
+        // gói dồn dập (mạng vừa thông lại): chỉ giữ gói mới nhất, áp một lần mỗi khung hình; sự kiện thì giữ đủ
+        if (!this.replica) return;
+        this.pendFull = m.full; this.pendPos = null;
+        if (m.ev?.length) this.pendEv.push(...m.ev);
         return;
       }
-      case 'pos': { const r = this.replica; if (r) { applyPos(r, m.p, this.targets); r.time = m.time; } return; }
+      case 'pos': { if (this.pendFull) { this.pendPos = m; return; } const r = this.replica; if (r) { applyPos(r, m.p, this.targets); r.time = m.time; } return; }
+
       case 'actRes': {
+        this.flush(); // trạng thái mới phải được áp trước khi trả kết quả lệnh
         const res = this.pending.get(m.id);
         if (res) { this.pending.delete(m.id); res(m.err); } else if (m.err) net.onError(m.err);
         return;
       }
       case 'ready': this.onReady(m.ids); return;
       case 'go': this.onGo(); return;
-      case 'end': this.replica = null; this.onEnd(); return;
-      case 'closed': clearInterval(this.timer); this.onClosed(); return;
+      case 'end': this.flush(); this.replica = null; this.onEnd(); return; // áp hết gói đang chờ trước (không mất sự kiện thắng thua)
+      case 'closed': this.flush(); clearInterval(this.timer); this.onClosed(); return;
       case 'note': this.onNote(m.text); return;
       case 'lst': if (Array.isArray(m.all)) this.lobby = new Map(m.all); return;
       case 'lchat': if (m.peer !== this.tr.peerId) this.onLobbyChat(m.peer, m.text); return;
       case 'lfx': if (m.peer !== this.tr.peerId) this.onLobbyFx(m.peer, m.key); return;
       case 'lgo': this.onLobbyGo(); return;
       case 'hb': return;
+      case 'pong': if (typeof m.ts === 'number') this.rtt = Math.max(0, this.clock() - m.ts); return;
     }
   }
+  /** độ trễ đi về tới chủ phòng (ms), đo bằng nhịp tim mỗi giây */
+  rtt = 0;
   private heard() { this.lastHost = this.clock(); if (this.hostLost) { this.hostLost = false; this.onHostLost(false); } }
 
   /** Sảnh: gửi trạng thái của mình 10 lần/giây */
@@ -439,7 +464,22 @@ export class NetClient {
     this.tr.send(this.hostPeer ?? '*', { t: 'input', x, y } satisfies ToHost);
   }
   /** Mỗi khung hình: các nhân vật khác trượt mượt tới vị trí chủ phòng gửi */
+  private pendFull: FullSnap | null = null;
+  private pendPos: Extract<ToClient, { t: 'pos' }> | null = null;
+  private pendEv: GameEvent[] = [];
+  /** Áp gói trạng thái mới nhất đang chờ (và vị trí mới hơn nó), cùng mọi sự kiện đã nhận */
+  flush() {
+    const r = this.replica;
+    if (!r || !this.pendFull) return;
+    applyFull(r, this.pendFull); this.pendFull = null;
+    // sau khi áp ảnh chụp, các nhân vật khác đứng ở vị trí trượt hiện tại (không giật về vị trí cũ)
+    for (const [id, t] of this.targets) { const a = r.agents[id]; if (a && id !== r.meId && t.cx !== undefined && t.cy !== undefined) { a.x = t.cx; a.y = t.cy; } }
+    if (this.pendEv.length) { r.events.push(...this.pendEv); this.pendEv = []; }
+    const p = this.pendPos; this.pendPos = null;
+    if (p) { applyPos(r, p.p, this.targets); r.time = p.time; }
+  }
   smooth(dtMs: number) {
+    this.flush();
     const r = this.replica; if (!r) return;
     const k = Math.min(1, dtMs / 1000 * 14);
     for (const [id, t] of this.targets) {
