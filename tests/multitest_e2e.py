@@ -45,7 +45,7 @@ async def main():
         for t in range(40):
             await pg.wait_for_timeout(1000)
             st = [await ev(f, "!!document.querySelector('.spawn-modal')") for f in fr]
-            if any(st): break
+            if all(st): break
         print("màn chọn nơi bắt đầu ở các ô:", st)
         await pg.screenshot(path="/tmp/mt_spawn.png")
         for i,f in enumerate(fr):

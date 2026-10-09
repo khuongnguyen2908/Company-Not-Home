@@ -1289,6 +1289,12 @@ export class UI {
   /** Phần giao diện chung khi vào ván (một mình, chủ phòng, người vào phòng) */
   private enterGameUi() {
     this.doneSeen = new Set(); this.lastFloorBanner = -1; this.bannerMeet = 0; this.lastDeptTxt = ''; this.lastRoomTitle = '';
+    // Ván mới (kể cả "Chơi ván mới" từ màn kết quả): xóa sạch trạng thái giao diện của ván trước.
+    // Trước đây sót "đã chọn nơi bắt đầu cho cuộc họp số N" nên từ ván 2, người vào phòng không thấy màn chọn và đứng hình ~10 giây sau họp.
+    this.spawnDoneFor = -1;
+    this.meetEl?.remove(); this.meetEl = null; this.meetChatCount = 0; this.selectedVote = null; this.resultShown = false; this.voteOpened = false; this.reactCount = 0;
+    this.recoverPhase = ''; this.recoverSince = 0;
+    this.vitalsEl?.remove(); this.vitalsEl = null; this.faceIdOpen = false; this.menuOpen = false; this.camIdx = 0; this.camFromRoom = false;
     this.lobbyHud = null;
     this.spawnPickerOpen = false;
     this.root.innerHTML = '';
@@ -2148,7 +2154,7 @@ export class UI {
           sfx.stopBossSteps();
           closeMini(); this.closeOverlays();
           // Nếu đang chiếu cảnh bị gài bẫy thì chờ cảnh đó xong mới hiện kết quả
-          if (!this.meetEl && !this.cutsceneActive) session.later(() => this.showGameOver(), 1000);
+          if (!this.meetEl?.isConnected && !this.cutsceneActive) session.later(() => this.showGameOver(), 1000);
           break;
       }
     }
@@ -2468,7 +2474,7 @@ export class UI {
     const w = session.world!;
     const m = w.meeting;
     // người vào phòng: chủ phòng có thể đã kết thúc cuộc họp trước khi tới lúc mở màn sa thải
-    if (!m || !m.result) { this.meetEl?.remove(); return; }
+    if (!m || !m.result) { this.meetEl?.remove(); this.meetEl = null; return; } // không để sót khung họp đã gỡ (làm khóa giao diện, không mở màn chọn nơi bắt đầu)
     const r = m.result;
     this.meetEl?.remove();
     this.meetEl = null;
@@ -2722,7 +2728,7 @@ export class UI {
         if (stale && w.phase === 'ended' && !this.root.querySelector('.gameover') && !this.cutsceneActive && !this.meetEl?.isConnected) this.showGameOver();
       } }
     // người vào phòng: mở màn chọn nơi bắt đầu khi nhận được lựa chọn (mỗi cuộc họp một lần; ảnh chụp đến trễ không mở lại)
-    { const w = session.world; if (net.role === 'client' && w && w.phase === 'play' && w.spawnOffer && !this.spawnPickerOpen && !this.meetEl && this.spawnDoneFor !== w.meetingCount) this.showSpawnPicker(); }
+    { const w = session.world; if (net.role === 'client' && w && w.phase === 'play' && w.spawnOffer && !this.spawnPickerOpen && !this.meetEl?.isConnected && this.spawnDoneFor !== w.meetingCount) this.showSpawnPicker(); }
     // Gộp bàn phím và cần điều khiển
     let x = 0, y = 0;
     const K = this.prefs.keys;
@@ -2746,6 +2752,7 @@ export class UI {
       return;
     }
     if (!w || !this.hudEl) return;
+    if (this.meetEl && !this.meetEl.isConnected) this.meetEl = null; // khung họp đã bị gỡ ở chỗ khác
     if (this.meetEl) { this.updateMeeting(); return; }
     if (w.phase !== 'play') return;
     const p = w.player;

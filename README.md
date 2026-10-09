@@ -108,6 +108,8 @@ Mở với `?admin`: khi ở trong phòng, giữa trên màn hình có dòng `fp
 
 Kiểm tra đợt sửa sau buổi team test: `npx tsx tests/team8_test.ts`.
 
+Chơi lại nhiều ván liền: mỗi ván mới xóa sạch trạng thái giao diện của ván trước (chọn nơi bắt đầu, khung họp, phiếu…). Kiểm tra trên trình duyệt: `python3 tests/replay_e2e.py` (3 ván liền có họp, ván nào người vào phòng cũng thấy màn chọn nơi bắt đầu).
+
 ## Phòng Public / Private
 
 Chơi nhiều người → **Tạo phòng mới** (tên phòng, công tắc Public, mặc định Public) / **Phòng Public** (danh sách phòng đang mở: tên, chủ phòng, số người, Đang chờ/Đang chơi; tự làm mới mỗi 5 giây) / **Phòng Private** (nhập mã). Danh bạ phòng không cần máy chủ riêng (`src/net/directory.ts`): một trình duyệt giữ mã cố định làm quầy danh bạ trên PeerJS, chủ phòng Public báo danh mỗi 5 giây, quầy xác nhận; người giữ quầy thoát thì người khác tự nhận thay; phòng ngừng báo danh quá 20 giây bị dọn. Các tab cùng trình duyệt / `?multitest` thấy nhau qua BroadcastChannel. Kiểm tra: `npx tsx tests/directory_test.ts`.
