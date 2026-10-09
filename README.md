@@ -234,3 +234,9 @@ Phần `src/game` được tách riêng để bước tiếp theo (nhiều ngư�
 - Nút "Sẵn sàng bỏ phiếu · x/y" trong cuộc họp: chỉ tính người thật còn sống và đang kết nối; đủ thì mở bỏ phiếu ngay; bấm lần nữa để hủy; dấu ✓ trên ô của người đã sẵn sàng.
 - Sảnh chung: nút 🕘 xem 50 tin gần nhất (có giờ, chấm đỏ khi có tin mới); người vào phòng sau nhận 20 tin gần nhất từ chủ phòng.
 - Kiểm tra: `npx tsx tests/round3_test.ts`.
+
+## Điện thoại
+
+- Phòng họp gọn trên màn hẹp (≤ 520px) và màn thấp (xoay ngang): tiêu đề 1 dòng (bấm để xem vai trong ván), ô người chơi nhỏ 5 ô/hàng (10 người vừa 2 hàng), khung chat và nút Gửi không bị cắt.
+- Màn hẹp (≤ 430px): nút hành động dồn 2 cột ở nửa phải, nửa trái để riêng cho cần điều khiển.
+- Màn thấp (< 500px): danh sách việc thu gọn sẵn khi vào ca; sơ đồ chia 2 cột (tầng + chú thích bên trái, bản đồ bên phải), không phải cuộn.

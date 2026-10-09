@@ -1421,8 +1421,10 @@ export class UI {
     this.ghostHop = ghostHop;
     // Thu gọn bảng việc (nhất là trên điện thoại)
     const tasksBox = $('.tasks', hud);
-    const collapsed = localStorage.getItem('noi-gian:tasks-collapsed');
-    if (collapsed === '1' || (collapsed === null && window.innerWidth < 760)) tasksBox.classList.add('collapsed');
+    let collapsed: string | null = null;
+    try { collapsed = localStorage.getItem('noi-gian:tasks-collapsed'); } catch { /* bỏ qua */ }
+    // điện thoại dọc (hẹp) hoặc xoay ngang (thấp): thu gọn sẵn để không che cần điều khiển
+    if (collapsed === '1' || (collapsed === null && (window.innerWidth < 760 || window.innerHeight < 500))) tasksBox.classList.add('collapsed');
     $('.t-toggle', hud).onclick = () => {
       const c = tasksBox.classList.toggle('collapsed');
       try { localStorage.setItem('noi-gian:tasks-collapsed', c ? '1' : '0'); } catch { /* bỏ qua */ }
@@ -2272,7 +2274,7 @@ export class UI {
     el.innerHTML = `
       <div class="meet-win">
         <div class="meet-top">
-          <div class="meet-title"><b>Họp khẩn</b><span>${reason}</span><small class="meet-roles">Có trong ván: ${this.roleListText()}</small></div>
+          <div class="meet-title" title="Bấm để xem / ẩn các vai trong ván"><b>Họp khẩn</b><span>${reason}</span><small class="meet-roles">Có trong ván: ${this.roleListText()}</small><i class="meet-roles-tip" aria-hidden="true">ⓘ Vai trong ván</i></div>
           <div class="meet-timer"><span class="m-phase-pill" id="m-phase">THẢO LUẬN</span><span class="m-clock" id="m-time">--</span></div>
         </div>
         <div class="meet-main">
@@ -2290,12 +2292,14 @@ export class UI {
           <div class="vote-status" id="m-status"></div>
           <button class="ghost-btn dir-btn" id="m-director" hidden>✅ Công bố chức vụ Director</button>
           <button class="ghost-btn ready-btn" id="m-ready" type="button">Sẵn sàng bỏ phiếu</button>
-          <button class="ghost-btn" id="m-skip" disabled>Bỏ qua, chưa đủ bằng chứng</button>
+          <button class="ghost-btn" id="m-skip" disabled>Bỏ qua<span class="m-long">, chưa đủ bằng chứng</span></button>
           <button class="primary danger" id="m-vote" disabled>Vote sa thải</button>
         </div>
       </div>`;
     this.root.appendChild(el);
     this.meetEl = el;
+    // điện thoại: danh sách vai thu gọn, bấm vào tiêu đề để xem
+    $('.meet-title', el).onclick = () => el.classList.toggle('roles-open');
     const tiles = $('.tiles', el);
     const isProducer = w.player.role === 'crew' && w.player.dept === 'producer' && w.player.alive;
     for (const a of w.agents) {
@@ -3135,7 +3139,7 @@ export class UI {
     if (sabView) {
       ctx.fillStyle = 'rgba(232,68,58,0.28)'; ctx.fillRect(0, 0, cv.width, cv.height);
       if (levelAt(p.x, p.y) === F.id) { const [X, Y] = M(p.x, p.y); ctx.fillStyle = '#fff'; ctx.strokeStyle = '#e8443a'; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(X, Y, 11, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
-      $('.mm-note', this.hudEl).textContent = 'Chọn tầng ở trên rồi bấm biểu tượng để phá hoại. Số trên nút là giây hồi chiêu.';
+      $('.mm-note', this.hudEl).textContent = 'Chọn tầng rồi bấm biểu tượng để phá hoại. Số trên nút là giây hồi chiêu.';
       return;
     }
     // Bàn của bạn
@@ -3195,7 +3199,7 @@ export class UI {
     }
     $('.mm-note', this.hudEl).textContent = wifiDown
       ? 'Mất kết nối: danh sách việc tạm thời không hiển thị.'
-      : sab === 'boss' ? `Sếp đi tuần! ${this.deskWhere(p)} (vòng đỏ "Bàn của bạn") ngay.` : 'Bấm tên tầng ở trên để xem các tầng khác. Số trong ô tầng là số việc của bạn ở tầng đó.';
+      : sab === 'boss' ? `Sếp đi tuần! ${this.deskWhere(p)} (vòng đỏ "Bàn của bạn") ngay.` : 'Bấm tên tầng để xem các tầng khác. Số trong ô tầng là số việc của bạn ở tầng đó.';
     // Bạn: mặt nhân vật trong vòng tròn, vòng sáng nhấp nháy, nhãn "Bạn"
     if (levelAt(p.x, p.y) === F.id) {
       const [X, Y] = M(p.x, p.y);

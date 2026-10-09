@@ -1019,7 +1019,7 @@ input[type=range] { width: 100%; accent-color: var(--lanyard); }
 .mm-floors button.on { background: var(--ink); color: #fff; }
 .mm-floors button i { font-style: normal; background: var(--postit); color: var(--ink); border-radius: 999px; padding: 0 6px; margin-left: 4px; border: 2px solid var(--ink); }
 .mm-floors button.alarm { border-color: var(--alarm); box-shadow: 0 0 0 3px rgba(232, 68, 58, .35); animation: blink 1s steps(2) infinite; }
-.minimap { width: min(1180px, 96vw, calc((94vh - 160px) * 1.727 + 26px)); }
+.minimap { width: min(1180px, 96vw, calc((94vh - 190px) * 1.727 + 26px)); } /* chừa chỗ cho 2 dòng chú thích, không phải cuộn */
 
 /* Khu giải trí: mini-game */
 .darts { display: flex; flex-direction: column; align-items: center; gap: 10px; }
@@ -2136,3 +2136,94 @@ body.mt-mode { overflow: hidden; }
 .lchat-hbtn .dot[hidden] { display: none; }
 .lchat-msg time { color: var(--muted); font-size: .72rem; font-weight: 700; }
 @media (pointer: coarse), (max-width: 760px) { .lchat-hbtn { bottom: calc(186px + env(safe-area-inset-bottom)); } }
+
+/* ================= ĐIỆN THOẠI: phòng họp gọn ================= */
+.meet-roles-tip { display: none; }
+.meet-main { grid-template-columns: minmax(0, 1fr) 320px; }
+.meet-main > * { min-width: 0; }
+.chat-form .primary { flex: none; }
+@media (max-width: 520px), (max-height: 500px) {
+  .overlay.meet { padding: 6px; }
+  .meet-win { height: 100%; border-width: 3px; border-radius: 14px; }
+  .meet-top { padding: 6px 10px; gap: 8px; }
+  .meet-title { flex: 1; min-width: 0; cursor: pointer; }
+  .meet-title b { font-size: 1.1rem; margin-right: 6px; }
+  .meet-title span { display: block; font-size: .74rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .meet-roles { display: none; }
+  .meet-roles-tip { display: inline-block; font-style: normal; font-size: .7rem; color: #a9abcf; margin-top: 1px; }
+  .meet.roles-open .meet-roles { display: block; }
+  .meet.roles-open .meet-roles-tip { display: none; }
+  .meet-timer { padding: 3px 6px; gap: 6px; }
+  .m-phase-pill { font-size: .66rem; padding: 2px 7px; border-width: 2px; }
+  .m-clock { font-size: 1.35rem; min-width: 50px; -webkit-text-stroke: 4px var(--ink); }
+  /* ô người chơi nhỏ: 5 ô một hàng, 10 người vừa 2 hàng */
+  .tiles { grid-template-columns: repeat(auto-fill, minmax(62px, 1fr)); grid-auto-rows: 80px; gap: 4px; padding: 6px; }
+  .tile { border-width: 2px; border-radius: 9px; }
+  .tile .cam { height: 50px; } .tile .cam img { height: 48px; }
+  .tile.dead .cam::after { height: 50px; font-size: 32px; }
+  .tile-info { height: 28px; padding: 2px 4px; }
+  .tile-info b { font-size: .64rem; gap: 2px; }
+  .tile .emp-id { font-size: .64rem; }
+  .tile-info small { font-size: .56rem; }
+  .tile .badge { font-size: 13px; top: 2px; left: 3px; }
+  .tile .voted { font-size: .5rem; padding: 0 3px; top: 3px; right: 3px; border-width: 1.5px; }
+  .tile .rdy { width: 15px; height: 15px; font-size: .55rem; top: 3px; left: 20px; border-width: 1.5px; }
+  .tile .shield { width: 22px; height: 22px; font-size: 12px; top: 3px; right: 3px; }
+  .voters { bottom: 28px; left: 2px; right: 2px; gap: 1px; }
+  .voters img { width: 13px; height: 16px; }
+  /* trò chuyện */
+  .chat-head { padding: 5px 10px; font-size: .85rem; }
+  .chat-log { padding: 6px 8px; gap: 6px; }
+  .emoji-bar { gap: 3px; padding: 4px 6px 0; }
+  .emo { font-size: 16px; padding: 3px 0; border-radius: 8px; }
+  .chat-form { padding: 6px; gap: 4px; }
+  .chat-form input { padding: 6px 8px; border-width: 2px; }
+  .chat-form .primary { padding: 6px 10px; }
+  /* nút dưới cùng: một hàng */
+  .meet-bar { gap: 5px; padding: 6px 8px; flex-wrap: wrap; }
+  .meet-bar .ghost-btn, .meet-bar .primary { padding: 7px 8px; font-size: .78rem; flex: 1 1 auto; }
+  .m-long { display: none; }
+  .vote-status { width: 100%; margin-left: 0; font-size: .74rem; }
+}
+@media (max-width: 520px) {
+  .meet-main { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .tiles { max-height: 184px; }
+  .chat { border-left: 0; border-top: 3px solid var(--ink); }
+}
+@media (max-height: 500px) {
+  .meet-main { grid-template-columns: minmax(0, 1fr) minmax(240px, 40%); }
+}
+/* ================= ĐIỆN THOẠI HẸP: nút hành động dồn sang nửa phải, chừa nửa trái cho cần điều khiển ================= */
+@media (max-width: 430px) {
+  .actions { grid-template-columns: repeat(2, auto); gap: 6px; right: 8px; }
+  .act, .act.danger, .act.alert, .act.po { width: 72px; height: 74px; }
+  .act .ic, .act .sweep { width: 50px; height: 50px; }
+  .act .sweep { margin-left: -25px; }
+  .act .lb { font-size: .68rem; max-width: 74px; -webkit-text-stroke: 4px var(--ink); }
+  .act .cd { font-size: 1.7rem; top: 8px; }
+  #a-use, #l-use { width: 82px; height: 86px; }
+  #a-use .ic, #l-use .ic, #a-use .sweep, #l-use .sweep { width: 62px; height: 62px; }
+  #a-use .sweep, #l-use .sweep { margin-left: -31px; }
+}
+/* màn thấp (điện thoại xoay ngang): danh sách việc không cao quá màn hình */
+@media (max-height: 500px) {
+  .task-list { max-height: calc(100vh - 150px); overflow-y: auto; }
+}
+
+/* màn thấp (điện thoại xoay ngang): sơ đồ chia 2 cột, tầng + chú thích bên trái, bản đồ bên phải, không phải cuộn */
+@media (max-height: 500px) {
+  .minimap-wrap { padding: 6px; }
+  .minimap { width: min(1180px, 98vw); max-height: 98vh; display: grid; grid-template-columns: minmax(150px, 210px) minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr) auto; column-gap: 10px; padding: 8px; overflow: hidden; }
+  .minimap .mm-head { grid-column: 1 / -1; margin-bottom: 4px; font-size: 1rem; }
+  .minimap .mm-head .x.art { width: 36px; height: 36px; }
+  .minimap .mm-floors { grid-column: 1; grid-row: 2; flex-direction: column; flex-wrap: nowrap; gap: 4px; margin: 0 0 6px; }
+  .minimap .mm-floors button { padding: 3px 8px; font-size: .8rem; text-align: left; border-width: 2px; }
+  .minimap .mm-legend { grid-column: 1; grid-row: 3; margin-top: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 3px 6px; align-content: start; font-size: .62rem; line-height: 1.1; overflow-y: auto; min-height: 0; }
+  .minimap .mm-legend span { gap: 3px; }
+  .minimap .mm-legend .lgi { width: 18px; height: 18px; }
+  .minimap .mm-legend .lg.pin { width: 15px; height: 18px; font-size: .6rem; }
+  .minimap .mm-canvas { grid-column: 2; grid-row: 2 / 5; align-self: start; max-height: calc(98vh - 70px); aspect-ratio: 1320 / 764; max-width: 100%; justify-self: center; }
+  .minimap .mm-canvas canvas { width: 100%; height: 100%; object-fit: contain; }
+  .minimap .mm-note { grid-column: 1; grid-row: 4; font-size: .7rem; margin-top: 4px; }
+  .minimap .mm-note:empty { display: none; }
+}
