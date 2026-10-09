@@ -505,6 +505,7 @@ export class UI {
         <div class="lchat-row"><input class="lchat-in" maxlength="120" placeholder="Nhập tin nhắn, Enter để gửi, Esc để đóng" aria-label="Tin nhắn"><button type="submit" class="lchat-send">Gửi</button></div>
       </form>
       <button class="lchat-btn" type="button" aria-label="Chat (Enter)">${iconSvg('chat')}<kbd>Enter</kbd></button>
+      <button class="lchat-hbtn" type="button" aria-label="Xem tin nhắn cũ" title="Xem tin nhắn cũ">🕘<i class="dot" hidden></i></button>
       <div class="joy" aria-hidden="true"><div class="joy-knob"></div></div>`;
     this.root.appendChild(hud);
     this.lobbyHud = hud;
@@ -559,15 +560,30 @@ export class UI {
       scene()?.chatSay?.(t.slice(0, 120));
       return true;
     };
-    session.lobby.onChat = (m) => {
-      // Lịch sử đầy đủ
+    const L = session.lobby, dot = $('.lchat-hbtn .dot', hud) as HTMLElement;
+    const hhmm = (at: number) => new Date(at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    const addRow = (m: { name: string; empId: string; text: string; me: boolean; at: number }) => {
       const row = document.createElement('p');
       row.className = 'lchat-msg' + (m.me ? ' me' : '');
-      row.innerHTML = `<b>${esc(m.name)} <small>#${m.empId}</small></b> `;
+      row.innerHTML = `<time>${hhmm(m.at)}</time> <b>${esc(m.name)} <small>#${esc(m.empId)}</small></b> `;
       row.appendChild(document.createTextNode(m.text));
       log.appendChild(row);
-      while (log.children.length > 80) log.firstElementChild?.remove();
+      while (log.children.length > 50) log.firstElementChild?.remove();
       log.scrollTop = log.scrollHeight;
+    };
+    // tin cũ (giữ qua các lần về sảnh; người mới vào phòng nhận 20 tin gần nhất từ chủ phòng)
+    const fromHost = (items: { name: string; empId: string; text: string; at: number }[]) => {
+      if (L.chatLog.length) return;
+      for (const it of items) L.chatLog.push({ ...it, me: false });
+      for (const m of L.chatLog) addRow(m);
+    };
+    for (const m of L.chatLog) addRow(m);
+    if (net.client) { net.client.onLobbyHistory = fromHost; if (net.client.lobbyHist.length) fromHost(net.client.lobbyHist); }
+    session.lobby.onChat = (m0) => {
+      const m = { ...m0, at: Date.now() };
+      L.chatLog.push(m); while (L.chatLog.length > 50) L.chatLog.shift();
+      addRow(m);
+      if (hist.hidden && !m.me) dot.hidden = false;
       // Dòng tin trôi: tối đa 4 tin, tự mờ
       const line = document.createElement('span');
       line.className = 'lf-line' + (m.me ? ' me' : '');
@@ -586,8 +602,10 @@ export class UI {
       b.onclick = () => { if (send(b.dataset.q!)) open(false); };
     });
     $('.lchat-btn', hud).onclick = () => open(!!bar.hidden);
-    feed.onclick = () => { hist.hidden = false; log.scrollTop = log.scrollHeight; };
-    $('.lch-head .x', hist).onclick = () => { hist.hidden = true; };
+    const showHist = (on: boolean) => { hist.hidden = !on; if (on) { dot.hidden = true; log.scrollTop = log.scrollHeight; } };
+    feed.onclick = () => showHist(true);
+    $('.lchat-hbtn', hud).onclick = () => showHist(!!hist.hidden);
+    $('.lch-head .x', hist).onclick = () => showHist(false);
     this.lobbyChatOpen = open;
   }
   private lobbyChatOpen: ((on: boolean) => void) | null = null;
@@ -929,6 +947,7 @@ export class UI {
     if (net.client) { net.client.leave(); session.world = null; } // bản sao không bao giờ được tự chạy như ván chơi một mình
     if (net.role !== 'solo') netLog(`[máy này] rời phòng (${net.role})`);
     net.host = null; net.client = null; net.role = 'solo'; this.p2pT = null;
+    session.lobby.chatLog = []; // đổi phòng: lịch sử chat của phòng cũ không mang theo
     session.lobby.online = false; session.lobby.remote.clear(); session.lobby.sendState = session.lobby.sendChat = session.lobby.sendFx = null;
     this.onlineLobbyOn = false;
     sessionStorage.removeItem(ROOM_KEY);
@@ -958,7 +977,7 @@ export class UI {
     const h = new NetHost(multi, code, this.myProfile(), { timers: false });
     net.host = h; net.role = 'host';
     const pr = this.prefs;
-    h.settings = { fillBots: true, seats: Math.max(4, Math.min(MAX_PLAYERS, pr.bots + 1)), imps: pr.imps === 2 ? 2 : 1, roles: { ...pr.roles }, maxSpecial: pr.maxSpecial, discussTime: 60, voteTime: 30, anonVotes: pr.anonVotes, killCd: 0, name: '', public: true };
+    h.settings = { fillBots: true, seats: Math.max(4, Math.min(MAX_PLAYERS, pr.bots + 1)), imps: pr.imps === 2 ? 2 : 1, roles: { ...pr.roles }, maxSpecial: pr.maxSpecial, discussTime: 60, voteTime: 30, anonVotes: pr.anonVotes, killCd: 0, small: true, name: '', public: true };
     h.settings.name = cleanRoomName(opts.name ?? '', `Phòng của ${h.me.name}`);
     h.settings.public = opts.pub ?? true;
     // phòng Public: báo danh cho danh sách Phòng Public (đổi tên / Public / người vào ra thì cập nhật ngay)
@@ -1070,7 +1089,8 @@ export class UI {
           <label><input type="checkbox" id="rm-bots" ${st.fillBots ? 'checked' : ''} ${host ? '' : 'disabled'}> Ghế trống có bot chơi cùng</label>
           <label>Số ghế <select id="rm-seats" ${host ? '' : 'disabled'}>${[4, 5, 6, 7, 8, 9, 10].map(n => `<option value="${n}" ${n === st.seats ? 'selected' : ''} ${n < room.players.length ? 'disabled' : ''}>${n}</option>`).join('')}</select></label>
           <label>Nội gián <select id="rm-imps" ${host && total > 6 ? '' : 'disabled'}><option value="1" ${imps === 1 ? 'selected' : ''}>1</option><option value="2" ${imps === 2 ? 'selected' : ''}>2</option></select></label>
-          <label>Hồi chiêu gài bẫy <select id="rm-kcd" ${host ? '' : 'disabled'}><option value="0" ${!st.killCd ? 'selected' : ''}>Tự động (${killCooldownFor(total, imps)} giây)</option>${[20, 25, 30, 45, 60].map(n => `<option value="${n}" ${n === st.killCd ? 'selected' : ''}>${n} giây</option>`).join('')}</select></label>
+          <label class="om-switch"><span><b>Chế độ ít người</b><small>${total <= 6 ? (st.small !== false ? 'Đang bật: tối đa 2 vai, 5 việc ngắn, không giao việc ở sân thượng' : 'Đang tắt: chơi như ván đông người') : 'Tự bật khi ván có 6 người trở xuống'}</small></span><input type="checkbox" id="rm-small" ${st.small !== false ? 'checked' : ''} ${host ? '' : 'disabled'}><i aria-hidden="true"></i></label>
+          <label>Hồi chiêu gài bẫy <select id="rm-kcd" ${host ? '' : 'disabled'}><option value="0" ${!st.killCd ? 'selected' : ''}>Tự động (${killCooldownFor(total, imps, total <= 6 && st.small !== false)} giây)</option>${[20, 25, 30, 45, 60].map(n => `<option value="${n}" ${n === st.killCd ? 'selected' : ''}>${n} giây</option>`).join('')}</select></label>
         </section>
         <section><h4>Vai có kỹ năng <small>(tối đa <select id="rm-max" ${host ? '' : 'disabled'}>${[0, 1, 2, 3, 4, 5, 6].map(n => `<option value="${n}" ${n === st.maxSpecial ? 'selected' : ''}>${n}</option>`).join('')}</select> vai mỗi ván)</small></h4>
           <div class="rm-roles">${SPECIAL_ROLES.map(r => `<button type="button" class="rm-role${st.roles[r] !== false ? ' on' : ''}" data-r="${r}" ${host ? '' : 'disabled'} title="${esc(ROLE_INFO[r].name)}">${ROLE_INFO[r].icon} ${esc(ROLE_INFO[r].name)}</button>`).join('')}</div>
@@ -1101,6 +1121,7 @@ export class UI {
       (el.querySelector('#rm-imps') as HTMLSelectElement).onchange = (e) => { host.settings.imps = Number((e.target as HTMLSelectElement).value) === 2 ? 2 : 1; host.broadcastRoom(); };
       (el.querySelector('#rm-kcd') as HTMLSelectElement).onchange = (e) => { host.settings.killCd = Number((e.target as HTMLSelectElement).value); host.broadcastRoom(); };
       (el.querySelector('#rm-max') as HTMLSelectElement).onchange = (e) => { host.settings.maxSpecial = Number((e.target as HTMLSelectElement).value); host.broadcastRoom(); };
+      (el.querySelector('#rm-small') as HTMLInputElement).onchange = (e) => { host.settings.small = (e.target as HTMLInputElement).checked; host.broadcastRoom(); };
       (el.querySelector('#rm-disc') as HTMLSelectElement).onchange = (e) => { host.settings.discussTime = Number((e.target as HTMLSelectElement).value); host.broadcastRoom(); };
       (el.querySelector('#rm-vote') as HTMLSelectElement).onchange = (e) => { host.settings.voteTime = Number((e.target as HTMLSelectElement).value); host.broadcastRoom(); };
       (el.querySelector('#rm-anon') as HTMLInputElement).onchange = (e) => { host.settings.anonVotes = (e.target as HTMLInputElement).checked; host.broadcastRoom(); };
@@ -1228,6 +1249,7 @@ export class UI {
     const roles = Object.fromEntries(SPECIAL_ROLES.map(r => [r, st.roles[r] !== false])) as typeof p.roles;
     const w = new World({ playerName: me.name, playerLook: p.look, roles, maxSpecial: st.maxSpecial, discussTime: st.discussTime, voteTime: st.voteTime,
       killCd: st.killCd > 0 ? st.killCd : undefined, // 0: tự động theo cỡ ván
+      small: st.small === false ? false : undefined, // bộ chỉnh ít người: tự bật khi ≤ 6 người
       playerRole: p.testRole === 'random' ? 'random' : p.testRole === 'impostor' ? 'impostor' : 'crew',
       playerDept: p.testRole !== 'random' && p.testRole !== 'impostor' ? p.testRole : undefined,
       bots: total - 1, impostors: imps, botProfiles: remote.map(r => ({ name: r.name, look: normalizeLook(r.look), empId: r.empId })), playerEmpId: me.empId });
@@ -2267,6 +2289,7 @@ export class UI {
           <span class="fake-ctl" title="Camera bị IT khóa">📷 Tắt camera</span>
           <div class="vote-status" id="m-status"></div>
           <button class="ghost-btn dir-btn" id="m-director" hidden>✅ Công bố chức vụ Director</button>
+          <button class="ghost-btn ready-btn" id="m-ready" type="button">Sẵn sàng bỏ phiếu</button>
           <button class="ghost-btn" id="m-skip" disabled>Bỏ qua, chưa đủ bằng chứng</button>
           <button class="primary danger" id="m-vote" disabled>Vote sa thải</button>
         </div>
@@ -2283,7 +2306,7 @@ export class UI {
       const mate = this.seesAsImpostor(a);
       t.innerHTML = `<div class="cam" style="--dc:${a.color};--dt:${tagText(a.color)}"><img src="${avatarURL(a.look)}" alt=""></div>
         <div class="tile-info"><b class="${mate ? 'mate' : ''}"><span class="tn">${esc(a.name)}${a.isPlayer ? ' (bạn)' : ''}</span><span class="emp-id">#${a.empId}</span></b><small class="tile-role">${a.alive ? (a.directorRevealed ? '✅ Director' : a.poRevealed ? '✅ Product Owner' : '') : 'Đã nghỉ việc'}</small></div>
-        ${a.id === m.reporter ? '<span class="badge">📢</span>' : ''}<span class="voted" hidden>Đã vote</span><div class="voters"></div>
+        ${a.id === m.reporter ? '<span class="badge">📢</span>' : ''}<span class="voted" hidden>Đã vote</span><span class="rdy" hidden title="Sẵn sàng bỏ phiếu">✓</span><div class="voters"></div>
         ${isProducer && a.alive ? `<span class="shield${w.player.prodLast === a.id ? ' blocked' : ''}" role="button" data-id="${a.id}" title="${w.player.prodLast === a.id ? 'Đã bảo lãnh ở cuộc họp trước' : 'Bảo lãnh người này'}">🛡️</span>` : ''}`;
       t.onclick = (ev) => { if ((ev.target as HTMLElement).classList.contains('shield')) return; this.pickVote(a.id); };
       tiles.appendChild(t);
@@ -2325,6 +2348,8 @@ export class UI {
     dirBtn.hidden = !(w.player.role === 'crew' && w.player.dept === 'director' && w.player.alive && !w.player.directorRevealed);
     dirBtn.onclick = () => { act('revealDirector'); dirBtn.hidden = true; sfx.stamp(); };
     $('#m-vote', el).onclick = () => { if (this.selectedVote !== null) this.castVote(this.selectedVote); };
+    // Sẵn sàng bỏ phiếu: mọi người thật còn sống, đang kết nối cùng bấm thì mở bỏ phiếu ngay (bấm lần nữa để hủy)
+    $('#m-ready', el).onclick = () => { const mm = session.world?.meeting; if (!mm) return; const on = !(mm.ready ?? []).includes(session.world!.player.id); act('readyVote', on); if (net.role !== 'client') this.updateMeeting(); sfx.click(); };
     if (!w.player.alive) { ($('#m-skip', el) as HTMLButtonElement).disabled = true; }
     let chatReadyAt = 0;
     this.reactCount = 0;
@@ -2409,6 +2434,17 @@ export class UI {
       if (urgent && left > 0) { clock.classList.remove('tick'); void clock.offsetWidth; clock.classList.add('tick'); sfx.click(); }
     }
     el.classList.toggle('voting', !discussing && !m.result);
+    { // nút + dấu ✓ "Sẵn sàng bỏ phiếu"
+      const rb = $('#m-ready', el) as HTMLButtonElement, ready = m.ready ?? [];
+      const need = w.agents.filter(a => a.human && a.alive && !a.away);
+      const n = need.filter(a => ready.includes(a.id)).length, mine = ready.includes(w.player.id);
+      rb.hidden = !discussing || !!m.result || !w.player.alive;
+      const t = mine ? `✓ Đã sẵn sàng · ${n}/${need.length}` : `Sẵn sàng bỏ phiếu · ${n}/${need.length}`;
+      if (rb.textContent !== t) rb.textContent = t;
+      rb.classList.toggle('is-ready', mine);
+      rb.title = mine ? 'Bấm lần nữa để hủy' : 'Đủ mọi người còn sống cùng sẵn sàng thì mở bỏ phiếu ngay';
+      el.querySelectorAll<HTMLElement>('.tile[data-id]').forEach(tile => { const r = tile.querySelector('.rdy') as HTMLElement | null; if (r) r.hidden = !discussing || !ready.includes(Number(tile.dataset.id)); });
+    }
     const canVote = !discussing && !m.result && w.player.alive && !m.votes.has(w.player.id);
     ($('#m-skip', el) as HTMLButtonElement).disabled = !canVote;
     if (!discussing && !this.voteOpened) { this.voteOpened = true; sfx.ting(); }

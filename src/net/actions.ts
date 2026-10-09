@@ -24,6 +24,7 @@ export const ACTIONS: Record<string, Fn> = {
   report: (w, a, [victim]) => { const b = w.bodies.find(x => x.victim === num(victim)); if (b) w.report(a, b); },
   callEmergency: (w, a) => w.callEmergency(a, 'bell'),
   vote: (w, a, [t]) => { const v = t === 'skip' ? 'skip' : num(t); if (v === 'skip' || Number.isInteger(v)) w.vote(a, v as number | 'skip'); },
+  readyVote: (w, a, [on]) => w.setReadyVote(a, on !== false),
   chat: (w, a, [text]) => { if (typeof text === 'string' && text.trim()) w.chatFrom(a, text.slice(0, 160)); },
   react: (w, a, [e]) => { if (typeof e === 'string' && e.length <= 8) w.react(a.id, e); },
   chooseSpawn: (w, a, [i]) => w.chooseSpawnFor(a, Number.isInteger(num(i)) ? num(i) : -1),

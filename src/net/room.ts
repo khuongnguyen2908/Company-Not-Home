@@ -28,10 +28,12 @@ export interface RoomSettings {
   discussTime: number; voteTime: number; anonVotes: boolean;
   /** hồi chiêu gài bẫy (giây); 0 = tự động theo cỡ ván và số Nội gián */
   killCd: number;
+  /** Bộ chỉnh ít người (≤ 6 người): true = tự bật, false = tắt */
+  small: boolean;
   /** tên phòng (hiện trong danh sách Public); public: hiện trong danh sách Public, tắt = chỉ vào bằng mã / link mời */
   name: string; public: boolean;
 }
-export const DEFAULT_SETTINGS: RoomSettings = { fillBots: true, seats: 8, imps: 1, roles: {}, maxSpecial: 3, discussTime: 60, voteTime: 30, anonVotes: false, killCd: 0, name: '', public: true };
+export const DEFAULT_SETTINGS: RoomSettings = { fillBots: true, seats: 8, imps: 1, roles: {}, maxSpecial: 3, discussTime: 60, voteTime: 30, anonVotes: false, killCd: 0, small: true, name: '', public: true };
 /** Trạng thái một người trong sảnh tầng G (gửi 10 lần/giây khi chưa vào ca) */
 export interface LobbyState { x: number; y: number; f: 1 | -1; m: 0 | 1; seat: number | null; cup: 0 | 1; arrived: 0 | 1 }
 
@@ -67,6 +69,8 @@ export type ToClient =
   | { t: 'note'; text: string }
   | { t: 'lst'; all: [string, LobbyState][] }
   | { t: 'lchat'; peer: string; text: string }
+  /** lịch sử chat sảnh cho người mới vào phòng */
+  | { t: 'lhist'; items: { name: string; empId: string; text: string; at: number }[] }
   | { t: 'lfx'; peer: string; key: string }
   | { t: 'lgo' }
   | { t: 'closed' };
@@ -202,7 +206,7 @@ export class NetHost {
         if (this.inGame && !pl) { netLog(`[chủ phòng] từ chối máy ${from.slice(0, 6)}: phòng đang chơi`); this.tr.send(from, { t: 'reject', reason: 'Phòng đang chơi, đợi ván sau nhé.' } satisfies ToClient); return; }
         if (!pl && this.players.length >= this.capacity) { this.tr.send(from, { t: 'reject', reason: `Phòng đã đủ ${this.capacity} người.` } satisfies ToClient); return; }
         const p = sanitizeProfile(m.p);
-        if (pl) Object.assign(pl, { name: p.name, look: p.look }); else { this.players.push({ ...p, peer: from, host: false }); netLog(`[chủ phòng] ${p.name} vào phòng (máy ${from.slice(0, 6)})`); }
+        if (pl) Object.assign(pl, { name: p.name, look: p.look }); else { this.players.push({ ...p, peer: from, host: false }); netLog(`[chủ phòng] ${p.name} vào phòng (máy ${from.slice(0, 6)})`); if (this.chatHist.length) this.tr.send(from, { t: 'lhist', items: this.chatHist } satisfies ToClient); }
         this.fixEmpIds();
         this.broadcastRoom();
         // vào lại giữa ván (tải lại trang, rớt mạng): nhận lại đúng nhân vật cũ
@@ -223,6 +227,7 @@ export class NetHost {
         if (!pl || typeof m.text !== 'string') return;
         const text = m.text.replace(/[<>]/g, '').slice(0, 120).trim();
         if (!text) return;
+        this.recordChat(from, text);
         this.tr.send('*', { t: 'lchat', peer: from, text } satisfies ToClient); this.onLobbyChat(from, text);
         return;
       }
@@ -291,7 +296,14 @@ export class NetHost {
     for (const k of [...this.lobby.keys()]) if (!live.has(k)) this.lobby.delete(k);
     this.tr.send('*', { t: 'lst', all: [...this.lobby] } satisfies ToClient);
   }
-  lobbyChat(text: string) { this.tr.send('*', { t: 'lchat', peer: this.tr.peerId, text } satisfies ToClient); }
+  lobbyChat(text: string) { this.recordChat(this.tr.peerId, text); this.tr.send('*', { t: 'lchat', peer: this.tr.peerId, text } satisfies ToClient); }
+  /** 20 tin chat sảnh gần nhất (gửi cho người mới vào) */
+  private chatHist: { name: string; empId: string; text: string; at: number }[] = [];
+  private recordChat(peer: string, text: string) {
+    const p = this.players.find(x => x.peer === peer);
+    this.chatHist.push({ name: p?.name ?? '?', empId: p?.empId ?? '', text, at: Date.now() });
+    if (this.chatHist.length > 20) this.chatHist.shift();
+  }
   lobbyFx(key: string) { this.tr.send('*', { t: 'lfx', peer: this.tr.peerId, key } satisfies ToClient); }
   /** Chủ phòng bấm vào ca: cả phòng cùng xem cảnh thang máy */
   lobbyGo() { this.tr.send('*', { t: 'lgo' } satisfies ToClient); }
@@ -396,6 +408,9 @@ export class NetClient {
   onLobbyChat = (_peer: string, _text: string) => {};
   onLobbyFx = (_peer: string, _key: string) => {};
   onLobbyGo = () => {};
+  onLobbyHistory = (_items: { name: string; empId: string; text: string; at: number }[]) => {};
+  /** lịch sử chat sảnh nhận lúc vào phòng (có thể tới trước khi giao diện sảnh dựng xong) */
+  lobbyHist: { name: string; empId: string; text: string; at: number }[] = [];
   private lobbyT = 0;
   /** mất / có lại kết nối với chủ phòng */
   onHostLost = (_lost: boolean) => {};
@@ -471,6 +486,7 @@ export class NetClient {
       case 'note': this.onNote(m.text); return;
       case 'lst': if (Array.isArray(m.all)) this.lobby = new Map(m.all); return;
       case 'lchat': if (m.peer !== this.tr.peerId) this.onLobbyChat(m.peer, m.text); return;
+      case 'lhist': if (Array.isArray(m.items)) { this.lobbyHist = m.items.slice(-20); this.onLobbyHistory(this.lobbyHist); } return;
       case 'lfx': if (m.peer !== this.tr.peerId) this.onLobbyFx(m.peer, m.key); return;
       case 'lgo': this.onLobbyGo(); return;
       case 'hb': return;

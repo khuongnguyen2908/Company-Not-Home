@@ -62,6 +62,8 @@ export const BODIES: BodyDef[] = [
   { id: 'zombie', name: 'Zombie văn phòng (OT quá nhiều)', color: ['#9cc27a/#f4f4f4', '#a7b7a0/#cfe3ff'], def: '#9cc27a/#f4f4f4', hasHair: false, human: false },
   { id: 'duck', name: 'Vịt cao su', color: ['#ffd23f/#ff8a2f', '#ff9ec4/#ff8a2f', '#7fc4ff/#ff8a2f'], def: '#ffd23f/#ff8a2f', hasHair: false, human: false },
   { id: 'skeleton', name: 'Bộ xương', color: 'fixed', def: '#f4f1e8/#2b2b38', hasHair: false, human: false },
+  { id: 'bearrain', name: 'Gấu trắng áo mưa', color: 'fixed', def: '#fbfbf7/#ffd23f', hasHair: false, human: false },
+  { id: 'bearflower', name: 'Gấu Bắc Cực đội hoa', color: 'fixed', def: '#fbfbf7/#ffc928', hasHair: false, human: false },
 ];
 
 export const MARKS: { id: string; name: string }[] = [

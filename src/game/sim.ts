@@ -9,7 +9,7 @@ import {
 import { findPath, type Pt } from './path';
 import { fmt } from '../content/text';
 import { type Look, randomLook, lookColor, colors2, itemDef, bodyDef, SLOTS } from './look';
-import { CAMERAS, levelName, FLOORS, STAIRWELL, SPAWN_POINTS, MINI_TIME, taskDiff } from './map';
+import { CAMERAS, levelName, FLOORS, STAIRWELL, SPAWN_POINTS, MINI_TIME, taskDiff, ROOF } from './map';
 import {
   type RoleDept, SPECIAL_ROLES, NEUTRAL_ROLES, COLOR_GROUPS, colorGroupOf, STICKERS, BOT_NAMES, FILLER_LINES, DEFENSE_LINES, IMPOSTOR_ALIBIS, pick, normalize,
 } from './data';
@@ -23,6 +23,11 @@ export const SPEED = 205;
 export const VISION = 3.8 * TILE;      // tầm nhìn Nhân viên ở mức 1x (bản đồ nhiều tầng rộng hơn nên trả về 3,8 ô)
 export const VISION_IMP = VISION * 1.5; // Nội gián nhìn xa gấp rưỡi, như Among Us
 export const VISION_DARK = 1.2 * TILE;
+/** Tầm nhìn Nhân viên theo cỡ ván (bản đồ 4 tầng rộng so với ít người) */
+export const SMALL_VISION = 5 * TILE, MID_VISION = 4.4 * TILE;
+/** Ván ít người: số việc ngắn mỗi người (ván thường 3) */
+export let SMALL_SHORT_TASKS = 5;
+export function setSmallShortTasks(n: number) { SMALL_SHORT_TASKS = n; }
 export const DOOR_TIME = 10;            // cửa khóa trong bao lâu
 export const DOOR_CD = 30;              // hồi chiêu khóa cửa của mỗi phòng
 export const SWIPE_TIME = 3;
@@ -51,9 +56,11 @@ export const BOSS_TIME = 45; // tòa nhiều tầng: cần thêm thời gian đ�
  * Hồi chiêu gài bẫy theo cỡ ván (bản đồ 3 tầng + sân thượng).
  * Chọn bằng cách chạy 150 ván bot cho từng cỡ, nhắm tỉ lệ Nội gián thắng khoảng 40–52%.
  */
-export function killCooldownFor(players: number, imps: number): number {
+export function killCooldownFor(players: number, imps: number, small = false): number {
+  // Bộ chỉnh ít người (tầm nhìn 5 ô, 5 việc ngắn, không việc sân thượng): đo 500 ván mỗi cỡ, Nội gián thắng khoảng 46–48%
+  if (small && imps <= 1 && players <= 6) return players <= 5 ? 56 : 37;
   // Bản đồ mới (tầng gọn, thang bộ một đoạn, tầng nhà): Nhân viên chạy KPI nhanh hơn nên hồi chiêu ngắn lại (đo lại 300 ván mỗi cỡ)
-  if (imps <= 1) return ({ 5: 40, 6: 26, 7: 20, 8: 12, 9: 10, 10: 6 } as Record<number, number>)[players] ?? (players < 5 ? 45 : 6);
+  if (imps <= 1) return ({ 5: 40, 6: 26, 7: 20, 8: 14, 9: 10, 10: 6 } as Record<number, number>)[players] ?? (players < 5 ? 45 : 6);
   return ({ 7: 90, 8: 62, 9: 47, 10: 36 } as Record<number, number>)[players] ?? (players < 7 ? 90 : 36);
 }
 export const USE_RANGE = 1.15 * TILE;
@@ -225,6 +232,8 @@ export interface Meeting {
   hrClaims: { by: number; target: number; imp: boolean }[];
   via: 'body' | 'bell' | 'email' | 'po';
   protect: number | null; // Producer bảo lãnh ai trong cuộc họp này
+  /** người thật đã bấm "Sẵn sàng bỏ phiếu" (công khai: ai cũng thấy dấu ✓) */
+  ready?: number[];
   reactions: { from: number; emoji: string; t: number }[];
   reactQueue: { at: number; from: number; emoji: string }[];
   votes: Map<number, number | 'skip'>;
@@ -251,6 +260,8 @@ export interface WorldOptions {
   killCdStart?: number;
   killCdAfterMeeting?: number;
   shortTasks?: number;
+  /** Bộ chỉnh ván ít người (≤ 6): tối đa 2 vai đặc biệt, thêm việc, không giao việc trên sân thượng. Bỏ trống = tự bật khi ≤ 6 người */
+  small?: boolean;
   killFirst?: number;
   buddy?: number;
   seekLead?: number;
@@ -315,6 +326,10 @@ export class World {
   killCdAfterMeeting = 1;
   /** Hệ số tầm nhìn của Nhân viên (cài đặt phòng: 0.75x / 1x / 1.25x) */
   visionMul = 1;
+  /** Tầm nhìn theo cỡ ván: ít người thì bản đồ thấy rộng, nên nhìn xa hơn (5–6 người: 5 ô, 7–8 người: 4,4 ô) */
+  sizeVision = 1;
+  /** Ván ít người (bộ chỉnh ít người đang bật) */
+  small = false;
   /** Danh sách phòng ban có năng lực trong ván (công khai) */
   roleList: RoleDept[] = [];
   /** Phiếu ẩn danh (cài đặt phòng khi chơi nhiều người): dữ liệu gửi đi không cho biết ai bầu ai */
@@ -344,6 +359,9 @@ export class World {
     if (opts.killCdAfterMeeting !== undefined) this.killCdAfterMeeting = opts.killCdAfterMeeting;
     DOOR_BLOCK.fill(0);
     const total = opts.bots + 1;
+    this.sizeVision = total <= 6 ? SMALL_VISION / VISION : total <= 8 ? MID_VISION / VISION : 1;
+    this.small = opts.small ?? total <= 6;
+    if (this.small && !opts.shortTasks) this.shortTasks = SMALL_SHORT_TASKS;
     const names = BOT_NAMES.filter(n => normalize(n) !== normalize(opts.playerName)).sort(() => this.rng() - 0.5);
     const deskOrder = DESKS.map((_, i) => i).sort(() => this.rng() - 0.5);
 
@@ -380,7 +398,7 @@ export class World {
     // Hồi chiêu gài bẫy tự cân theo số Nội gián (đã chạy thử hàng trăm ván để chọn số)
     if (opts.killCd) for (const a of this.agents) a.killCd = opts.killFirst ?? Math.round(opts.killCd / 2);
     if (!opts.killCd) {
-      const cd = killCooldownFor(total, nImp);
+      const cd = killCooldownFor(total, nImp, this.small);
       this.killCdBase = cd;
       for (const a of this.agents) a.killCd = Math.round(cd * 0.5);
     }
@@ -399,6 +417,7 @@ export class World {
     let crew = this.agents.filter(a => a.role === 'crew').sort(() => this.rng() - 0.5);
     let enabled = SPECIAL_ROLES.filter(r => opts.roles[r] && (NEUTRAL_ROLES[r] ?? 0) <= total).sort(() => this.rng() - 0.5);
     let maxS = opts.maxSpecial ?? 3;
+    if (this.small) maxS = Math.min(maxS, 2); // ván ít người: tối đa 2 vai đặc biệt (còn lại là Thực tập sinh)
     // Chế độ thử nghiệm: người chơi nhận đúng phòng ban đã chọn
     const forced = opts.playerDept && this.agents[0].role === 'crew' ? opts.playerDept : null;
     if (forced) {
@@ -417,16 +436,18 @@ export class World {
       a.devBackup = pick(others, this.rng).id;
     }
 
+    const floorOfStep = (k: string) => { const st = station(k); return levelAt((st.stand.x + 0.5) * TILE, (st.stand.y + 0.5) * TILE); };
     for (const a of this.agents) {
       // 1 việc chung + 3 việc ngắn + 1 việc dài
       const shuffle = <T,>(arr: T[]) => [...arr].sort(() => this.rng() - 0.5);
-      const common = TASKS.filter(t => t.type === 'common');
+      // ván ít người: không giao việc trên sân thượng (vẫn đi lên được), mọi người tụ ở 3 tầng chính
+      const roofFree = (t: (typeof TASKS)[number]) => !this.small || t.steps.every(k => floorOfStep(k) !== ROOF);
+      const common = TASKS.filter(t => t.type === 'common' && roofFree(t));
       // Tầng nhà = tầng có bàn của mình (bàn giao ngẫu nhiên): phần lớn việc ngắn ở tầng nhà, bớt chạy lên chạy xuống
       const seat = DESKS[a.desk]?.seat;
       const home = seat ? levelAt((seat.x + 0.5) * TILE, (seat.y + 0.5) * TILE) : 2;
       // khu cho việc dài: quanh tầng nhà (tầng 1 → 1–2; tầng 2/3 → 2–3 và sân thượng)
-      const zone = home === 1 ? [1, 2] : [2, 3, 4];
-      const floorOfStep = (k: string) => { const st = station(k); return levelAt((st.stand.x + 0.5) * TILE, (st.stand.y + 0.5) * TILE); };
+      const zone = home === 1 ? [1, 2] : this.small ? [2, 3] : [2, 3, 4];
       const inZone = (t: (typeof TASKS)[number]) => t.steps.every(k => zone.includes(floorOfStep(k)));
       // Mỗi người tối đa 1 việc khó (tính cả việc ngắn lẫn việc dài): ưu tiên việc trong khu, bỏ qua việc khó thứ hai
       let hard = 0;
@@ -435,9 +456,9 @@ export class World {
         for (const t of list) { if (out.length >= n) break; const h = taskDiff(t) === 'kho'; if (h && hard >= 1) continue; if (h) hard++; out.push(t); }
         return out;
       };
-      const longAll = shuffle(TASKS.filter(t => t.type === 'long'));
+      const longAll = shuffle(TASKS.filter(t => t.type === 'long' && roofFree(t)));
       const long = take([...longAll.filter(inZone), ...longAll.filter(t => !inZone(t))], 1);
-      const shortAll = shuffle(TASKS.filter(t => t.type === 'short'));
+      const shortAll = shuffle(TASKS.filter(t => t.type === 'short' && roofFree(t)));
       // việc ngắn: khoảng 2/3 ở tầng nhà, phần còn lại ở tầng khác; thiếu thì lấy bù chỗ khác
       const onHome = (t: (typeof TASKS)[number]) => t.steps.every(k => floorOfStep(k) === home);
       const nHome = Math.ceil(this.shortTasks * 2 / 3);
@@ -482,9 +503,9 @@ export class World {
     return this.visionBase(a);
   }
   private visionBase(a: Agent): number {
-    if (a.role === 'impostor') return VISION_IMP;
-    if (this.sabotage?.kind === 'power') return VISION_DARK * this.visionMul;
-    return VISION * this.visionMul;
+    if (a.role === 'impostor') return VISION_IMP * this.sizeVision;
+    if (this.sabotage?.kind === 'power') return VISION_DARK * this.visionMul; // mất điện vẫn tối như cũ
+    return VISION * this.visionMul * this.sizeVision;
   }
 
   canSee(obs: Agent, target: { x: number; y: number }, targetAgent?: Agent): boolean {
@@ -2390,6 +2411,7 @@ export class World {
     const m = this.meeting;
     if (!m || m.result) return;
     m.t += dt;
+    this.checkReadyVote();
     const lastT = m.chat.length ? m.chat[m.chat.length - 1].t : -99;
     if (m.queue.length && m.queue[0].at <= m.t && m.t - lastT >= CHAT_GAP) {
       const q = m.queue.shift()!;
@@ -2420,8 +2442,24 @@ export class World {
   }
 
   /** Người chơi bấm "Sẵn sàng bỏ phiếu": mở bỏ phiếu ngay */
-  /** Một người thật bấm "Sẵn sàng bỏ phiếu": đủ mọi người thật còn sống thì mới mở bỏ phiếu sớm */
-  /** Mở bỏ phiếu ngay (dùng cho công cụ thử) */
+  /** Người thật cần sẵn sàng để mở bỏ phiếu sớm: còn sống và đang kết nối (người rớt mạng, hồn ma không tính) */
+  readyNeeded() { return this.agents.filter(h => h.human && h.alive && !h.away); }
+  /** Một người thật bấm / hủy "Sẵn sàng bỏ phiếu". Đủ mọi người cần thiết thì mở bỏ phiếu ngay. */
+  setReadyVote(a: Agent, on: boolean) {
+    const m = this.meeting;
+    if (!m || m.result || m.t >= m.discussEnd || !a.human || !a.alive) return;
+    const r = (m.ready ??= []);
+    const i = r.indexOf(a.id);
+    if (on && i < 0) r.push(a.id); else if (!on && i >= 0) r.splice(i, 1);
+    this.checkReadyVote();
+  }
+  private checkReadyVote() {
+    const m = this.meeting;
+    if (!m || m.result || m.t >= m.discussEnd || !m.ready?.length) return;
+    const need = this.readyNeeded();
+    if (need.length && need.every(h => m.ready!.includes(h.id))) this.skipDiscussion();
+  }
+  /** Mở bỏ phiếu ngay (cũng dùng cho công cụ thử) */
   skipDiscussion() {
     const m = this.meeting;
     if (!m || m.result || m.t >= m.discussEnd) return;

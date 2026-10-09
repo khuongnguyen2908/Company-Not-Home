@@ -657,6 +657,56 @@ function drawSkinFull(ctx: CanvasRenderingContext2D, L: Look, frame: 0 | 1 | 2) 
       ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(49, 38); ctx.quadraticCurveTo(52, 40, 55, 37); ctx.stroke();
       return;
     }
+    // Gấu trắng (thiết kế riêng của game): mõm kem, mũi đen, tai tròn có lòng hồng
+    case 'bearrain': case 'bearflower': {
+      const fur = '#fbfbf7', cream = '#efe6d2', rain = '#ffd23f', rainDk = '#e0a800';
+      const B = L.body;
+      if (B === 'bearrain') legs(rain, rainDk); else legs(fur, cream);
+      ctx.translate(0, bob);
+      const head = (cx: number, cy: number, r: number, ears: boolean) => {
+        if (ears) for (const x of [cx - 12, cx + 11]) { ctx.beginPath(); ctx.arc(x, cy - r + 3, 6, 0, Math.PI * 2); fillStroke(ctx, fur, 3); ctx.fillStyle = '#f6b8c8'; ctx.beginPath(); ctx.arc(x, cy - r + 3, 2.8, 0, Math.PI * 2); ctx.fill(); }
+        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); fillStroke(ctx, fur);
+        ctx.beginPath(); ctx.ellipse(cx + 11, cy + 8, 9, 7, 0, 0, Math.PI * 2); ctx.fillStyle = cream; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.stroke();
+        ctx.fillStyle = INK; ctx.beginPath(); ctx.ellipse(cx + 16, cy + 5, 3.2, 2.4, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = INK; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.moveTo(cx + 16, cy + 7); ctx.lineTo(cx + 15, cy + 11); ctx.quadraticCurveTo(cx + 12, cy + 13, cx + 9, cy + 11); ctx.stroke();
+        for (const [x, y] of [[cx + 6, cy - 3], [cx + 14, cy - 4]]) { ctx.fillStyle = INK; ctx.beginPath(); ctx.ellipse(x, y, 2.4, 3.1, 0, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x - 0.7, y - 1.2, 0.9, 0, Math.PI * 2); ctx.fill(); }
+        ctx.fillStyle = 'rgba(255,130,150,0.45)'; ctx.beginPath(); ctx.ellipse(cx + 2, cy + 6, 3.2, 2, 0, 0, Math.PI * 2); ctx.fill();
+      };
+      if (B === 'bearrain') {
+        // áo mưa vàng dài qua hông, nẹp giữa và cúc gỗ, tay áo vàng, bàn tay gấu trắng
+        rr(ctx, 12, 50, 10, 20, 5); fillStroke(ctx, rain);
+        ctx.beginPath(); ctx.moveTo(18, 44); ctx.lineTo(56, 44); ctx.lineTo(60, 76); ctx.lineTo(13, 76); ctx.closePath(); fillStroke(ctx, rain);
+        ctx.strokeStyle = rainDk; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(40, 47); ctx.lineTo(41, 75); ctx.stroke();
+        for (const y of [52, 60, 68]) { rr(ctx, 42, y - 1.5, 6, 3, 1.5); fillStroke(ctx, '#b0753a', 1.3); }
+        ctx.beginPath(); ctx.ellipse(28, 66, 5, 3, 0, 0, Math.PI * 2); ctx.fillStyle = rainDk; ctx.fill(); // túi áo
+        rr(ctx, 50, 50, 10, 20, 5); fillStroke(ctx, rain); ctx.beginPath(); ctx.arc(55, 71, 4.5, 0, Math.PI * 2); fillStroke(ctx, fur, 2.5);
+        // mũ trùm: ôm quanh đầu, có hai núm tai
+        for (const x of [24, 50]) { ctx.beginPath(); ctx.arc(x, 7, 6, 0, Math.PI * 2); fillStroke(ctx, rain, 3); }
+        ctx.beginPath(); ctx.arc(37, 26, 23, 0, Math.PI * 2); fillStroke(ctx, rain);
+        ctx.strokeStyle = rainDk; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(37, 26, 19.5, Math.PI * 1.05, Math.PI * 1.95); ctx.stroke();
+        head(39, 29, 16, false);
+        // giọt mưa lấp lánh trên mũ
+        ctx.fillStyle = '#9fd6ff'; ctx.strokeStyle = INK; ctx.lineWidth = 1.2;
+        for (const [x, y] of [[22, 20], [30, 9]]) { ctx.beginPath(); ctx.moveTo(x, y - 4); ctx.quadraticCurveTo(x + 3, y, x, y + 2); ctx.quadraticCurveTo(x - 3, y, x, y - 4); ctx.fill(); ctx.stroke(); }
+        return;
+      }
+      // Gấu đội hoa: vòng cánh hoa hướng dương quanh mặt, cổ áo lá xanh
+      rr(ctx, 12, 50, 10, 20, 5); fillStroke(ctx, fur);
+      rr(ctx, 15, 42, 42, 32, 13); fillStroke(ctx, fur);
+      ctx.beginPath(); ctx.ellipse(38, 60, 12, 11, 0, 0, Math.PI * 2); ctx.fillStyle = cream; ctx.fill();
+      rr(ctx, 50, 50, 10, 20, 5); fillStroke(ctx, fur); ctx.beginPath(); ctx.arc(55, 71, 4.5, 0, Math.PI * 2); fillStroke(ctx, fur, 2.5);
+      for (const [x, rot] of [[30, -0.5], [44, 0.5]] as [number, number][]) { ctx.save(); ctx.translate(x, 45); ctx.rotate(rot); ctx.beginPath(); ctx.ellipse(0, 0, 7, 3.5, 0, 0, Math.PI * 2); fillStroke(ctx, '#3fa66b', 2); ctx.restore(); }
+      const petal = '#ffc928', petalDk = '#e89a10';
+      for (let i = 0; i < 14; i++) {
+        const t = (i / 14) * Math.PI * 2;
+        ctx.save(); ctx.translate(38 + Math.cos(t) * 21, 27 + Math.sin(t) * 21); ctx.rotate(t + Math.PI / 2);
+        ctx.beginPath(); ctx.ellipse(0, 0, 4.6, 8, 0, 0, Math.PI * 2); fillStroke(ctx, i % 2 ? petal : petalDk, 2.2);
+        ctx.restore();
+      }
+      ctx.beginPath(); ctx.arc(38, 27, 19, 0, Math.PI * 2); ctx.fillStyle = '#5a9c3a'; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = 2.5; ctx.stroke();
+      head(38, 28, 16.5, false);
+      return;
+    }
     case 'zombie': {
       legs('#4a4f5e', INK);
       ctx.translate(0, bob);

@@ -2124,3 +2124,15 @@ body.mt-mode { overflow: hidden; }
 .net-meter .nm-txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .net-meter .nm-copy { font: inherit; border: 0; border-radius: 6px; padding: 2px 6px; background: #fffdf6; color: #1d1a2b; cursor: pointer; flex: none; }
 .nm-area { width: 100%; height: 50vh; font: 11px/1.3 ui-monospace, monospace; }
+
+/* Sẵn sàng bỏ phiếu */
+.tile .rdy { position: absolute; top: 6px; left: 32px; background: #3fbf6a; color: #fff; font-size: .72rem; font-weight: 900; width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; border: 2px solid var(--ink); }
+.ready-btn.is-ready { background: #c8f0d2; }
+
+/* Nút xem tin nhắn cũ ở sảnh */
+.lchat-hbtn { position: absolute; left: 78px; bottom: calc(20px + env(safe-area-inset-bottom)); width: 46px; height: 46px; border: 3px solid var(--ink); border-radius: 50%; background: #fffdf6; font-size: 20px; line-height: 1; padding: 0; z-index: 6; box-shadow: 0 3px 0 var(--ink); }
+.lchat-hbtn:active { transform: scale(.92); }
+.lchat-hbtn .dot { position: absolute; top: -3px; right: -3px; width: 13px; height: 13px; border-radius: 50%; background: #e2412f; border: 2px solid var(--ink); }
+.lchat-hbtn .dot[hidden] { display: none; }
+.lchat-msg time { color: var(--muted); font-size: .72rem; font-weight: 700; }
+@media (pointer: coarse), (max-width: 760px) { .lchat-hbtn { bottom: calc(186px + env(safe-area-inset-bottom)); } }

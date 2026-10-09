@@ -222,3 +222,15 @@ tests/simulate.ts  Chạy hàng loạt ván toàn bot
 ```
 
 Phần `src/game` được tách riêng để bước tiếp theo (nhiều người chơi qua mạng) có thể chạy nguyên khối luật chơi này trên máy của người tạo phòng.
+
+## Ván ít người, tầm nhìn theo cỡ ván
+
+- Tầm nhìn Nhân viên: 5–6 người 5 ô, 7–8 người 4,4 ô, 9–10 người 3,8 ô (Nội gián luôn gấp 1,5 lần; mất điện vẫn 1,2 ô).
+- **Chế độ ít người** (cài đặt phòng, mặc định tự bật khi ≤ 6 người): tối đa 2 vai đặc biệt, 5 việc ngắn mỗi người, không giao việc trên sân thượng (vẫn đi lên được), hồi chiêu gài tự động 56 giây (5 người) / 37 giây (6 người). Bot chơi 500 ván mỗi cỡ: Nội gián thắng 46–50%.
+- Công cụ chỉnh: `npx tsx tests/tune_small.ts <số người> <việc ngắn> <hồi chiêu> <số ván>`.
+
+## Sẵn sàng bỏ phiếu, lịch sử chat sảnh
+
+- Nút "Sẵn sàng bỏ phiếu · x/y" trong cuộc họp: chỉ tính người thật còn sống và đang kết nối; đủ thì mở bỏ phiếu ngay; bấm lần nữa để hủy; dấu ✓ trên ô của người đã sẵn sàng.
+- Sảnh chung: nút 🕘 xem 50 tin gần nhất (có giờ, chấm đỏ khi có tin mới); người vào phòng sau nhận 20 tin gần nhất từ chủ phòng.
+- Kiểm tra: `npx tsx tests/round3_test.ts`.
