@@ -15,13 +15,13 @@ import {
 } from './data';
 
 export type Role = 'crew' | 'impostor';
-/** Phe thắng: Nhân viên, Nội gián, hoặc một vai phe thứ ba */
+/** Phe thắng: Nhân viên, Rắn độc, hoặc một vai phe thứ ba */
 export type Winner = Role | 'gd' | 'climber';
 export type SabotageKind = 'wifi' | 'power' | 'boss';
 
 export const SPEED = 205;
 export const VISION = 3.8 * TILE;      // tầm nhìn Nhân viên ở mức 1x (bản đồ nhiều tầng rộng hơn nên trả về 3,8 ô)
-export const VISION_IMP = VISION * 1.5; // Nội gián nhìn xa gấp rưỡi, như Among Us
+export const VISION_IMP = VISION * 1.5; // Rắn độc nhìn xa gấp rưỡi, như Among Us
 export const VISION_DARK = 1.2 * TILE;
 /** Tầm nhìn Nhân viên theo cỡ ván (bản đồ 4 tầng rộng so với ít người) */
 export const SMALL_VISION = 5 * TILE, MID_VISION = 4.4 * TILE;
@@ -54,10 +54,10 @@ const WANDER_ROOMS = ROOMS.filter(r => r.id !== 'cabin' && !r.id.startsWith('sta
 export const BOSS_TIME = 45; // tòa nhiều tầng: cần thêm thời gian để về bàn
 /**
  * Hồi chiêu gài bẫy theo cỡ ván (bản đồ 3 tầng + sân thượng).
- * Chọn bằng cách chạy 150 ván bot cho từng cỡ, nhắm tỉ lệ Nội gián thắng khoảng 40–52%.
+ * Chọn bằng cách chạy 150 ván bot cho từng cỡ, nhắm tỉ lệ Rắn độc thắng khoảng 40–52%.
  */
 export function killCooldownFor(players: number, imps: number, small = false): number {
-  // Bộ chỉnh ít người (tầm nhìn 5 ô, 5 việc ngắn, không việc sân thượng): đo 500 ván mỗi cỡ, Nội gián thắng khoảng 46–48%
+  // Bộ chỉnh ít người (tầm nhìn 5 ô, 5 việc ngắn, không việc sân thượng): đo 500 ván mỗi cỡ, Rắn độc thắng khoảng 46–48%
   if (small && imps <= 1 && players <= 6) return players <= 5 ? 56 : 37;
   // Bản đồ mới (tầng gọn, thang bộ một đoạn, tầng nhà): Nhân viên chạy KPI nhanh hơn nên hồi chiêu ngắn lại (đo lại 300 ván mỗi cỡ)
   if (imps <= 1) return ({ 5: 40, 6: 26, 7: 20, 8: 14, 9: 10, 10: 6 } as Record<number, number>)[players] ?? (players < 5 ? 45 : 6);
@@ -99,15 +99,15 @@ interface Brain {
   skipBias: number;
   cleared: Set<number>; // những người đã thấy chấm công vân tay
   sawHrScan: Set<number>; // những người đã thấy quét máy Face ID (chắc chắn là HR thật)
-  hrTarget: number | null; // Nội gián: người bị nghi là HR, cần xử lý trước
-  claimedHr: boolean; // Nội gián đã từng nhận là HR
+  hrTarget: number | null; // Rắn độc: người bị nghi là HR, cần xử lý trước
+  claimedHr: boolean; // Rắn độc đã từng nhận là HR
   lockWait: number;
   lift?: { to: Pt; floor: number; stage: 'walk' | 'wait' | 'ride'; t: number } | null;
   adminAlert?: number | null;
   adminT?: number;
   artistSaid?: number;
   devSaid?: boolean;
-  lastPos: { x: number; y: number } | null; // Nội gián: nơi cuối cùng thấy con mồi
+  lastPos: { x: number; y: number } | null; // Rắn độc: nơi cuối cùng thấy con mồi
   lostT: number;
 }
 
@@ -117,7 +117,7 @@ export interface Agent {
   look: Look;
   color: string;        // màu thẻ tên (màu áo)
   empId: string;        // mã số nhân viên: 111, 222, ... (không trùng trong ván)
-  dept: RoleDept | null; // phòng ban bí mật; Nội gián không có
+  dept: RoleDept | null; // phòng ban bí mật; Rắn độc không có
   isPlayer: boolean;     // người chơi trên máy này (giao diện điều khiển)
   human: boolean;        // người thật (máy này hoặc máy khác trong phòng); bot thì false
   away?: boolean;        // người thật đang mất kết nối (chủ phòng đánh dấu, mọi người thấy)
@@ -295,7 +295,7 @@ function newBrain(): Brain {
   };
 }
 
-// Nội gián giả vờ làm ở đây (không giả vờ chấm công vì đó là việc ai cũng nhìn thấy)
+// Rắn độc giả vờ làm ở đây (không giả vờ chấm công vì đó là việc ai cũng nhìn thấy)
 const FAKE_STATIONS = STATIONS.filter(s => !['fingerprint', 'camera', 'router', 'power'].includes(s.id));
 
 const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -337,7 +337,7 @@ export class World {
   /** Thời gian họp (giây), chủ phòng chỉnh được */
   discussTime = DISCUSS_TIME;
   voteTime = VOTE_TIME;
-  /** Số Nội gián trong ván (thông tin công khai, máy người vào phòng dùng để hiện đúng) */
+  /** Số Rắn độc trong ván (thông tin công khai, máy người vào phòng dùng để hiện đúng) */
   impostorTotal = 1;
 
   constructor(opts: WorldOptions) {
@@ -384,8 +384,8 @@ export class World {
         brain: newBrain(),
       });
     }
-    // Phân vai Nội gián
-    // Như Among Us: ván 6 người trở xuống chỉ có 1 Nội gián
+    // Phân vai Rắn độc
+    // Như Among Us: ván 6 người trở xuống chỉ có 1 Rắn độc
     const nImp = Math.max(1, Math.min(opts.impostors, total <= 6 ? 1 : 2));
     const pool = this.agents.map(a => a.id);
     const chosen: number[] = [];
@@ -394,8 +394,8 @@ export class World {
     for (const id of others) { if (chosen.length >= nImp) break; if (!chosen.includes(id)) chosen.push(id); }
     for (const id of chosen) this.agents[id].role = 'impostor';
     this.impostorTotal = chosen.length;
-    // 2 Nội gián trong ván ít người rất mạnh: kéo dài hồi chiêu để bù
-    // Hồi chiêu gài bẫy tự cân theo số Nội gián (đã chạy thử hàng trăm ván để chọn số)
+    // 2 Rắn độc trong ván ít người rất mạnh: kéo dài hồi chiêu để bù
+    // Hồi chiêu gài bẫy tự cân theo số Rắn độc (đã chạy thử hàng trăm ván để chọn số)
     if (opts.killCd) for (const a of this.agents) a.killCd = opts.killFirst ?? Math.round(opts.killCd / 2);
     if (!opts.killCd) {
       const cd = killCooldownFor(total, nImp, this.small);
@@ -413,7 +413,7 @@ export class World {
     });
     for (const a of this.agents) { a.color = lookColor(a.look); if (opts.killCdStart !== undefined) a.killCd = opts.killCdStart; }
 
-    // Bốc phòng ban bí mật cho Nhân viên; Nội gián không có phòng ban thật
+    // Bốc phòng ban bí mật cho Nhân viên; Rắn độc không có phòng ban thật
     let crew = this.agents.filter(a => a.role === 'crew').sort(() => this.rng() - 0.5);
     let enabled = SPECIAL_ROLES.filter(r => opts.roles[r] && (NEUTRAL_ROLES[r] ?? 0) <= total).sort(() => this.rng() - 0.5);
     let maxS = opts.maxSpecial ?? 3;
@@ -659,7 +659,7 @@ export class World {
       this.events.push({ type: 'noise', victim: victim.id, x: victim.x, y: victim.y });
     }
     this.bodies.push({ victim: victim.id, x: victim.x, y: victim.y, room: roomAt(victim.x, victim.y), t: this.time });
-    // Intern tham vọng gài trúng Nội gián thì hồi chiêu reset ngay
+    // Intern tham vọng gài trúng Rắn độc thì hồi chiêu reset ngay
     killer.killCd = killer.role === 'impostor' ? this.killCdBase : victim.role === 'impostor' ? 0 : CLIMBER_CD;
     killer.x = victim.x; killer.y = victim.y + 2;
     this.events.push({ type: 'kill', killer: killer.id, victim: victim.id, x: victim.x, y: victim.y });
@@ -699,7 +699,7 @@ export class World {
 
   triggerSabotage(by: Agent, kind: SabotageKind): string | null {
     if (this.phase !== 'play') return 'Không thể lúc này';
-    if (by.role !== 'impostor') return 'Chỉ Nội gián mới phá hoại được';
+    if (by.role !== 'impostor') return 'Chỉ Rắn độc mới phá hoại được';
     if (this.sabotage) return 'Đang có sự cố khác';
     if (this.sabCd > 0) return `Hồi chiêu ${Math.ceil(this.sabCd)} giây`;
     if (kind === 'boss' && this.bossUsed) return 'Sếp chỉ đi tuần một lần mỗi ván';
@@ -786,7 +786,7 @@ export class World {
 
   doorBlocked(by: Agent, room: RoomId): string | null {
     if (this.phase !== 'play') return 'Không thể lúc này';
-    if (by.role !== 'impostor') return 'Chỉ Nội gián mới khóa cửa được';
+    if (by.role !== 'impostor') return 'Chỉ Rắn độc mới khóa cửa được';
     if (!LOCKABLE_ROOMS.includes(room)) return 'Không khóa được phòng này';
     if (this.sabotage?.kind === 'boss') return 'Sếp đang đi tuần, không khóa cửa được';
     if (this.doorLocks.has(room)) return 'Cửa phòng này đang khóa';
@@ -872,7 +872,7 @@ export class World {
     a.directorRevealed = true;
     m.chat.push({ from: a.id, text: `✅ Hệ thống xác nhận: ${a.name} là Director. Phiếu bầu tính gấp đôi.`, t: m.t, system: true });
     for (const l of this.agents) if (l !== a) l.brain.sus.set(a.id, -200);
-    // Nội gián sẽ nhắm vào Director
+    // Rắn độc sẽ nhắm vào Director
     for (const l of this.agents) if (l.role === 'impostor') l.brain.hrTarget = l.brain.hrTarget ?? a.id;
     this.events.push({ type: 'director_reveal', agent: a.id });
   }
@@ -1229,7 +1229,7 @@ export class World {
     if (!t?.alive || t === a) return 'Chọn người khác';
     a.anonUsed = true;
     const m = this.meeting!;
-    m.chat.push({ from: a.id, text: `"${t.name} #${t.empId} là Nội gián!"`, t: m.t, system: true, anon: true }); // không lộ người gửi
+    m.chat.push({ from: a.id, text: `"${t.name} #${t.empId} là Rắn độc!"`, t: m.t, system: true, anon: true }); // không lộ người gửi
     for (const l of this.agents) if (l.alive && l !== t && !l.brain.cleared.has(t.id)) l.brain.sus.set(t.id, (l.brain.sus.get(t.id) ?? 0) + 14);
     this.events.push({ type: 'anon_accuse', by: a.id, target });
     return null;
@@ -1610,7 +1610,7 @@ export class World {
       if (b.workT <= 0) { a.scanning = false; a.hrScanning = false; a.artistScanning = false; this.finishWork(a); }
       return;
     }
-    // Đang trốn (Nội gián bot)
+    // Đang trốn (Rắn độc bot)
     if (a.hidden !== null) {
       a.moving = false;
       b.hideT -= dt;
@@ -1872,7 +1872,7 @@ export class World {
     if (a.killCd <= 0 && this.time > 15) {
       const imps = this.aliveImp();
       const crewN = this.aliveCrew().length;
-      // Để Nội gián dọn bớt Nhân viên trước, khi Nhân viên còn ít thì quay sang xử Nội gián
+      // Để Rắn độc dọn bớt Nhân viên trước, khi Nhân viên còn ít thì quay sang xử Rắn độc
       const huntImp = imps.length > 0 && (crewN <= imps.length + 2 || this.rng() < 0.15);
       const seen = this.agents.filter(o => o !== a && o.alive && o.hidden === null && this.sees(a, o) && (huntImp ? o.role === 'impostor' : o.role !== 'impostor'));
       seen.sort((p, q) => dist(a, p) - dist(a, q));
@@ -1889,7 +1889,7 @@ export class World {
     this.crewBrain(a, dt);
   }
 
-  /** Không có ai khác nhìn thấy (dùng cho kẻ gài bẫy không phải Nội gián) */
+  /** Không có ai khác nhìn thấy (dùng cho kẻ gài bẫy không phải Rắn độc) */
   private safeToKillAny(k: Agent, victim: Agent): boolean {
     if (this.camsInUse() && (this.inCamera(k.x, k.y) || this.inCamera(victim.x, victim.y))) return false;
     for (const o of this.agents) {
@@ -1939,7 +1939,7 @@ export class World {
       if (o.hrScanning && o.alive && this.sees(a, o)) b.hrTarget = o.id;
     }
     if (b.hrTarget !== null && !this.agents[b.hrTarget].alive) b.hrTarget = null;
-    // Săn mồi: Nội gián chỉ biết những gì mình nhìn thấy (không nhìn xuyên tường)
+    // Săn mồi: Rắn độc chỉ biết những gì mình nhìn thấy (không nhìn xuyên tường)
     if (a.killCd <= 0 && this.time > 10) {
       if (b.targetId !== null) {
         const t0 = this.agents[b.targetId];
@@ -1991,7 +1991,7 @@ export class World {
       return;
     }
 
-    // Nội gián ghi nhớ nơi vừa thấy Nhân viên (chỉ bằng mắt mình)
+    // Rắn độc ghi nhớ nơi vừa thấy Nhân viên (chỉ bằng mắt mình)
     b.senseT -= dt;
     if (b.senseT <= 0) {
       b.senseT = 0.3;
@@ -2219,7 +2219,7 @@ export class World {
           ? fmt('bot.alibiTask', { room, task: taskDef(doneTask.taskId).name.toLowerCase() })
           : pick(FILLER_LINES, this.rng));
       } else {
-        // Nội gián: bịa chứng cứ ngoại phạm hoặc đổ vấy
+        // Rắn độc: bịa chứng cứ ngoại phạm hoặc đổ vấy
         const crew = A.filter(o => o.alive && o.role === 'crew' && o.id !== a.id);
         if (!crew.length) continue;
         if (this.rng() < 0.55) {
@@ -2278,12 +2278,12 @@ export class World {
     const others = m.hrClaims.filter(c => c.by !== by).map(c => c.by);
     const firstOfSpeaker = !m.hrClaims.some(c => c.by === by);
     m.hrClaims.push({ by, target, imp });
-    // Nội gián ghi nhớ: người tự nhận HR (nếu là nhân viên thật) cần bị xử lý sớm
+    // Rắn độc ghi nhớ: người tự nhận HR (nếu là nhân viên thật) cần bị xử lý sớm
     for (const l of A) if (l.role === 'impostor' && A[by].role === 'crew') l.brain.hrTarget = by;
     for (const l of A) {
       if (!l.alive || l.id === by || l.role !== 'crew' || (l.human)) continue;
       const b = l.brain;
-      // Bị tố là Nội gián trong khi mình biết mình trong sạch: người tố chắc chắn nói dối
+      // Bị tố là Rắn độc trong khi mình biết mình trong sạch: người tố chắc chắn nói dối
       if (target === l.id && imp) { b.sus.set(by, (b.sus.get(by) ?? 0) + 150); continue; }
       let trust: number;
       if (b.sawHrScan.has(by)) trust = 1;
@@ -2393,7 +2393,7 @@ export class World {
       }
       return best && bs >= 24 + b.skipBias ? best.id : 'skip';
     }
-    // Nội gián: hùa theo người bị nghi nhiều nhất (không phải đồng bọn)
+    // Rắn độc: hùa theo người bị nghi nhiều nhất (không phải đồng bọn)
     const crewBots = this.agents.filter(o => o.alive && o.role === 'crew' && !(o.isPlayer || o.human));
     let best: Agent | null = null, bs = -1e9;
     for (const o of alive) {

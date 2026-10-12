@@ -18,8 +18,8 @@ export function openMultitest(root: HTMLElement, n: number) {
       <button type="button" data-c="ready">Cả phòng sẵn sàng</button>
       <button type="button" data-c="meeting">Gọi họp ngay</button>
       <button type="button" data-c="again">Chơi ván mới</button>
-      <label>Ép làm Nội gián: <select id="mt-imp"><option value="-1">ngẫu nhiên</option>${Array.from({ length: n }, (_, i) => `<option value="${i}">Người ${i + 1}</option>`).join('')}</select></label>
-      <span class="mt-roles">Giao vai (ván tới): ${Array.from({ length: n }, (_, i) => `<label>Người ${i + 1} <select data-name="Người ${i + 1}"><option value="">ngẫu nhiên</option><option value="impostor">🐍 Nội gián</option><option value="intern">Thực tập sinh</option>${SPECIAL_ROLES.map(r => `<option value="${r}">${ROLE_INFO[r].icon} ${ROLE_INFO[r].name}</option>`).join('')}</select></label>`).join(' ')}</span>
+      <label>Ép làm Rắn độc: <select id="mt-imp"><option value="-1">ngẫu nhiên</option>${Array.from({ length: n }, (_, i) => `<option value="${i}">Người ${i + 1}</option>`).join('')}</select></label>
+      <span class="mt-roles">Giao vai (ván tới): ${Array.from({ length: n }, (_, i) => `<label>Người ${i + 1} <select data-name="Người ${i + 1}"><option value="">ngẫu nhiên</option><option value="impostor">🐍 Rắn độc</option><option value="intern">Thực tập sinh</option>${SPECIAL_ROLES.map(r => `<option value="${r}">${ROLE_INFO[r].icon} ${ROLE_INFO[r].name}</option>`).join('')}</select></label>`).join(' ')}</span>
       <span class="mt-hint">Bấm vào một ô để điều khiển người đó (bàn phím chỉ vào ô đang chọn).</span>
     </div>
     <div class="mt-grid" style="--cols:${cols}">${Array.from({ length: n }, (_, i) => `<div class="mt-cell" data-slot="${i + 1}"><div class="mt-tag"><b>Người ${i + 1}</b>${i === 0 ? ' · chủ phòng' : ''}<span class="mt-st"></span></div><iframe title="Người ${i + 1}" src="${base}?mt=${i + 1}&room=${code}${admin}" allow="clipboard-write"></iframe></div>`).join('')}</div>

@@ -4,6 +4,8 @@
 //   dù họ vào bằng đường nào, và vào lại đúng nhân vật vẫn hoạt động.
 // - Kênh dữ liệu tin cậy, có thứ tự (như kênh nội bộ). Người vào phòng mất kết nối thì tự nối lại mỗi 2 giây.
 import type { Transport } from './transport';
+import { iceConfig } from './ice';
+import { netLog } from './netlog';
 
 /** Phần PeerJS mà ta dùng (để kiểm tra tự động có thể thay bằng bản giả) */
 export interface PeerLike {
@@ -41,6 +43,22 @@ export function backlog(c: ConnLike): number {
   const x = c as unknown as { dataChannel?: { bufferedAmount?: number }; bufferSize?: number };
   return (x.dataChannel?.bufferedAmount ?? 0) + ((x.bufferSize ?? 0) > 0 ? 1e9 : 0);
 }
+/** Ghi vào nhật ký mạng đường nối thực tế (trực tiếp hay qua máy chuyển tiếp TURN), để biết vì sao một máy hay lag */
+function logPath(c: ConnLike, who: string) {
+  const pc = (c as unknown as { peerConnection?: RTCPeerConnection }).peerConnection;
+  if (!pc?.getStats) return;
+  globalThis.setTimeout(() => {
+    pc.getStats().then(stats => {
+      let localId = '';
+      stats.forEach((r: { type?: string; state?: string; nominated?: boolean; selected?: boolean; localCandidateId?: string }) => {
+        if (r.type === 'candidate-pair' && r.state === 'succeeded' && (r.nominated || r.selected) && r.localCandidateId) localId = r.localCandidateId;
+      });
+      const cand = localId ? (stats.get(localId) as { candidateType?: string } | undefined) : undefined;
+      const t = cand?.candidateType;
+      if (t) netLog(`[P2P] ${who}: ${t === 'relay' ? 'nối qua máy chuyển tiếp TURN' : t === 'host' ? 'nối thẳng trong cùng mạng' : 'nối thẳng qua Internet'}`);
+    }).catch(() => undefined);
+  }, 1500);
+}
 export const hostPeerName = (code: string) => 'ngvp-' + code.toLowerCase().replace(/[^a-z0-9]/g, '');
 
 export class PeerTransport implements Transport {
@@ -65,7 +83,10 @@ export class PeerTransport implements Transport {
   private start() {
     if (this.closed) return;
     // Chủ phòng: tên cố định theo mã phòng. Người vào phòng: để máy giới thiệu tự đặt tên (tránh trùng khi vào lại nhanh).
-    const p = this.mode === 'host' ? new this.Ctor(hostPeerName(this.code), { debug: 0 }) : new this.Ctor(undefined, { debug: 0 });
+    // có máy chuyển tiếp TURN (Cloudflare Pages) thì dùng: người ở mạng khác nhau (4G, mạng công ty chặn) vẫn nối được
+    const ice = iceConfig();
+    const opts = ice ? { debug: 0, config: ice } : { debug: 0 };
+    const p = this.mode === 'host' ? new this.Ctor(hostPeerName(this.code), opts) : new this.Ctor(undefined, opts);
     this.peer = p;
     p.on('open', () => { if (this.mode === 'host') this.setStatus('ready'); else this.connectHost(); });
     p.on('connection', (c) => { if (this.mode === 'host') this.attach(c); else c.close(); });
@@ -85,7 +106,7 @@ export class PeerTransport implements Transport {
     const c = p.connect(hostPeerName(this.code), { serialization: 'json', reliable: true });
     this.hostConn = c;
     c.on('open', () => {
-      this.retry = 0; this.setStatus('ready');
+      this.retry = 0; this.setStatus('ready'); logPath(c, 'tới chủ phòng');
       c.send({ f: this.peerId, m: { t: 'hb' } }); // chào ngay để chủ phòng nhận ra kết nối này là của ai
       for (const m of this.queue.splice(0)) c.send(m);
     });
@@ -102,6 +123,7 @@ export class PeerTransport implements Transport {
   /** Chủ phòng: có người nối tới */
   private attach(c: ConnLike) {
     this.all.add(c);
+    c.on('open', () => logPath(c, 'người vào phòng'));
     c.on('data', (d) => this.deliver(d, c));
     c.on('close', () => { this.all.delete(c); for (const [id, x] of this.conns) if (x === c) this.conns.delete(id); });
     c.on('error', () => undefined);

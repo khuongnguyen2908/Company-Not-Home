@@ -87,7 +87,7 @@ export function openMini(root: HTMLElement, kind: MiniKind, onDone: () => void, 
       <div class="sheet-head">
         <div>
           <h2>${TITLES[kind].title}</h2>
-          <p class="hint">${opts.fake ? 'Bạn là Nội gián: chỉ cần trông như đang làm, việc này không tính KPI.' : TITLES[kind].hint}</p>
+          <p class="hint">${opts.fake ? 'Bạn là Rắn độc: chỉ cần trông như đang làm, việc này không tính KPI.' : TITLES[kind].hint}</p>
         </div>
         <button class="x" aria-label="Đóng">✕</button>
       </div>
@@ -792,7 +792,7 @@ export function openColorCheck(
   wrap.innerHTML = `
     <div class="sheet mini mini-color" role="dialog" aria-label="Máy so màu">
       <div class="sheet-head">
-        <div><h2>🎨 Máy so màu</h2><p class="hint">Chọn một màu. Máy cho biết trên người Nội gián (ở bất kỳ chỗ nào) có màu đó không. Đang so thì máy phát sáng, người đứng gần sẽ thấy.</p></div>
+        <div><h2>🎨 Máy so màu</h2><p class="hint">Chọn một màu. Máy cho biết trên người Rắn độc (ở bất kỳ chỗ nào) có màu đó không. Đang so thì máy phát sáng, người đứng gần sẽ thấy.</p></div>
         <button class="x" aria-label="Đóng">✕</button>
       </div>
       <div class="mini-body">
@@ -811,7 +811,7 @@ export function openColorCheck(
     (body.querySelector('.cc-groups') as HTMLElement).hidden = true;
     const scan = body.querySelector('.cc-scan') as HTMLElement;
     scan.hidden = false;
-    scan.innerHTML = `<p>So màu <b style="color:${g.hex};text-shadow:0 0 1px #000">${g.name}</b> với hồ sơ Nội gián</p>
+    scan.innerHTML = `<p>So màu <b style="color:${g.hex};text-shadow:0 0 1px #000">${g.name}</b> với hồ sơ Rắn độc</p>
       <div class="router scanner-box"><button class="hold" aria-label="Giữ để so màu"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" class="track"/><circle cx="50" cy="50" r="44" class="prog" style="stroke:${g.hex}"/></svg><span>Giữ để so</span></button></div>
       <div class="cc-result" hidden></div>`;
     const btn = scan.querySelector('.hold') as HTMLElement, prog = scan.querySelector('.prog') as SVGCircleElement;
@@ -835,7 +835,7 @@ export function openColorCheck(
         (scan.querySelector('.router') as HTMLElement).hidden = true;
         r.hidden = false;
         r.className = 'cc-result ' + (has ? 'bad' : 'good');
-        r.innerHTML = has ? `<b>CÓ</b><span>Ít nhất một Nội gián có màu ${g.name.toLowerCase()} trên người.</span>` : `<b>KHÔNG CÓ</b><span>Không Nội gián nào có màu ${g.name.toLowerCase()} trên người.</span>`;
+        r.innerHTML = has ? `<b>CÓ</b><span>Ít nhất một Rắn độc có màu ${g.name.toLowerCase()} trên người.</span>` : `<b>KHÔNG CÓ</b><span>Không Rắn độc nào có màu ${g.name.toLowerCase()} trên người.</span>`;
         });
       }
     }, 50);

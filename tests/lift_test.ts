@@ -23,7 +23,7 @@ function run(label: string, cap: number, pry: boolean, imps: number, bots: numbe
     total += w.time;
     if (w.winner === 'impostor') impWin++;
   }
-  console.log(`${label.padEnd(30)} | ${bots + 1} người ${imps} NG | Nội gián thắng ${(impWin / N * 100).toFixed(0).padStart(3)}% | ván TB ${(total / N).toFixed(0)}s | kẹt ${stuck} | lượt đi thang ${(rides / N).toFixed(1)}/ván | cạy cửa ${(pries / N).toFixed(2)} | gài trong thang ${cabinKills}/${kills}`);
+  console.log(`${label.padEnd(30)} | ${bots + 1} người ${imps} NG | Rắn độc thắng ${(impWin / N * 100).toFixed(0).padStart(3)}% | ván TB ${(total / N).toFixed(0)}s | kẹt ${stuck} | lượt đi thang ${(rides / N).toFixed(1)}/ván | cạy cửa ${(pries / N).toFixed(2)} | gài trong thang ${cabinKills}/${kills}`);
 }
 const cases: [string, number, boolean][] = [['Sức chứa 4, có cạy cửa', 4, true], ['Sức chứa 4, không cạy cửa', 4, false], ['Không giới hạn, có cạy cửa', 99, true]];
 for (const [imps, bots] of [[1, 6], [2, 9]]) for (const [l, c, p] of cases) run(l, c, p, imps, bots);

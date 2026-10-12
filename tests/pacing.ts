@@ -1,4 +1,4 @@
-// Đo nhịp gài bẫy và cân bằng theo số người / số Nội gián (cài đặt mặc định)
+// Đo nhịp gài bẫy và cân bằng theo số người / số Rắn độc (cài đặt mặc định)
 import { World } from '../src/game/sim';
 import { randomLook } from '../src/game/look';
 
@@ -18,5 +18,5 @@ for (const [bots, imps] of [[5, 1], [7, 1], [7, 2], [9, 2]]) {
     if (w.winner === 'impostor') impWins++;
   }
   gaps.sort((a, b) => a - b);
-  console.log(`${bots + 1} người, ${imps} Nội gián: Nội gián thắng ${(impWins / N * 100).toFixed(0)}% | thời gian chơi TB ${(total / N).toFixed(0)}s (chưa tính họp) | vụ đầu ${(firstKill / N).toFixed(0)}s | giãn cách 2 vụ ${gaps.length ? gaps[Math.floor(gaps.length / 2)].toFixed(0) : '-'}s`);
+  console.log(`${bots + 1} người, ${imps} Rắn độc: Rắn độc thắng ${(impWins / N * 100).toFixed(0)}% | thời gian chơi TB ${(total / N).toFixed(0)}s (chưa tính họp) | vụ đầu ${(firstKill / N).toFixed(0)}s | giãn cách 2 vụ ${gaps.length ? gaps[Math.floor(gaps.length / 2)].toFixed(0) : '-'}s`);
 }

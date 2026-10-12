@@ -1,5 +1,5 @@
 // Cách dùng: npx tsx tests/hunt_measure.ts [số ván]
-// Đo (không sửa game): hồi chiêu xong rồi thì Nội gián mất bao lâu mới gài được; tỉ lệ thắng; ván thua vì KPI chạy xong khi nào
+// Đo (không sửa game): hồi chiêu xong rồi thì Rắn độc mất bao lâu mới gài được; tỉ lệ thắng; ván thua vì KPI chạy xong khi nào
 import { World } from '../src/game/sim';
 import { randomLook } from '../src/game/look';
 import { SPECIAL_ROLES } from '../src/game/data';
@@ -26,5 +26,5 @@ for (const [total, imps, cd] of [[8, 1, 0], [8, 2, 0], [8, 1, 25], [8, 2, 25], [
   }
   const avg = (a: number[]) => a.length ? (a.reduce((x, y) => x + y, 0) / a.length) : 0;
   const med = (a: number[]) => { const b = [...a].sort((x, y) => x - y); return b.length ? b[Math.floor(b.length / 2)] : 0; };
-  console.log(`${total} người ${imps} NG, hồi chiêu ${cd || 'tự động'}: Nội gián thắng ${Math.round(impWin / games * 100)}% | thua vì KPI ${Math.round(kpiLoss / games * 100)}% (KPI xong lúc TB ${avg(kpiT).toFixed(0)}s chơi) | sẵn sàng → gài được: TB ${avg(waits).toFixed(1)}s, trung vị ${med(waits).toFixed(1)}s (${waits.length} lần)`);
+  console.log(`${total} người ${imps} NG, hồi chiêu ${cd || 'tự động'}: Rắn độc thắng ${Math.round(impWin / games * 100)}% | thua vì KPI ${Math.round(kpiLoss / games * 100)}% (KPI xong lúc TB ${avg(kpiT).toFixed(0)}s chơi) | sẵn sàng → gài được: TB ${avg(waits).toFixed(1)}s, trung vị ${med(waits).toFixed(1)}s (${waits.length} lần)`);
 }

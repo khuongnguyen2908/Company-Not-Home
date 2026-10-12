@@ -1,6 +1,8 @@
 # Văn Phòng Hạnh Phúc (có rắn)
 
-Game suy luận xã hội lấy bối cảnh công sở: nhân viên chạy KPI, nội gián gài bẫy đồng nghiệp bị đuổi việc, và cả văn phòng họp khẩn để vote sa thải kẻ đáng ngờ. Phiên bản này chơi một mình với các đồng nghiệp là bot.
+© 2026 Khuongnguyen2908. Bảo lưu mọi quyền (All rights reserved). Không được sao chép, chỉnh sửa, đăng lại hay dùng mã nguồn và nội dung game khi chưa có sự đồng ý bằng văn bản của tác giả. Xem [LICENSE](LICENSE).
+
+Game suy luận xã hội lấy bối cảnh công sở: nhân viên chạy KPI, rắn độc gài bẫy đồng nghiệp bị đuổi việc, và cả văn phòng họp khẩn để vote sa thải kẻ đáng ngờ. Phiên bản này chơi một mình với các đồng nghiệp là bot.
 
 Làm bằng Vite + TypeScript + Phaser 3. Toàn bộ hình ảnh và âm thanh được tạo bằng code (canvas và Web Audio API), không có file asset nào. Thành tích lưu trong localStorage của trình duyệt.
 
@@ -20,6 +22,8 @@ npm run sim        # chạy thử 60 ván toàn bot để kiểm tra luật chơ
 **GitHub Pages:** đẩy code lên nhánh `main`, vào Settings → Pages, chọn Source là "GitHub Actions". File `.github/workflows/deploy.yml` sẽ tự build và đăng game mỗi lần bạn đẩy code. Địa chỉ có dạng `https://ten-ban.github.io/ten-repo/`.
 
 **Vercel:** import repo trên vercel.com, Vercel tự nhận ra Vite, không cần cấu hình.
+
+**Cloudflare Pages (nên dùng):** Workers & Pages → Create → Pages → kết nối repo GitHub; Build command `npm run build`, Build output `dist`. Địa chỉ dạng `https://ten-du-an.pages.dev`. Chỉ Cloudflare Pages chạy được thư mục `functions/` (máy chuyển tiếp TURN bên dưới); GitHub Pages/Vercel bỏ qua thư mục này, game vẫn chạy như cũ.
 
 ## Luồng màn hình
 
@@ -59,7 +63,7 @@ Kiểm tra: `python3 tests/lobby_reentry.py` (về sảnh nhiều lần vẫn đ
 - **Lối trốn:** nắp trần thang máy (chỉ một chiều: từ trong buồng chui ra cửa kỹ thuật ở tầng buồng thang đang đứng), ống cáp Kho điện ↔ Server, ống gió In ấn ↔ Khu điều hòa, gầm bàn Phòng làm việc ↔ Phòng họp, tủ đồ Lễ tân ↔ Khu giải trí, trần thạch cao Giám đốc ↔ QA.
 - **Camera:** 4 chiếc, mỗi tầng một chiếc ở hành lang trước lõi thang, sân thượng một chiếc ở cửa thang bộ.
 - **Khu giải trí** (tầng 1) có 3 việc: ném phi tiêu xả stress, gắp thú bông tặng sếp, cho cá ăn.
-- **Sơ đồ tòa nhà** chia thẻ theo tầng (kèm số việc của bạn ở mỗi tầng); sơ đồ phá hoại của Nội gián cũng chia theo tầng.
+- **Sơ đồ tòa nhà** chia thẻ theo tầng (kèm số việc của bạn ở mỗi tầng); sơ đồ phá hoại của Rắn độc cũng chia theo tầng.
 - Mũi tên chỉ đường tới sự cố hay ghế trống ở tầng khác sẽ chỉ về thang bộ trước, kèm nhãn tầng đích.
 
 ## Sau mỗi cuộc họp
@@ -73,7 +77,7 @@ Kiểm tra: `python3 tests/lobby_reentry.py` (về sảnh nhiều lần vẫn đ
 - Thang bộ: mỗi tầng một đoạn thang thẳng 5 bậc sát cửa (Tầng 1 → 3: 4,5 giây, trước 12 giây); thang máy vẫn nhanh hơn khi buồng có sẵn.
 - 10 bàn làm việc rải 3 tầng (Tầng 1: 3, Tầng 2: 4, Tầng 3: 3), giao ngẫu nhiên mỗi ván. Sếp đi tuần: dòng "Về bàn: Tầng X · Phòng Y", mũi tên qua cầu thang, vòng "Bàn của bạn" trên sơ đồ, bàn của mình sáng viền vàng.
 - Tầng nhà: tầng có bàn của mình; 2/3 việc ngắn ở tầng nhà.
-- Hồi chiêu gài bẫy (tự động): 1 Nội gián {5: 40, 6: 26, 7: 20, 8: 12, 9: 10, 10: 6} giây; 2 Nội gián {7: 90, 8: 62, 9: 47, 10: 36} giây (300 ván mỗi cỡ: Nội gián thắng 42–52%).
+- Hồi chiêu gài bẫy (tự động): 1 Rắn độc {5: 40, 6: 26, 7: 20, 8: 12, 9: 10, 10: 6} giây; 2 Rắn độc {7: 90, 8: 62, 9: 47, 10: 36} giây (300 ván mỗi cỡ: Rắn độc thắng 42–52%).
 
 ## Giao diện và nhân vật (cập nhật)
 
@@ -85,7 +89,7 @@ Kiểm tra: `python3 tests/lobby_reentry.py` (về sảnh nhiều lần vẫn đ
 
 ## Thống kê ván (chỉ admin, dành cho cân bằng)
 
-Chỉ có khi mở game với **`?admin`** (màn chia ô: `?multitest=4&admin`); người chơi thường không thấy và game không ghi số liệu. Hết mỗi ván, màn kết quả có mục **📊 Thống kê ván** (`src/game/stats.ts`, chỉ quan sát, không đổi luật): cách kết thúc, KPI lúc kết thúc, thời gian chơi và cả ván, vụ gài đầu, họp đầu, số vụ gài, cuộc họp, phá hoại, tỉ lệ sa thải trúng Nội gián, phiếu của Nhân viên trúng Nội gián, Sếp đi tuần có thắng không, chỉ số của bạn (Nội gián: số vụ gài, thời gian từ lúc hồi chiêu xong tới lúc gài được; Nhân viên: việc xong, phiếu đúng/sai) và dòng thời gian. Nút **Sao chép ván này** / **Sao chép tất cả** (các ván từ lúc mở game) để dán cho người làm game. Có ở máy chơi một mình và máy chủ phòng.
+Chỉ có khi mở game với **`?admin`** (màn chia ô: `?multitest=4&admin`); người chơi thường không thấy và game không ghi số liệu. Hết mỗi ván, màn kết quả có mục **📊 Thống kê ván** (`src/game/stats.ts`, chỉ quan sát, không đổi luật): cách kết thúc, KPI lúc kết thúc, thời gian chơi và cả ván, vụ gài đầu, họp đầu, số vụ gài, cuộc họp, phá hoại, tỉ lệ sa thải trúng Rắn độc, phiếu của Nhân viên trúng Rắn độc, Sếp đi tuần có thắng không, chỉ số của bạn (Rắn độc: số vụ gài, thời gian từ lúc hồi chiêu xong tới lúc gài được; Nhân viên: việc xong, phiếu đúng/sai) và dòng thời gian. Nút **Sao chép ván này** / **Sao chép tất cả** (các ván từ lúc mở game) để dán cho người làm game. Có ở máy chơi một mình và máy chủ phòng.
 
 ## Chống lag khi chơi qua mạng
 
@@ -117,23 +121,23 @@ Chơi nhiều người → **Tạo phòng mới** (tên phòng, công tắc Publ
 ## Chơi nhiều người
 
 - Màn hình chính → **Chơi nhiều người** → Tạo phòng mới (mã 6 ký tự, ví dụ `KPI-482`, kèm link mời) hoặc nhập mã để vào phòng. Mở link mời (`?room=MÃ`) là vào thẳng phòng.
-- **Sảnh tầng G chung:** vào phòng là tới sảnh chung (đi xe buýt tới, bước vào cửa kính). Thấy nhau đi lại, ngồi sofa, cầm cốc nước; chat bằng bong bóng trên đầu; nghịch chuông, mèo, bể cá, cây thì mọi người cùng thấy; thay đồ thì người khác thấy ngay. Người mới vào phòng hiện ra ở chỗ xuống xe và bước vào theo đúng đường họ đi. Thẻ góc trái và màn hình phòng trên tường hiện mã phòng, số người, trạng thái kết nối. **Quầy lễ tân:** bảng cài đặt ván do chủ phòng chỉnh, người khác xem: người chơi (bot điền ghế trống, số ghế, số Nội gián), vai có kỹ năng (bật/tắt từng vai, số vai tối đa mỗi ván), cuộc họp (thời gian thảo luận, bỏ phiếu, phiếu ẩn danh). Ván dùng đúng các cài đặt này. Nút "Sao chép" cạnh mã phòng ở thẻ góc trái. **Thang máy:** chủ phòng bấm vào ca thì cả phòng cùng xem cảnh thang máy rồi vào ván. Tối đa 10 người, ván cần ít nhất 4 người. Hết ván, "Về phòng" đưa cả phòng về sảnh.
+- **Sảnh tầng G chung:** vào phòng là tới sảnh chung (đi xe buýt tới, bước vào cửa kính). Thấy nhau đi lại, ngồi sofa, cầm cốc nước; chat bằng bong bóng trên đầu; nghịch chuông, mèo, bể cá, cây thì mọi người cùng thấy; thay đồ thì người khác thấy ngay. Người mới vào phòng hiện ra ở chỗ xuống xe và bước vào theo đúng đường họ đi. Thẻ góc trái và màn hình phòng trên tường hiện mã phòng, số người, trạng thái kết nối. **Quầy lễ tân:** bảng cài đặt ván do chủ phòng chỉnh, người khác xem: người chơi (bot điền ghế trống, số ghế, số Rắn độc), vai có kỹ năng (bật/tắt từng vai, số vai tối đa mỗi ván), cuộc họp (thời gian thảo luận, bỏ phiếu, phiếu ẩn danh). Ván dùng đúng các cài đặt này. Nút "Sao chép" cạnh mã phòng ở thẻ góc trái. **Thang máy:** chủ phòng bấm vào ca thì cả phòng cùng xem cảnh thang máy rồi vào ván. Tối đa 10 người, ván cần ít nhất 4 người. Hết ván, "Về phòng" đưa cả phòng về sảnh.
 - **Chủ phòng chạy game**, người vào phòng gửi điều khiển và nhận trạng thái đã lọc (không lộ vai, phòng ban, việc, hồi chiêu, kết quả kỹ năng của người khác). Tin nhắn của người đã nghỉ việc / bị sa thải chỉ người đã chết đọc được.
 - **Sức chứa phòng = số ghế** chủ phòng chọn; đủ ghế thì người mới bị từ chối.
 - **Kết nối:** im lặng quá 4 giây là "mất kết nối" (hiện trên danh sách phòng, thẻ tên, cả phòng nhận thông báo); trong ván quá 60 giây thì bot chơi thay hẳn, ở phòng chờ quá 12 giây thì rời phòng. **Tải lại trang hoặc mở lại link trong 60 giây là vào lại đúng nhân vật cũ.** Người vào phòng không nghe thấy chủ phòng 5 giây thì thấy dải báo, 15 giây thì về màn hình chính. Chủ phòng tắt tab thì phòng đóng ngay.
 - **Tab bị ẩn:** trình duyệt dừng vòng lặp vẽ của tab ẩn, nên chủ phòng chạy mô phỏng và gửi trạng thái bằng một luồng nền (`src/net/pump.ts`) khi tab của mình bị ẩn; nhịp kiểm tra kết nối cũng chạy ở đó. Chuyển tab thì phím đang giữ được thả ra (nhân vật không trôi).
 - **Mã phòng trong ván:** nhãn "Phòng ABC-123" ở góc trên, bấm để sao chép link mời. **Vào lại:** tải lại trang, mở lại link, hoặc bấm nút "Vào lại phòng" ở màn hình chính (hiện trong 10 phút sau khi rời, kể cả đã đóng tab); popup "Đang vào lại phòng làm việc…" trong lúc kết nối. Mất chủ phòng thì có popup đếm ngược.
-- **Thử một mình:** mở game với `?multitest=4` (2–6 ô): mỗi ô là một người chơi; thanh công cụ có Bắt đầu ván, Cả phòng sẵn sàng, Gọi họp ngay, Chơi ván mới, Ép một người làm Nội gián. Bấm vào ô nào thì điều khiển người đó.
+- **Thử một mình:** mở game với `?multitest=4` (2–6 ô): mỗi ô là một người chơi; thanh công cụ có Bắt đầu ván, Cả phòng sẵn sàng, Gọi họp ngay, Chơi ván mới, Ép một người làm Rắn độc. Bấm vào ô nào thì điều khiển người đó.
 - Mã nguồn: `src/net/` (truyền tin, ảnh chụp có lọc, cửa lệnh, chủ phòng / người vào phòng), `src/devtools/multitest.ts`.
-- **Màn chia ô:** thanh công cụ có "Giao vai (ván tới)" cho từng người (Nội gián, Thực tập sinh, hoặc một trong 15 vai), áp dụng khi chủ phòng bắt đầu ván.
-- Kiểm tra: `npx tsx tests/net_systems_test.ts` (phá hoại, khóa cửa, thang máy, lối trốn, hồn ma, camera), `npx tsx tests/net_meeting_test.ts` (biểu cảm, tố cáo ẩn danh, tin riêng Tester, phiếu bầu và phiếu ẩn danh, bảo lãnh, Director, vào lại giữa họp / sau khi hết ván), `npx tsx tests/net_roles_test.ts` (15 vai và Nội gián khi chơi nhiều người: chủ phòng xử lý đúng, người cầm vai thấy đúng kết quả, người khác không biết điều không nên biết), `npx tsx tests/net_conn_test.ts` (kết nối: sức chứa, tin hồn ma, mất kết nối, vào lại, bot thay, mất chủ phòng), `npx tsx tests/net_test.ts` (mạng giả có độ trễ và mất gói: không lộ bí mật, bản sao khớp chủ phòng, ván kết thúc đúng), `tests/multitest_e2e.py` (trình duyệt thật).
-- **Máy khác, mạng khác (P2P):** dùng WebRTC qua PeerJS (`src/net/peer.ts`): chủ phòng đăng ký tên `ngvp-<mã phòng>` trên máy giới thiệu công cộng `0.peerjs.com`, người vào phòng nối tới đó; có máy chuyển tiếp TURN dự phòng của PeerJS cho mạng chặn kết nối thẳng. Chủ phòng nhận người vào qua cả kênh nội bộ (các tab cùng trình duyệt) lẫn P2P; người vào phòng thử kênh nội bộ trước, 1,2 giây không thấy chủ phòng mới bật P2P. Mỗi tin mang mã máy logic nên vào lại đúng nhân vật dù đi đường khác. Mã phòng trùng phòng khác thì tự đổi mã; mất mạng thì báo rõ. Màn chia ô `?multitest` chỉ dùng kênh nội bộ.
+- **Màn chia ô:** thanh công cụ có "Giao vai (ván tới)" cho từng người (Rắn độc, Thực tập sinh, hoặc một trong 15 vai), áp dụng khi chủ phòng bắt đầu ván.
+- Kiểm tra: `npx tsx tests/net_systems_test.ts` (phá hoại, khóa cửa, thang máy, lối trốn, hồn ma, camera), `npx tsx tests/net_meeting_test.ts` (biểu cảm, tố cáo ẩn danh, tin riêng Tester, phiếu bầu và phiếu ẩn danh, bảo lãnh, Director, vào lại giữa họp / sau khi hết ván), `npx tsx tests/net_roles_test.ts` (15 vai và Rắn độc khi chơi nhiều người: chủ phòng xử lý đúng, người cầm vai thấy đúng kết quả, người khác không biết điều không nên biết), `npx tsx tests/net_conn_test.ts` (kết nối: sức chứa, tin hồn ma, mất kết nối, vào lại, bot thay, mất chủ phòng), `npx tsx tests/net_test.ts` (mạng giả có độ trễ và mất gói: không lộ bí mật, bản sao khớp chủ phòng, ván kết thúc đúng), `tests/multitest_e2e.py` (trình duyệt thật).
+- **Máy khác, mạng khác (P2P):** dùng WebRTC qua PeerJS (`src/net/peer.ts`): chủ phòng đăng ký tên `ngvp-<mã phòng>` trên máy giới thiệu công cộng `0.peerjs.com`, người vào phòng nối tới đó; có máy chuyển tiếp TURN dự phòng (của Cloudflare nếu đã cài, xem mục bên dưới; không thì của PeerJS, miễn phí nhưng yếu) cho mạng chặn kết nối thẳng. Chủ phòng nhận người vào qua cả kênh nội bộ (các tab cùng trình duyệt) lẫn P2P; người vào phòng thử kênh nội bộ trước, 1,2 giây không thấy chủ phòng mới bật P2P. Mỗi tin mang mã máy logic nên vào lại đúng nhân vật dù đi đường khác. Mã phòng trùng phòng khác thì tự đổi mã; mất mạng thì báo rõ. Màn chia ô `?multitest` chỉ dùng kênh nội bộ.
 - **Thử P2P:** cần chạy trên trang GitHub Pages (link chơi thử trên claude.ai chặn kết nối ra ngoài). Kiểm tra tự động: `npx tsx tests/p2p_test.ts` (PeerJS giả).
 - Giai đoạn sau: rà đủ tính năng với nhiều người thật.
 
 ## Phòng thử mini-game
 
-Mở game với `?minigames` ở cuối địa chỉ: danh sách đủ 39 mini-game (việc thường theo tầng, bảo trì, khu giải trí, sân thượng, sửa sự cố, các màn đặc biệt). Mỗi mini-game có nút Chơi thử và Chơi bản Nội gián, tự ghi thời gian chơi, đánh dấu Ổn / Cần sửa kèm ghi chú (lưu trên máy). Nút Sao chép phản hồi / Tải file phản hồi xuất toàn bộ thành văn bản để gửi lại.
+Mở game với `?minigames` ở cuối địa chỉ: danh sách đủ 39 mini-game (việc thường theo tầng, bảo trì, khu giải trí, sân thượng, sửa sự cố, các màn đặc biệt). Mỗi mini-game có nút Chơi thử và Chơi bản Rắn độc, tự ghi thời gian chơi, đánh dấu Ổn / Cần sửa kèm ghi chú (lưu trên máy). Nút Sao chép phản hồi / Tải file phản hồi xuất toàn bộ thành văn bản để gửi lại.
 
 ## Sửa nội dung (không cần đụng code)
 
@@ -149,9 +153,9 @@ Bước build (`scripts/content-build.mjs`) đọc `content/content.xlsx` thành
 
 ## Cân bằng (bản đồ 3 tầng)
 
-Tầm nhìn Nhân viên 3,8 ô (Nội gián gấp rưỡi). Hồi chiêu gài bẫy tự chỉnh theo số người và số Nội gián (`killCooldownFor` trong `sim.ts`). Ván 6 người trở xuống chỉ có 1 Nội gián. Mỗi người nhận việc ở 2 tầng liền kề (việc chấm công vẫn ở Lễ tân tầng 1). Kiểm chứng bằng 150 ván bot mỗi cỡ (`tests/balance.ts`):
+Tầm nhìn Nhân viên 3,8 ô (Rắn độc gấp rưỡi). Hồi chiêu gài bẫy tự chỉnh theo số người và số Rắn độc (`killCooldownFor` trong `sim.ts`). Ván 6 người trở xuống chỉ có 1 Rắn độc. Mỗi người nhận việc ở 2 tầng liền kề (việc chấm công vẫn ở Lễ tân tầng 1). Kiểm chứng bằng 150 ván bot mỗi cỡ (`tests/balance.ts`):
 
-| Số người | Nội gián | Hồi chiêu | Nội gián thắng (300 ván) |
+| Số người | Rắn độc | Hồi chiêu | Rắn độc thắng (300 ván) |
 |---|---|---|---|
 | 5 | 1 | 57s | 49% |
 | 6 | 1 | 35s | 48% |
@@ -164,7 +168,7 @@ Tầm nhìn Nhân viên 3,8 ô (Nội gián gấp rưỡi). Hồi chiêu gài b�
 | 10 | 1 | 8s | 41% |
 | 10 | 2 | 50s | 46% |
 
-9–10 người với 1 Nội gián hơi nghiêng về Nhân viên; không rút hồi chiêu thêm vì ván sẽ bị nén (xem `tests/pace5.ts` để đo nhịp ván). Cỡ này nên chơi 2 Nội gián.
+9–10 người với 1 Rắn độc hơi nghiêng về Nhân viên; không rút hồi chiêu thêm vì ván sẽ bị nén (xem `tests/pace5.ts` để đo nhịp ván). Cỡ này nên chơi 2 Rắn độc.
 
 Bot trong mô phỏng làm mỗi việc mất đúng thời gian thật của mini-game đó (bảng `MINI_TIME` trong `src/game/map.ts`, đo bằng phòng thử). Đổi mini-game thì cập nhật số này rồi chạy lại cân bằng. Mỗi người nhận tối đa 1 việc khó (`MINI_DIFF`).
 
@@ -174,16 +178,16 @@ Mỗi ván, hệ thống bốc ngẫu nhiên tối đa N vai có kỹ năng (ch�
 
 | Vai | Kỹ năng | Luật chính |
 |---|---|---|
-| 🪪 HR | Quét Face ID biết một người là Nhân viên hay Nội gián | 1 lần/ván; mở sau 60 giây hoặc sau cuộc họp đầu; quét 4 giây, máy phát sáng; kết quả về sau 60 giây |
+| 🪪 HR | Quét Face ID biết một người là Nhân viên hay Rắn độc | 1 lần/ván; mở sau 60 giây hoặc sau cuộc họp đầu; quét 4 giây, máy phát sáng; kết quả về sau 60 giây |
 | 👔 Director | Công bố chức vụ trong họp, phiếu tính gấp đôi | Lộ danh tính sau khi công bố |
 | 💻 IT | Xem camera bằng laptop ở bất kỳ đâu | 10 giây/lần, hồi chiêu 40 giây; đèn camera đỏ khi đang xem |
 | 📣 Product Owner | Gọi họp gấp từ bất kỳ đâu | 1 lần/ván; lộ danh tính; khóa khi Sếp đi tuần |
 | 🛡️ Producer | Bí mật bảo lãnh một người trong mỗi cuộc họp | Được tự bảo lãnh; không bảo lãnh cùng người hai cuộc họp liên tiếp |
 | 💾 Developer | Đầu ván chọn một người để backup, lần đầu bị gài bẫy thì không chết | Không backup chính mình; gài hụt diễn ra âm thầm |
-| 🎨 Artist | Máy so màu ở Studio Art: Nội gián có màu X ở bất kỳ đâu trên người không | Mở sau cuộc họp đầu, cách nhau 2 cuộc họp; 12 nhóm màu |
-| 🔊 Sound Engineer | Bị gài bẫy thì loa hú, mọi người thấy mũi tên chỉ tới ghế trống | 10 giây; Nội gián cũng thấy |
+| 🎨 Artist | Máy so màu ở Studio Art: Rắn độc có màu X ở bất kỳ đâu trên người không | Mở sau cuộc họp đầu, cách nhau 2 cuộc họp; 12 nhóm màu |
+| 🔊 Sound Engineer | Bị gài bẫy thì loa hú, mọi người thấy mũi tên chỉ tới ghế trống | 10 giây; Rắn độc cũng thấy |
 | 📊 Admin | Bảng chấm công: ai đang làm, ai vừa bị đuổi việc, ai bị sa thải | Pin 10 giây, hồi chiêu 20 giây, làm xong việc sạc 5 giây; rớt mạng thì không xem được |
-| 🔧 Engineer | Dùng 5 cặp chỗ trốn như Nội gián | Tối đa 15 giây mỗi lần, hồi chiêu 30 giây; thêm 2 việc bảo trì chỗ trốn |
+| 🔧 Engineer | Dùng 5 cặp chỗ trốn như Rắn độc | Tối đa 15 giây mỗi lần, hồi chiêu 30 giây; thêm 2 việc bảo trì chỗ trốn |
 | 📸 Truyền thông | Khi thành hồn ma, gửi 1–3 sticker hình cho người sống ở gần | 6 sticker ngẫu nhiên, đổi được (cách 10 giây), gửi cách 10 giây; chỉ người nhận thấy |
 | 🎬 Animator | Làm lại anim một người bị gài bẫy: họ sống lại, Animator đổi mạng | 1 lần/ván; không hồi sinh người bị sa thải |
 | 🧪 Tester | Gắn test case cho người đứng cạnh 2 giây, họp sau nhận log lộ trình | 1 người mỗi vòng; lộ bước dịch chuyển khi chui chỗ trốn |
@@ -194,15 +198,15 @@ Mỗi ván, hệ thống bốc ngẫu nhiên tối đa N vai có kỹ năng (ch�
 | Vai | Mục tiêu | Luật chính |
 |---|---|---|
 | 🎲 Game Designer | Đầu tàu dự án: bị sa thải trong họp thì dự án sụp đổ, ván kết thúc, chỉ GD thắng | HR quét ra Nhân viên; bị gài bẫy là thua; việc giả; từ 7 người |
-| 📈 Intern tham vọng | Sống sót tới khi chỉ còn mình và tối đa 1 người | Biết mặt Nội gián; gài bẫy cả hai phe (35 giây, gài trúng Nội gián thì reset); chui chỗ trốn; 1 lần tố cáo nặc danh; HR quét ra Nội gián; từ 8 người |
+| 📈 Intern tham vọng | Sống sót tới khi chỉ còn mình và tối đa 1 người | Biết mặt Rắn độc; gài bẫy cả hai phe (35 giây, gài trúng Rắn độc thì reset); chui chỗ trốn; 1 lần tố cáo nặc danh; HR quét ra Rắn độc; từ 8 người |
 
 ## Tầm nhìn và khóa cửa
 
-Tầm nhìn bị tường che như Among Us (bàn ghế không che). Nội gián có thể khóa cửa từng phòng trong 10 giây (trừ Phòng họp, và không khóa được khi Sếp đi tuần); người bị nhốt quẹt thẻ ở cửa để mở sớm.
+Tầm nhìn bị tường che như Among Us (bàn ghế không che). Rắn độc có thể khóa cửa từng phòng trong 10 giây (trừ Phòng họp, và không khóa được khi Sếp đi tuần); người bị nhốt quẹt thẻ ở cửa để mở sớm.
 
 ## Điều khiển
 
-WASD hoặc phím mũi tên để đi. E làm việc, R báo cáo ghế trống, Q gài bẫy (Nội gián), F phá hoại, Space trốn, Tab xem sơ đồ. Trên điện thoại có cần điều khiển ảo ở góc trái.
+WASD hoặc phím mũi tên để đi. E làm việc, R báo cáo ghế trống, Q gài bẫy (Rắn độc), F phá hoại, Space trốn, Tab xem sơ đồ. Trên điện thoại có cần điều khiển ảo ở góc trái.
 
 ## Cấu trúc mã nguồn
 
@@ -225,8 +229,8 @@ Phần `src/game` được tách riêng để bước tiếp theo (nhiều ngư�
 
 ## Ván ít người, tầm nhìn theo cỡ ván
 
-- Tầm nhìn Nhân viên: 5–6 người 5 ô, 7–8 người 4,4 ô, 9–10 người 3,8 ô (Nội gián luôn gấp 1,5 lần; mất điện vẫn 1,2 ô).
-- **Chế độ ít người** (cài đặt phòng, mặc định tự bật khi ≤ 6 người): tối đa 2 vai đặc biệt, 5 việc ngắn mỗi người, không giao việc trên sân thượng (vẫn đi lên được), hồi chiêu gài tự động 56 giây (5 người) / 37 giây (6 người). Bot chơi 500 ván mỗi cỡ: Nội gián thắng 46–50%.
+- Tầm nhìn Nhân viên: 5–6 người 5 ô, 7–8 người 4,4 ô, 9–10 người 3,8 ô (Rắn độc luôn gấp 1,5 lần; mất điện vẫn 1,2 ô).
+- **Chế độ ít người** (cài đặt phòng, mặc định tự bật khi ≤ 6 người): tối đa 2 vai đặc biệt, 5 việc ngắn mỗi người, không giao việc trên sân thượng (vẫn đi lên được), hồi chiêu gài tự động 56 giây (5 người) / 37 giây (6 người). Bot chơi 500 ván mỗi cỡ: Rắn độc thắng 46–50%.
 - Công cụ chỉnh: `npx tsx tests/tune_small.ts <số người> <việc ngắn> <hồi chiêu> <số ván>`.
 
 ## Sẵn sàng bỏ phiếu, lịch sử chat sảnh
@@ -240,3 +244,38 @@ Phần `src/game` được tách riêng để bước tiếp theo (nhiều ngư�
 - Phòng họp gọn trên màn hẹp (≤ 520px) và màn thấp (xoay ngang): tiêu đề 1 dòng (bấm để xem vai trong ván), ô người chơi nhỏ 5 ô/hàng (10 người vừa 2 hàng), khung chat và nút Gửi không bị cắt.
 - Màn hẹp (≤ 430px): nút hành động dồn 2 cột ở nửa phải, nửa trái để riêng cho cần điều khiển.
 - Màn thấp (< 500px): danh sách việc thu gọn sẵn khi vào ca; sơ đồ chia 2 cột (tầng + chú thích bên trái, bản đồ bên phải), không phải cuộn.
+
+## Máy chuyển tiếp TURN của Cloudflare (người chơi khác mạng)
+
+Người ở 4G, mạng công ty… nhiều khi không nối thẳng được với chủ phòng. Khi game chạy trên Cloudflare Pages và có khóa TURN, mọi máy dùng máy chuyển tiếp của Cloudflare làm đường dự phòng (mạng cho nối thẳng thì vẫn nối thẳng).
+
+1. Cloudflare dashboard → **Realtime** (Calls) → **TURN Server** → tạo khóa TURN, chép **Key ID** và **API Token** (token chỉ hiện một lần).
+2. Dự án Pages → Settings → **Variables and Secrets** → thêm `TURN_KEY_ID` và `TURN_KEY_API_TOKEN` (chọn loại Secret, cho Production).
+3. Deployments → **Retry deployment** (hoặc đẩy code mới) để biến có hiệu lực.
+4. Kiểm tra: mở `https://…/api/turn` thấy `iceServers`; vào game với `?admin`, nhật ký có dòng "có máy chuyển tiếp TURN của Cloudflare" và mỗi kết nối ghi "nối thẳng…" hoặc "nối qua máy chuyển tiếp TURN".
+
+- `functions/api/turn.ts` xin thông tin đăng nhập TURN tạm thời (12 giờ) từ Cloudflare; token không bao giờ gửi xuống trình duyệt. Chưa cài khóa → trả 404, game dùng đường mặc định của PeerJS.
+- Trình duyệt hỏi `/api/turn` lúc mở game (tối đa 4 giây, nhớ tới khi gần hết hạn); chủ phòng chờ tối đa 2 giây trước khi mở phòng P2P.
+- Giá: 1.000 GB miễn phí mỗi tháng, sau đó 0,05 USD/GB; chỉ tính dữ liệu đi qua máy chuyển tiếp (ván 10 người dưới 1 MB/phút mỗi máy).
+- Kiểm tra: `npx tsx tests/turn_test.ts`.
+
+## Thẻ tên, cảnh báo mạng chậm
+
+- Nhiều người đứng sát nhau (đầu ván, sau họp): thẻ của mình luôn đầy đủ, thẻ người khác thu gọn còn `#mã nhân viên`, rồi xếp lệch lên tối đa 2 tầng; vẫn đè thì thẻ phía sau mờ đi. Đứng thưa ra thì thẻ hiện đủ tên lại.
+- "Mạng chậm" chỉ hiện khi độ trễ trên 400 ms liên tục 3 giây; tắt khi dưới 300 ms liên tục 2 giây (tính theo giờ thật, không phụ thuộc fps).
+
+## Hai phe: Nhân viên 💼 vs Rắn độc 🐍
+
+- Phe xấu đổi tên từ "Nội gián" thành **Rắn độc** (mọi chữ trong game, bot, luật chơi). Mã nguồn vẫn gọi là `impostor`.
+- Màu phe dùng nhất quán: Nhân viên xanh dương (`--crew`), Rắn độc xanh lá (`--snake`, trên nền tối `--snake-hi`). Đỏ chỉ còn cho cảnh báo (phá hoại, báo cáo, bị đuổi việc).
+- Màn hình chính: câu giới thiệu mới + chip "💼 Nhân viên vs 🐍 Rắn độc".
+- Sảnh: thẻ **"Trong công ty có hai phe"** (Là ai / Làm gì / Thắng khi), tự hiện lần đầu vào sảnh trên mỗi máy (nhớ bằng `localStorage`, bỏ qua ở `?debug` và `?multitest`), mở lại bằng nút "📖 Hai phe" ở thẻ sảnh. Nội dung này cũng nằm đầu Luật chơi.
+- Phân vai: dòng "💼 N Nhân viên · đối đầu · 🐍 M Rắn độc" (+ 🎲 phe thứ ba nếu có), đếm bằng số công khai nên máy người vào phòng hiện giống chủ phòng.
+- Trong ca: huy hiệu phe ở đầu bảng việc (💼 PHE NHÂN VIÊN / 🐍 PHE RẮN ĐỘC / 🎲 PHE THỨ BA). Rắn độc (và Intern tham vọng) thấy thẻ tên Rắn độc màu xanh lá có 🐍; người khác không thấy.
+- Màn kết thúc: biểu tượng và viền theo màu phe thắng. Bot buộc tội có dùng chữ "rắn".
+
+## Chống rớt mạng do khóa màn hình, chống chậm theo máy chủ phòng
+
+- **Giữ màn hình sáng** (`src/ui/wakelock.ts`, Screen Wake Lock): bật khi ở sảnh và trong ca, tắt ở màn hình chính; hệ thống tự nhả (tắt màn hình, chuyển app) thì quay lại sẽ xin lại. Điện thoại không còn tự khóa trong lúc họp (trước đây khóa màn hình = rớt mạng; máy chủ phòng khóa = cả phòng dừng). Trình duyệt không hỗ trợ thì bỏ qua.
+- **Chạy theo giờ thật** (`GameScene.update`): máy chủ phòng / chơi một mình đo giờ thật giữa hai khung (không dùng delta đã làm mượt của Phaser) và chạy bù nhiều bước 0,05 giây, tối đa 0,25 giây mỗi khung. Máy giật còn 8 khung/giây: trước chạy 37% tốc độ thật (cả phòng chậm theo), nay 100%. Người vào phòng dự đoán bước đi của mình cũng theo giờ thật.
+- **Dọn texture ngoại hình** không còn ai mặc khi bắt đầu ván mới: chơi nhiều ván liền số texture đứng yên (trước tăng 6 mỗi ván).

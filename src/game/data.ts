@@ -25,7 +25,7 @@ export const NEUTRAL_ROLES: Partial<Record<RoleDept, number>> = { gd: 7, climber
 export const ROLE_INFO: Record<RoleDept, { name: string; icon: string; short: string; ability: string; rules: string[] }> = {
   hr: {
     name: 'HR', icon: '🪪', short: 'Quét Face ID',
-    ability: 'Quét Face ID một đồng nghiệp ở Phòng HR để biết người đó là Nhân viên hay Nội gián.',
+    ability: 'Quét Face ID một đồng nghiệp ở Phòng HR để biết người đó là Nhân viên hay Rắn độc.',
     rules: [
       'Dùng 1 lần mỗi ván. Máy mở sau 60 giây chơi, hoặc ngay sau cuộc họp đầu tiên.',
       'Chọn người rồi giữ nút quét 4 giây. Máy phát sáng hồng, ai đứng gần đều thấy bạn đang quét.',
@@ -39,7 +39,7 @@ export const ROLE_INFO: Record<RoleDept, { name: string; icon: string; short: st
     rules: [
       'Bấm "Công bố chức vụ" trong cuộc họp, hệ thống xác nhận công khai cho cả phòng.',
       'Sau khi công bố, mọi phiếu bầu của bạn tính là 2 phiếu cho tới hết ván.',
-      'Cả công ty biết bạn là ai, kể cả Nội gián: bạn thành mục tiêu số một.',
+      'Cả công ty biết bạn là ai, kể cả Rắn độc: bạn thành mục tiêu số một.',
     ],
   },
   it: {
@@ -57,7 +57,7 @@ export const ROLE_INFO: Record<RoleDept, { name: string; icon: string; short: st
     rules: [
       'Dùng 1 lần mỗi ván.',
       'Vẫn gọi được khi mất điện hay rớt mạng. Không gọi được khi Sếp đang đi tuần.',
-      'Cả phòng sẽ biết bạn là Product Owner thật (Nội gián không giả được), nên sau đó bạn dễ thành mục tiêu.',
+      'Cả phòng sẽ biết bạn là Product Owner thật (Rắn độc không giả được), nên sau đó bạn dễ thành mục tiêu.',
     ],
   },
   producer: {
@@ -76,17 +76,17 @@ export const ROLE_INFO: Record<RoleDept, { name: string; icon: string; short: st
     rules: [
       'Bắt buộc chọn ngay ở màn phân vai (trước khi bấm Sẵn sàng), không chọn được chính mình.',
       'Chỉ cứu được 1 lần. Lần gài bẫy hụt diễn ra âm thầm: người được backup không hề biết.',
-      'Nội gián thấy "Bẫy thất bại!" và mất lượt hồi chiêu. Bạn nhận tin bản backup vừa được dùng.',
+      'Rắn độc thấy "Bẫy thất bại!" và mất lượt hồi chiêu. Bạn nhận tin bản backup vừa được dùng.',
       'Bản backup vẫn có hiệu lực kể cả khi bạn đã bị đuổi việc.',
     ],
   },
   artist: {
     name: 'Artist', icon: '🎨', short: 'Máy so màu',
-    ability: 'Ở máy so màu trong Studio Art, chọn một màu để kiểm tra trên người Nội gián có màu đó ở bất kỳ đâu không.',
+    ability: 'Ở máy so màu trong Studio Art, chọn một màu để kiểm tra trên người Rắn độc có màu đó ở bất kỳ đâu không.',
     rules: [
       'Màu được tính ở mọi chỗ: tóc, da hoặc skin, áo, quần, phụ kiện. Không tính viền nét vẽ.',
       'Danh sách chỉ gồm các nhóm màu đang có trên người ai đó trong ván.',
-      'Kết quả: "Có" nếu ít nhất một Nội gián còn trong ván mang màu đó, ngược lại là "Không có".',
+      'Kết quả: "Có" nếu ít nhất một Rắn độc còn trong ván mang màu đó, ngược lại là "Không có".',
       'Máy mở sau cuộc họp đầu tiên. Mỗi lần dùng xong phải đợi thêm 2 cuộc họp. Máy phát sáng khi đang so màu.',
     ],
   },
@@ -96,7 +96,7 @@ export const ROLE_INFO: Record<RoleDept, { name: string; icon: string; short: st
     rules: [
       'Tự động kích hoạt, không cần bấm gì. Chỉ khi bị gài bẫy; bị sa thải trong họp thì không.',
       'Cảnh báo tồn tại 15 giây, kèm mũi tên có hình loa phát sóng âm. Ghế trống ở tầng khác thì mũi tên chỉ về thang bộ trước.',
-      'Nội gián cũng thấy cảnh báo, nên kẻ vừa gài bẫy sẽ phải chạy thật nhanh.',
+      'Rắn độc cũng thấy cảnh báo, nên kẻ vừa gài bẫy sẽ phải chạy thật nhanh.',
     ],
   },
   admin: {
@@ -111,13 +111,13 @@ export const ROLE_INFO: Record<RoleDept, { name: string; icon: string; short: st
   },
   engineer: {
     name: 'Engineer', icon: '🔧', short: 'Đi chỗ trốn',
-    ability: 'Dùng được các lối trốn như Nội gián để di chuyển nhanh, nhưng có thêm việc bảo trì lối trốn.',
+    ability: 'Dùng được các lối trốn như Rắn độc để di chuyển nhanh, nhưng có thêm việc bảo trì lối trốn.',
     rules: [
       'Mỗi lần trốn tối đa 15 giây thì tự chui ra. Hai lần trốn cách nhau 30 giây.',
       'Đang trốn thì không ai gài bẫy được bạn.',
-      'Chui vào đúng chỗ đang có Nội gián nấp thì bạn nhận cảnh báo "Có ai đó trong này!" (không biết là ai).',
+      'Chui vào đúng chỗ đang có Rắn độc nấp thì bạn nhận cảnh báo "Có ai đó trong này!" (không biết là ai).',
       'Có thêm 2 việc bảo trì lối trốn, tính vào KPI như việc thường.',
-      'Ai thấy bạn chui ra từ tủ cũng sẽ nghi bạn là Nội gián: chuẩn bị tinh thần giải thích!',
+      'Ai thấy bạn chui ra từ tủ cũng sẽ nghi bạn là Rắn độc: chuẩn bị tinh thần giải thích!',
     ],
   },
   media: {
@@ -156,7 +156,7 @@ export const ROLE_INFO: Record<RoleDept, { name: string; icon: string; short: st
     name: 'Game Designer', icon: '🎲', short: 'Phe thứ ba: người không thể bị sa thải',
     ability: 'Bạn là đầu tàu của dự án, người cả công ty không thể để mất. Nếu bạn bị sa thải trong họp, dự án sụp đổ ngay lập tức: cả công ty thua, chỉ mình bạn thắng.',
     rules: [
-      'Phe thứ ba: không thuộc Nhân viên, cũng không thuộc Nội gián.',
+      'Phe thứ ba: không thuộc Nhân viên, cũng không thuộc Rắn độc.',
       'Bị bầu sa thải trong cuộc họp: dự án sụp đổ, ván kết thúc, bạn thắng và mọi người khác thua.',
       'Bị gài bẫy chết là thua. Việc của bạn chỉ là việc giả, không tính vào KPI.',
       'HR quét Face ID ra "Nhân viên". Cả công ty phải cẩn thận khi bỏ phiếu, vì người trông đáng ngờ nhất có thể chính là bạn.',
@@ -165,20 +165,20 @@ export const ROLE_INFO: Record<RoleDept, { name: string; icon: string; short: st
   },
   climber: {
     name: 'Intern tham vọng', icon: '📈', short: 'Phe thứ ba: sống sót cuối cùng',
-    ability: 'Kẻ leo thang nguy hiểm: giả làm đồng nghiệp, ngấm ngầm hạ cả Nhân viên lẫn Nội gián. Thắng khi chỉ còn bạn và tối đa một người khác.',
+    ability: 'Kẻ leo thang nguy hiểm: giả làm đồng nghiệp, ngấm ngầm hạ cả Nhân viên lẫn Rắn độc. Thắng khi chỉ còn bạn và tối đa một người khác.',
     rules: [
-      'Phe thứ ba. Bạn biết mặt Nội gián ngay từ đầu, nhưng họ không biết bạn.',
-      'Gài bẫy được cả Nhân viên lẫn Nội gián, hồi chiêu 35 giây. Gài trúng Nội gián thì hồi chiêu reset ngay.',
-      'Dùng được chỗ trốn như Nội gián, nhưng không phá hoại được.',
-      'Một lần mỗi ván, trong phòng họp gửi một tin "nguồn giấu tên" tố ai đó là Nội gián, thật hay bịa tùy bạn.',
-      'Nội gián chỉ thắng khi bạn đã chết; Nhân viên phải loại cả Nội gián lẫn bạn (hoặc xong KPI). HR quét bạn ra "Nội gián".',
+      'Phe thứ ba. Bạn biết mặt Rắn độc ngay từ đầu, nhưng họ không biết bạn.',
+      'Gài bẫy được cả Nhân viên lẫn Rắn độc, hồi chiêu 35 giây. Gài trúng Rắn độc thì hồi chiêu reset ngay.',
+      'Dùng được chỗ trốn như Rắn độc, nhưng không phá hoại được.',
+      'Một lần mỗi ván, trong phòng họp gửi một tin "nguồn giấu tên" tố ai đó là Rắn độc, thật hay bịa tùy bạn.',
+      'Rắn độc chỉ thắng khi bạn đã chết; Nhân viên phải loại cả Rắn độc lẫn bạn (hoặc xong KPI). HR quét bạn ra "Rắn độc".',
       'Việc của bạn là việc giả, không tính KPI. Chỉ xuất hiện ở ván từ 8 người.',
     ],
   },
   intern: {
     name: 'Thực tập sinh', icon: '🧃', short: 'Không có',
     ability: 'Không có kỹ năng đặc biệt. Làm việc chăm chỉ và quan sát thật kỹ.',
-    rules: ['Là vai đông nhất, nên Nội gián rất hay nhận bừa là Thực tập sinh để trà trộn.'],
+    rules: ['Là vai đông nhất, nên Rắn độc rất hay nhận bừa là Thực tập sinh để trà trộn.'],
   },
 };
 
@@ -218,6 +218,8 @@ export const FILLER_LINES = [
   'Nói thật là từ hôm teambuilding mình đã thấy có gì đó sai sai.',
   'Thôi skip đi, deadline đang dí sau lưng kìa.',
   'Mình chỉ muốn nhắc là hôm nay là thứ Sáu.',
+  'Rắn độc ơi, tự thú đi cho cả phòng về sớm.',
+  'Ai là rắn thì tối nay mất ngủ nhé.',
 ];
 
 export const DEFENSE_LINES = [
@@ -297,6 +299,7 @@ export const LOBBY_LINES = [
   'Ai đổi áo mới thế, nhìn sang ghê.',
   'Cà phê ở Pantry hết chưa nhỉ?',
   'Tôi linh cảm hôm nay có rắn.',
+  'Nghe nói công ty mình có rắn độc, ai mang thuốc giải chưa?',
   'Sếp vào chưa? Chưa thì tôi ngồi thêm tí.',
   'Thang máy hôm qua kẹt 5 phút, sợ thật.',
   'Ai biết mật khẩu wifi tầng 3 không?',

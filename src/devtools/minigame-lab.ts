@@ -1,4 +1,4 @@
-// Phòng thử mini-game: mở bằng ?minigames. Chơi thử từng mini-game (bản thật và bản Nội gián làm giả),
+// Phòng thử mini-game: mở bằng ?minigames. Chơi thử từng mini-game (bản thật và bản Rắn độc làm giả),
 // bấm giờ, đánh dấu Ổn / Cần sửa, ghi chú, rồi sao chép hoặc tải toàn bộ phản hồi để gửi lại.
 import { openMini, closeMini, openFaceId, openCardSwipe, openColorCheck, openV3, TITLES } from '../ui/minigames';
 import { STATIONS, TASKS, levelAt, levelName, roomName, TILE, MINI_DIFF, type MiniKind, type MiniDiff } from '../game/map';
@@ -53,7 +53,7 @@ function buildItems(): Item[] {
       run: (root, done) => openFaceId(root, people(), () => undefined, () => done()) },
     { id: 'sp_colorcheck', title: 'Máy so màu (Artist)', hint: 'Chọn một nhóm màu rồi giữ nút để kiểm tra.', group: 'Màn đặc biệt', where: 'Studio Art, Tầng 3 · chỉ Artist dùng', icon: 'palette', fake: false,
       run: (root, done) => openColorCheck(root, COLOR_GROUPS.map(g => ({ id: g.id, name: g.name, hex: g.hex })), [], () => undefined, () => { done(); return Math.random() < 0.5; }) },
-    { id: 'sp_swipe', title: 'Quẹt thẻ mở cửa bị khóa', hint: 'Quẹt thẻ đúng tốc độ để mở cửa.', group: 'Màn đặc biệt', where: 'Cửa các phòng khi Nội gián khóa cửa', icon: 'keycard', fake: false,
+    { id: 'sp_swipe', title: 'Quẹt thẻ mở cửa bị khóa', hint: 'Quẹt thẻ đúng tốc độ để mở cửa.', group: 'Màn đặc biệt', where: 'Cửa các phòng khi Rắn độc khóa cửa', icon: 'keycard', fake: false,
       run: (root, done) => openCardSwipe(root, done) },
     { id: 'sp_pry', title: 'Cạy cửa thang máy', hint: 'Đưa xà beng vào khe cửa rồi bẩy trái, phải xen kẽ cho khe mở rộng.', group: 'Màn đặc biệt', where: 'Trong buồng thang máy khi mất điện', icon: 'crowbar', fake: false,
       run: (root, done) => openV3(root, 'pry', 'Cạy cửa thang máy', 'Thang kẹt vì mất điện. Đưa xà beng vào khe cửa rồi bẩy trái, phải xen kẽ.', done) },
@@ -100,7 +100,7 @@ export function openMinigameLab(root: HTMLElement) {
     return `<article class="lb-card st-${f.status}" data-id="${it.id}">
       <div class="lb-top"><span class="lb-ic">${iconSvg(it.icon)}</span><div><h3>${esc(it.title)}</h3><p class="lb-tags"><span class="lb-diff d-${DIFF[it.id] ?? 'tb'}">${DIFF_LABEL[DIFF[it.id] ?? 'tb']}</span>${VISIBLE.has(it.id) ? '<span class="lb-vis">Người khác thấy được</span>' : ''}</p><p class="lb-where">${esc(it.where)}</p></div></div>
       <p class="lb-hint">${esc(it.hint)}</p>
-      <div class="lb-play"><button class="ct-btn primary lb-run">▶ Chơi thử</button>${it.fake ? '<button class="ct-btn lb-fake">Chơi bản Nội gián</button>' : ''}<small class="lb-time">${t}</small></div>
+      <div class="lb-play"><button class="ct-btn primary lb-run">▶ Chơi thử</button>${it.fake ? '<button class="ct-btn lb-fake">Chơi bản Rắn độc</button>' : ''}<small class="lb-time">${t}</small></div>
       <div class="lb-judge"><button class="lb-ok${f.status === 'ok' ? ' on' : ''}">✅ Ổn</button><button class="lb-fix${f.status === 'fix' ? ' on' : ''}">🔧 Cần sửa</button></div>
       <textarea class="lb-note" rows="2" placeholder="Ghi chú: khó/dễ quá, chỗ nào khó hiểu, lỗi gì, muốn đổi gì…">${esc(f.note)}</textarea>
     </article>`;

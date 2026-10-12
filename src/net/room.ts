@@ -26,7 +26,7 @@ export interface RoomSettings {
   roles: Record<string, boolean>; maxSpecial: number;
   /** cuộc họp: thời gian thảo luận / bỏ phiếu (giây), phiếu ẩn danh */
   discussTime: number; voteTime: number; anonVotes: boolean;
-  /** hồi chiêu gài bẫy (giây); 0 = tự động theo cỡ ván và số Nội gián */
+  /** hồi chiêu gài bẫy (giây); 0 = tự động theo cỡ ván và số Rắn độc */
   killCd: number;
   /** Bộ chỉnh ít người (≤ 6 người): true = tự bật, false = tắt */
   small: boolean;

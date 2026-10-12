@@ -48,7 +48,7 @@ export class GameStats {
     if (w.phase === 'play') {
       if (this.startWall === null) this.startWall = performance.now();
       this.play += dt;
-      // Nội gián: hồi chiêu xong (và không đang trốn) thì bắt đầu đếm thời gian tìm mồi
+      // Rắn độc: hồi chiêu xong (và không đang trốn) thì bắt đầu đếm thời gian tìm mồi
       if (me.role === 'impostor' && me.alive) {
         if (me.hidden !== null) this.me.hiddenSec += dt;
         if (me.killCd <= 0 && this.meReady === null) this.meReady = this.play;
@@ -64,9 +64,9 @@ export class GameStats {
       else {
         const a = w.agents[ej];
         this.ejectTotal++; if (a.role === 'impostor') this.ejectImp++;
-        this.log(`Sa thải ${this.name(a)}: ${a.role === 'impostor' ? 'ĐÚNG là Nội gián' : 'người vô tội'}`);
+        this.log(`Sa thải ${this.name(a)}: ${a.role === 'impostor' ? 'ĐÚNG là Rắn độc' : 'người vô tội'}`);
       }
-      // phiếu của Nhân viên (Nội gián bầu có tính toán nên không tính)
+      // phiếu của Nhân viên (Rắn độc bầu có tính toán nên không tính)
       for (const [voter, target] of m.votes) {
         const v = w.agents[voter];
         if (v.role === 'crew' && target !== 'skip') { this.crewVotes++; if (w.agents[target as number].role === 'impostor') this.crewVotesOnImp++; }
@@ -85,7 +85,7 @@ export class GameStats {
           const k = w.agents[e.killer], v = w.agents[e.victim];
           if (k.role === 'impostor') { this.kills++; if (this.firstKill === null) this.firstKill = this.play; }
           const room = roomAt(e.x, e.y);
-          this.log(`${this.name(v)} bị gài${room ? ` ở ${roomName(room)}` : ''} (bởi ${this.name(k)}${k.role === 'impostor' ? ', Nội gián' : ', phe thứ ba'})`);
+          this.log(`${this.name(v)} bị gài${room ? ` ở ${roomName(room)}` : ''} (bởi ${this.name(k)}${k.role === 'impostor' ? ', Rắn độc' : ', phe thứ ba'})`);
           if (e.killer === this.meId) {
             this.me.kills++;
             if (this.meReady !== null) { this.me.waits.push(this.play - this.meReady); this.meReady = null; }
@@ -121,8 +121,8 @@ export class GameStats {
     const w = this.w, me = w.agents[this.meId];
     const k = w.crewTasksDone();
     const r = w.winReason;
-    const endKind = w.winner === 'crew' ? (r.startsWith('KPI') ? 'Nhân viên đủ KPI' : 'Nhân viên sa thải hết Nội gián')
-      : w.winner === 'impostor' ? (r.includes('Sếp bắt') ? 'Nội gián thắng nhờ Sếp đi tuần' : 'Nội gián chiếm đa số')
+    const endKind = w.winner === 'crew' ? (r.startsWith('KPI') ? 'Nhân viên đủ KPI' : 'Nhân viên sa thải hết Rắn độc')
+      : w.winner === 'impostor' ? (r.includes('Sếp bắt') ? 'Rắn độc thắng nhờ Sếp đi tuần' : 'Rắn độc chiếm đa số')
       : w.winner === 'gd' ? 'Game Designer bị sa thải (phe thứ ba)' : 'Intern tham vọng còn lại cuối cùng (phe thứ ba)';
     const late = r.includes('Sếp bắt') ? w.agents.filter(a => a.alive && a.role === 'crew' && !a.bossDone).length : 0;
     const myTeam = w.isNeutral(me) ? me.dept : me.role;
@@ -135,7 +135,7 @@ export class GameStats {
       crewVotes: this.crewVotes, crewVotesOnImp: this.crewVotesOnImp, endKind, winner: w.winner ?? '', kpiAtEnd: Math.round(k.done / Math.max(1, k.total) * 100),
       boss: { used: this.bossUsed, won: r.includes('Sếp bắt'), late },
       me: {
-        name: this.name(me), role: me.role === 'impostor' ? 'Nội gián' : (me.dept ?? 'intern'), won: w.winner === myTeam,
+        name: this.name(me), role: me.role === 'impostor' ? 'Rắn độc' : (me.dept ?? 'intern'), won: w.winner === myTeam,
         kills: this.me.kills, waits: this.me.waits, sabotages: this.me.sabotages, hiddenSec: this.me.hiddenSec,
         tasksDone: myTasks.filter(t => t.done).length, tasksTotal: myTasks.length, votes: this.me.votes,
         bossDoneSec: this.me.bossDoneSec, diedAt: this.me.diedAt, ejected: me.ejected,
@@ -152,14 +152,14 @@ export function statsText(s: GameStatsSummary, idx?: number): string {
   const avg = (a: number[]) => a.length ? (a.reduce((x, y) => x + y, 0) / a.length).toFixed(1) + 's' : '–';
   const me = s.me;
   const L: string[] = [];
-  L.push(`## Ván${idx !== undefined ? ' ' + idx : ''}: ${s.players} người, ${s.imps} Nội gián · ${me.won ? 'THẮNG' : 'THUA'} (${me.role})`);
+  L.push(`## Ván${idx !== undefined ? ' ' + idx : ''}: ${s.players} người, ${s.imps} Rắn độc · ${me.won ? 'THẮNG' : 'THUA'} (${me.role})`);
   L.push(`- Cài đặt: hồi chiêu gài bẫy ${s.killCd}s · thảo luận ${s.discuss}s · bỏ phiếu ${s.vote}s`);
   L.push(`- Kết thúc: ${s.endKind} · KPI lúc kết thúc ${s.kpiAtEnd}%`);
   L.push(`- Độ dài: chơi ${mmss(s.play)} · cả ván (tính họp) ${mmss(s.full)} · vụ gài đầu ${s.firstKill === null ? '–' : mmss(s.firstKill)} · họp đầu ${s.firstMeeting === null ? '–' : mmss(s.firstMeeting)}`);
-  L.push(`- Ván: ${s.kills} vụ gài của Nội gián · ${s.meetings} cuộc họp (${s.noEject} cuộc không ai bị sa thải) · ${s.sabotages} lần phá hoại`);
-  L.push(`- Sa thải: ${s.ejectImp}/${s.ejectTotal} lần trúng Nội gián · phiếu của Nhân viên trúng Nội gián ${pct(s.crewVotesOnImp, s.crewVotes)} (${s.crewVotes} phiếu)`);
+  L.push(`- Ván: ${s.kills} vụ gài của Rắn độc · ${s.meetings} cuộc họp (${s.noEject} cuộc không ai bị sa thải) · ${s.sabotages} lần phá hoại`);
+  L.push(`- Sa thải: ${s.ejectImp}/${s.ejectTotal} lần trúng Rắn độc · phiếu của Nhân viên trúng Rắn độc ${pct(s.crewVotesOnImp, s.crewVotes)} (${s.crewVotes} phiếu)`);
   L.push(`- Sếp đi tuần: ${s.boss.used ? (s.boss.won ? `THẮNG (${s.boss.late} người không về kịp)` : 'có dùng, không thắng') : 'không dùng'}${me.bossDoneSec !== null ? ` · bạn về bàn sau ${me.bossDoneSec.toFixed(1)}s` : ''}`);
-  if (me.role === 'Nội gián') L.push(`- Bạn (Nội gián): ${me.kills} vụ gài · hồi chiêu xong → gài được TB ${avg(me.waits)}${me.waits.length ? ` (${me.waits.map(x => x.toFixed(0) + 's').join(', ')})` : ''} · ${me.sabotages} lần phá hoại · trốn ${Math.round(me.hiddenSec)}s${me.ejected ? ' · bị sa thải' : ''}`);
+  if (me.role === 'Rắn độc') L.push(`- Bạn (Rắn độc): ${me.kills} vụ gài · hồi chiêu xong → gài được TB ${avg(me.waits)}${me.waits.length ? ` (${me.waits.map(x => x.toFixed(0) + 's').join(', ')})` : ''} · ${me.sabotages} lần phá hoại · trốn ${Math.round(me.hiddenSec)}s${me.ejected ? ' · bị sa thải' : ''}`);
   else L.push(`- Bạn (${me.role}): việc xong ${me.tasksDone}/${me.tasksTotal}${me.diedAt !== null ? ` · bị gài lúc ${mmss(me.diedAt)}` : ''}${me.ejected ? ' · bị sa thải' : ''}`);
   if (me.votes.length) L.push(`- Phiếu của bạn: ${me.votes.map(v => `${v.target}${v.ok === null ? '' : v.ok ? ' ✓' : ' ✗'}`).join(' · ')}`);
   L.push(`- Dòng thời gian (tính theo thời gian chơi):`);

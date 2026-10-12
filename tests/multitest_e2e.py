@@ -265,7 +265,7 @@ async def main7():
         await pg.wait_for_timeout(300)
         await pg.click(".mt-bar button[data-c='start']"); await pg.wait_for_timeout(3000)
         await pg.click(".mt-bar button[data-c='ready']"); await pg.wait_for_timeout(8000)
-        print("vai sau khi giao:", [await f.evaluate("(() => { const p=__session.world.player; return p.name+': '+(p.role==='impostor'?'Nội gián':p.dept); })()") for f in F])
+        print("vai sau khi giao:", [await f.evaluate("(() => { const p=__session.world.player; return p.name+': '+(p.role==='impostor'?'Rắn độc':p.dept); })()") for f in F])
         # ---- Artist ở máy người 2: mở máy so màu, giữ 3 giây
         await F[0].evaluate("(() => { const w=__session.world; w.meetingCount=1; const a=w.agents.find(o=>o.name==='Người 2'); a.artistNext=0; })()"); await pg.wait_for_timeout(600)
         await F[1].evaluate("__ui.openColorCheck()"); await pg.wait_for_timeout(400)

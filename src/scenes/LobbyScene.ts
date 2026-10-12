@@ -741,7 +741,7 @@ export class LobbyScene extends Phaser.Scene {
     const key = JSON.stringify(I) + me.name + (me.look ? lookKey(me.look) : '');
     if (key === this.infoKey) return;
     this.infoKey = key;
-    this.screenText.setText(`${I.title.toUpperCase()} · ${I.people}/${I.max} NGƯỜI\n${I.imps} Nội gián · ${I.roles} vai có kỹ năng`);
+    this.screenText.setText(`${I.title.toUpperCase()} · ${I.people}/${I.max} NGƯỜI\n${I.imps} Rắn độc · ${I.roles} vai có kỹ năng`);
   }
 
   // ---------- Cảnh thang máy lúc vào ca ----------

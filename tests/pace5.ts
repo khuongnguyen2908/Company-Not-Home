@@ -1,4 +1,4 @@
-// Đo nhịp ván 5 người: 1 Nội gián + 3 nhân viên thường + 1 nhân viên có kỹ năng.
+// Đo nhịp ván 5 người: 1 Rắn độc + 3 nhân viên thường + 1 nhân viên có kỹ năng.
 // Tính cả thời gian họp thật (thảo luận + bỏ phiếu + màn kết quả 4,8 giây + chọn nơi bắt đầu ~5 giây).
 // Cách dùng: npx tsx tests/pace5.ts <N> <seed> [hồi chiêu] [hồi chiêu đầu ván]
 import { World } from '../src/game/sim';

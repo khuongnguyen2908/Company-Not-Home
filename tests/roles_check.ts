@@ -141,8 +141,8 @@ const mk3 = (seed = 11) => new World({ playerName: 'T', playerLook: randomLook()
   const imp = w.agents.find(a => a.role === 'impostor')!;
   ok(!!cl, 'có Intern tham vọng (ván 10 người)');
   cl.killCd = 0; cl.x = imp.x + 10; cl.y = imp.y;
-  ok(w.tryKill(cl, imp) && cl.killCd === 0, 'gài trúng Nội gián thì hồi chiêu reset');
-  ok(w.phase !== 'ended', 'hết Nội gián nhưng Intern tham vọng còn sống: chưa kết thúc');
+  ok(w.tryKill(cl, imp) && cl.killCd === 0, 'gài trúng Rắn độc thì hồi chiêu reset');
+  ok(w.phase !== 'ended', 'hết Rắn độc nhưng Intern tham vọng còn sống: chưa kết thúc');
   for (const a of w.agents) if (a.alive && a !== cl) { a.alive = false; }
   w.agents.find(a => a !== cl)!.alive = true;
   w.checkWin();

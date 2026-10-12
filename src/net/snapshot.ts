@@ -50,7 +50,7 @@ const PRIVATE_NEUTRAL: Partial<Record<keyof Agent, unknown>> = {
 function knowsRole(w: World, v: Agent, o: Agent) {
   if (o.id === v.id || w.phase === 'ended' || o.ejected) return true;
   if (w.meeting?.result?.ejected === o.id) return true; // vừa bị bầu ra: cả phòng thấy vai thật cùng lúc (không chờ hết đoạn kéo ra cửa)
-  if (o.role === 'impostor' && (v.role === 'impostor' || (v.role === 'crew' && v.dept === 'climber'))) return true; // đồng bọn; Intern tham vọng biết mặt Nội gián
+  if (o.role === 'impostor' && (v.role === 'impostor' || (v.role === 'crew' && v.dept === 'climber'))) return true; // đồng bọn; Intern tham vọng biết mặt Rắn độc
   return false;
 }
 function knowsDept(w: World, v: Agent, o: Agent) {
@@ -70,16 +70,16 @@ function maskAgent(w: World, v: Agent, o: Agent, withStatic: boolean): J {
   if (withStatic) { for (const k of STATIC) out[k] = o[k]; for (const k of MOTION) out[k] = round2(o[k]); Object.assign(out, PRIVATE_NEUTRAL); }
   // Animator: được biết người này "bị gài" (để chọn làm lại anim) nhưng KHÔNG được biết ai gài (-1)
   if (v.dept === 'animator' && v.role === 'crew' && o.killedBy !== null && !o.alive) out.killedBy = -1;
-  // đồng bọn Nội gián: thấy hồi chiêu của nhau (để biết ai sẵn sàng gài); người khác không thấy
+  // đồng bọn Rắn độc: thấy hồi chiêu của nhau (để biết ai sẵn sàng gài); người khác không thấy
   if (v.role === 'impostor' && o.role === 'impostor') out.killCd = half(o.killCd);
   if (!knowsRole(w, v, o)) out.role = 'crew';
   if (!knowsDept(w, v, o)) out.dept = out.role === 'impostor' ? null : 'intern';
-  // đang trốn: chỉ đồng bọn Nội gián biết trốn ở đâu; người khác chỉ biết "không thấy"
+  // đang trốn: chỉ đồng bọn Rắn độc biết trốn ở đâu; người khác chỉ biết "không thấy"
   if (o.hidden !== null && !(v.role === 'impostor' && o.role === 'impostor')) out.hidden = -1;
   if (out.brain === undefined) out.brain = brainStub(o);
   return enc(out);
 }
-/** Phần "não" bot mà người khác nhìn thấy được: đang làm việc ở máy nào (cả Nội gián làm giả), có thấy ghế trống không */
+/** Phần "não" bot mà người khác nhìn thấy được: đang làm việc ở máy nào (cả Rắn độc làm giả), có thấy ghế trống không */
 function brainStub(o: Agent) {
   const b = o.brain;
   const g = b?.goal ?? null;
@@ -106,7 +106,7 @@ export function buildFull(w: World, viewerId: number, withStatic = false): FullS
   for (const [k, x] of Object.entries(w)) { if (SKIP.has(k) || typeof x === 'function') continue; out[k] = enc(x); }
   // đồng hồ của ván: làm tròn (giao diện hiện theo giây)
   out.sabCd = Math.ceil(w.sabCd); out.emergencyCd = Math.ceil(w.emergencyCd);
-  // kẻ gây sự cố: chỉ Nội gián biết
+  // kẻ gây sự cố: chỉ Rắn độc biết
   if (w.sabotage) out.sabotage = enc({ ...w.sabotage, t: half(w.sabotage.t), by: v.role === 'impostor' ? w.sabotage.by : -1 });
   // cuộc họp: giấu lời thoại bot sắp nói, phiếu bầu chưa công bố, bảo lãnh của Producer, tin nhắn riêng của người khác
   if (w.meeting) {

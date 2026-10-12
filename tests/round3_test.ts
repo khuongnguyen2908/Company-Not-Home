@@ -91,7 +91,7 @@ async function main() {
     ok(Math.abs(w5.visionOf(crew(w5)) - SMALL_VISION) < 1, `5 người: Nhân viên nhìn ${(w5.visionOf(crew(w5)) / TILE).toFixed(1)} ô`);
     ok(Math.abs(w8.visionOf(crew(w8)) - MID_VISION) < 1, `8 người: Nhân viên nhìn ${(w8.visionOf(crew(w8)) / TILE).toFixed(1)} ô`);
     ok(Math.abs(w10.visionOf(crew(w10)) - VISION) < 1, `10 người: giữ ${(w10.visionOf(crew(w10)) / TILE).toFixed(1)} ô`);
-    ok(Math.abs(w5.visionOf(imp(w5)) / w5.visionOf(crew(w5)) - 1.5) < 0.01, 'Nội gián vẫn nhìn xa gấp 1,5 lần Nhân viên');
+    ok(Math.abs(w5.visionOf(imp(w5)) / w5.visionOf(crew(w5)) - 1.5) < 0.01, 'Rắn độc vẫn nhìn xa gấp 1,5 lần Nhân viên');
     w5.sabotage = { kind: 'power' } as never;
     ok(w5.visionOf(crew(w5)) < 1.3 * TILE, 'mất điện vẫn tối như cũ');
     ok(!off.small && off.shortTasks === 3, 'chủ phòng tắt chế độ ít người: chơi như ván thường (3 việc ngắn)');

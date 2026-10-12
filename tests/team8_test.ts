@@ -41,12 +41,12 @@ async function main() {
     for (const a of c.w.agents) if (a.alive && a.id !== imp.id) c.w.meeting!.votes.set(a.id, imp.id);
     c.w.meeting!.t = c.w.meeting!.duration; await c.run(0.6);
     ok(c.w.meeting!.result?.ejected === imp.id, `chủ phòng: ${imp.name} bị bầu ra`);
-    ok(c.B.replica!.agents[imp.id].role === 'impostor', 'B (Nhân viên) thấy người bị bầu là Nội gián ngay lúc có kết quả');
+    ok(c.B.replica!.agents[imp.id].role === 'impostor', 'B (Nhân viên) thấy người bị bầu là Rắn độc ngay lúc có kết quả');
     ok(c.A.replica!.agents[imp.id].role === 'impostor', 'A cũng thấy giống vậy');
     const other = c.w.agents.find(o => o.role === 'crew' && o.id > 2)!;
     ok(c.B.replica!.agents[other.id].role === 'crew', 'người khác vẫn giấu vai');
     const left = (w: World) => Math.max(0, w.aliveImp().length - (w.agents[imp.id].role === 'impostor' && w.agents[imp.id].alive ? 1 : 0));
-    ok(left(c.w) === left(c.B.replica!), `số Nội gián còn lại giống nhau: chủ phòng ${left(c.w)}, B ${left(c.B.replica!)}`);
+    ok(left(c.w) === left(c.B.replica!), `số Rắn độc còn lại giống nhau: chủ phòng ${left(c.w)}, B ${left(c.B.replica!)}`);
   }
 
   console.log('6. Gói thay đổi: nhỏ, lỡ gói thì tự xin lại gói đầy đủ');

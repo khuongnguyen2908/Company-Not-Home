@@ -83,7 +83,7 @@ async function main() {
     ok(err === null && c.w.lift.rescueFloor !== null, `Engineer (A) mở cửa thang (${err ?? 'không lỗi'})`);
     ok(c.B.replica!.lift.rescueFloor !== null, 'người bị kẹt (B) thấy cửa đã mở'); }
 
-  console.log('Lối trốn của Nội gián');
+  console.log('Lối trốn của Rắn độc');
   { const c = await setup(37, 'impostor'); const s0 = HIDE_SPOTS.findIndex(h => h.level === 1 && h.pair >= 0);
     const h = HIDE_SPOTS[s0]; c.w.agents[1].x = (h.x + 0.5) * TILE; c.w.agents[1].y = (h.y + 0.5) * TILE;
     c.w.agents[2].x = c.w.agents[1].x + 30 * TILE; // B ở xa, không thấy

@@ -73,7 +73,7 @@ function build(): Entry[] {
   list('list.playerNames', PLAYER_NAMES, 'Tên gợi ý khi bấm xí ngầu (tối đa 12 ký tự)', 12);
   list('list.filler', FILLER_LINES, 'Câu nói vu vơ của bot trong họp', 140);
   list('list.defense', DEFENSE_LINES, 'Câu bot tự bào chữa khi bị buộc tội', 140);
-  list('list.alibis', IMPOSTOR_ALIBIS, 'Chứng cứ ngoại phạm Nội gián bot bịa ra', 140);
+  list('list.alibis', IMPOSTOR_ALIBIS, 'Chứng cứ ngoại phạm Rắn độc bot bịa ra', 140);
   list('list.lobbyLines', LOBBY_LINES, 'Sảnh chờ: bot nói vu vơ', 100);
   list('list.lobbyReplies', LOBBY_REPLIES, 'Sảnh chờ: bot đáp lại khi được nhắc tên', 100);
   list('list.busJokes', BUS_JOKES, 'Sảnh chờ: câu đùa trên bảng giờ xe buýt', 100);

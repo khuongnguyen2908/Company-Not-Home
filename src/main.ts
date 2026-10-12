@@ -1,3 +1,4 @@
+/*! Văn Phòng Hạnh Phúc (có rắn) — © 2026 Khuongnguyen2908. All rights reserved. Không được sao chép, chỉnh sửa hay đăng lại khi chưa được phép. */
 import Phaser from 'phaser';
 import './style.css';
 import { GameScene } from './scenes/GameScene';
@@ -10,6 +11,7 @@ import { characterCanvas } from './render/chars';
 import { applyStartupContent } from './content/registry';
 import { openContentTool } from './content/tool';
 import { startEmojify } from './ui/emojify';
+import { prefetchIce } from './net/ice';
 
 // Công cụ nội dung: thêm ?content vào địa chỉ
 const contentMode = new URLSearchParams(location.search).has('content');
@@ -51,6 +53,7 @@ document.addEventListener('animationend', (e) => {
   const t = e.target as HTMLElement;
   if (t.classList?.contains('sheet')) t.closest('.modal')?.classList.add('shown');
 }, true);
+void prefetchIce(); // máy chuyển tiếp TURN (chỉ có khi chạy trên Cloudflare Pages); lấy sẵn để lúc tạo / vào phòng không phải chờ
 const ui = new UI(document.getElementById('ui')!);
 if (location.search.includes('debug') || MT_SLOT) (window as any).__ui = ui;
 // Một ô trong màn chia ô (?multitest): nhận lệnh từ thanh công cụ, báo khi được chọn; chỉ ô đang chọn phát âm thanh
@@ -69,7 +72,7 @@ if (MT_SLOT && window.parent !== window) {
   // báo trạng thái cho thanh công cụ
   window.setInterval(() => {
     const w = session.world;
-    window.parent.postMessage({ mt: 'state', slot: Number(MT_SLOT), phase: w?.phase ?? 'room', role: w ? (w.player.role === 'impostor' ? 'Nội gián' : w.player.dept ?? '') : '', alive: w ? w.player.alive : true }, location.origin);
+    window.parent.postMessage({ mt: 'state', slot: Number(MT_SLOT), phase: w?.phase ?? 'room', role: w ? (w.player.role === 'impostor' ? 'Rắn độc' : w.player.dept ?? '') : '', alive: w ? w.player.alive : true }, location.origin);
   }, 700);
 }
 }

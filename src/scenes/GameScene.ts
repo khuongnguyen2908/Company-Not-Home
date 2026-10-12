@@ -58,6 +58,7 @@ export class GameScene extends Phaser.Scene {
 
   create() {
     // Cảnh này được bật/tắt nhiều lần (sảnh <-> văn phòng): xóa trạng thái cũ
+    this.compactTags = new Set(); this.fullTagW = new Map();
     this.views = new Map(); this.bodyViews = []; this.markers = new Map(); this.hideMarkers = []; this.glows = [];
     this.gameId = -1; this.doorKey = ''; this.fidMarker = null; this.deskLabels = []; this.artMarker = null; this.readyHalo = null; this.noiseIcons = []; this.stickerBubble = null; this.liftG = null; this.liftLabels = []; this.floorTags = []; this.liftOpen = new Map(); this.emotes = new Map(); this.powerFxStart = -1; this.ventPop = new Map();
     const tex = (key: string, make: () => HTMLCanvasElement) => { if (!this.textures.exists(key)) this.textures.addCanvas(key, make()); };
@@ -341,10 +342,57 @@ export class GameScene extends Phaser.Scene {
     g.fillStyle(0xffffff, 1); g.fillRect(X + 10, Y + 14, TILE - 20, 6);
   }
 
+  /** người đang đứng chen (thẻ tên rút gọn còn mã số) và bề rộng thẻ đầy đủ đã đo của từng người */
+  private compactTags = new Set<number>();
+  private fullTagW = new Map<number, number>();
+  /** Thẻ tên đứng sát nhau (đầu ván, sau họp, chen ở một chỗ): thẻ người khác rút gọn còn "#mã số",
+   *  rồi xếp so le lên trên (tối đa 2 tầng) cho khỏi đè; thẻ của mình luôn giữ nguyên chỗ và đủ tên */
+  private spreadTags(world: NonNullable<typeof session.world>) {
+    const items: { id: number; t: Phaser.GameObjects.Text; me: boolean; y: number }[] = [];
+    for (const a of world.agents) {
+      const v = this.views.get(a.id);
+      if (!v?.tag.visible) continue;
+      if (!this.compactTags.has(a.id) || a.isPlayer) this.fullTagW.set(a.id, v.tag.displayWidth);
+      items.push({ id: a.id, t: v.tag, me: a.isPlayer, y: a.y });
+    }
+    // 1) ai đang chen: so bằng bề rộng thẻ đầy đủ ở vị trí gốc
+    const crowded = new Set<number>();
+    for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
+      const p = items[i], q = items[j];
+      const wp = (this.fullTagW.get(p.id) ?? p.t.displayWidth) / 2, wq = (this.fullTagW.get(q.id) ?? q.t.displayWidth) / 2;
+      if (Math.abs(p.t.x - q.t.x) < wp + wq - 2 && Math.abs(p.t.y - q.t.y) < p.t.displayHeight - 2) { crowded.add(p.id); crowded.add(q.id); }
+    }
+    for (const id of [...this.compactTags]) if (!crowded.has(id)) this.compactTags.delete(id);
+    for (const id of crowded) this.compactTags.add(id);
+    if (items.length < 2) return;
+    // 2) xếp so le: ưu tiên thẻ của mình, rồi người đứng thấp hơn trên màn hình
+    items.sort((p, q) => (p.me === q.me ? q.y - p.y : p.me ? -1 : 1));
+    const placed: { l: number; r: number; t: number; b: number }[] = [];
+    for (const it of items) {
+      const w = it.t.displayWidth, h = it.t.displayHeight;
+      const l = it.t.x - w / 2, r = it.t.x + w / 2;
+      let bottom = it.t.y, clash = false;
+      for (let step = 0; step < 3; step++) {
+        const hit = placed.find(o => l < o.r - 2 && r > o.l + 2 && bottom - h < o.b - 2 && bottom > o.t + 2);
+        clash = !!hit;
+        if (!hit || step === 2) break;
+        bottom = hit.t + 1; // đặt ngay trên thẻ bị đè
+      }
+      if (bottom !== it.t.y) it.t.setY(bottom);
+      if (clash) it.t.setAlpha(it.t.alpha * 0.45); // quá đông: mờ bớt cho đỡ rối
+      placed.push({ l, r, t: bottom - h, b: bottom });
+    }
+  }
+
   // ---------- Vòng lặp ----------
   update(_time: number, deltaMs: number) {
     const world = session.world;
     const dt = Math.min(0.05, deltaMs / 1000);
+    // Giờ thật từ khung trước (Phaser làm mượt / ép delta về 1/60 giây suốt 120 khung sau khi cửa sổ được chọn lại, máy giật sẽ bị "chạy chậm").
+    // Quá 250 ms = tab vừa bị ẩn, máy bơm nền đã chạy hộ phần đó: không bù thêm.
+    const nowMs = performance.now();
+    const gapMs = session.lastFrameAt ? nowMs - session.lastFrameAt : deltaMs;
+    const realMs = gapMs > 250 ? Math.min(deltaMs, 50) : gapMs;
     session.onFrame(dt);
     markFrame();
     session.runDue();
@@ -356,16 +404,24 @@ export class GameScene extends Phaser.Scene {
       const c = net.client, me = world.player;
       const moving = !session.paused && world.phase === 'play' && me.hidden === null;
       const ix = moving ? session.input.x : 0, iy = moving ? session.input.y : 0;
-      if (moving) world.moveBy(me, ix, iy, dt); else me.moving = false;
+      // máy giật: dự đoán bước đi theo giờ thật (chia bước 0,05 giây) cho khớp tốc độ chủ phòng, đỡ bị kéo giật lại
+      if (moving) { for (let left = Math.min(0.25, realMs / 1000); left > 1e-6; left -= 0.05) world.moveBy(me, ix, iy, Math.min(0.05, left)); } else me.moving = false;
       c.sendInput(ix, iy, deltaMs);
       c.smooth(deltaMs);
       const ev = world.drainEvents();
       if (ev.length) { this.worldFx(world, ev); session.onEvents(ev); }
     } else if (!session.paused) {
       world.playerInput = session.input;
-      world.update(dt);
-      const ev = world.drainEvents();
-      if (session.gameStats) { session.gameStats.tick(dt); if (ev.length) session.gameStats.onEvents(ev); }
+      // Máy chủ phòng / chơi một mình: chạy mô phỏng theo giờ thật. Máy giật (dưới 20 khung/giây) thì chạy bù nhiều bước 0,05 giây
+      // trong cùng một khung, để cả phòng không bị chậm theo máy này (đi lại, đồng hồ họp, hồi chiêu). Bù tối đa 0,25 giây mỗi khung.
+      const simDt = Math.min(0.25, realMs / 1000);
+      const ev: ReturnType<typeof world.drainEvents> = [];
+      for (let left = simDt; left > 1e-6; left -= 0.05) {
+        world.update(Math.min(0.05, left));
+        for (const e of world.drainEvents()) ev.push(e);
+        if (session.paused) break; // giao diện vừa tạm dừng (vd. mở màn kết quả) thì dừng bù
+      }
+      if (session.gameStats) { session.gameStats.tick(simDt); if (ev.length) session.gameStats.onEvents(ev); }
       if (ev.length) this.worldFx(world, ev);
       if (ev.length) session.onEvents(ev);
       net.host?.tick(deltaMs, ev);
@@ -410,12 +466,16 @@ export class GameScene extends Phaser.Scene {
       v.sprite.setDepth(a.alive ? a.y : 39000 + a.y / 100); // hồn ma bay nổi trên mọi đồ vật
       v.shadow.setPosition(a.x, a.y + 4).setDepth(a.y - 1);
       // người thật mất kết nối: thẻ tên báo rõ, mờ đi
-      const label = a.away ? `${a.name} #${a.empId} · mất kết nối` : `${a.name} #${a.empId}`;
+      // đứng chen nhau (xem spreadTags): thẻ người khác rút gọn còn mã số cho khỏi đè; thẻ của mình luôn đủ tên
+      // người biết mặt Rắn độc (chính Rắn độc, Intern tham vọng) thấy thẻ của Rắn độc màu xanh lá có 🐍; người khác không thấy gì
+      const imposterMate = (p.role === 'impostor' || (p.role === 'crew' && p.dept === 'climber')) && a.role === 'impostor';
+      const mark = imposterMate ? '🐍 ' : '';
+      const label = a.away ? `${mark}${a.name} #${a.empId} · mất kết nối` : this.compactTags.has(a.id) && !a.isPlayer ? `${mark}#${a.empId}` : `${mark}${a.name} #${a.empId}`;
       if (v.tag.text !== label) v.tag.setText(label);
       v.tag.setPosition(a.x, a.y - 66 + floatY).setDepth(30000 + a.y).setAlpha(a.away ? 0.55 : a.alive ? 1 : 0.6);
-      const imposterMate = (p.role === 'impostor' || (p.role === 'crew' && p.dept === 'climber')) && a.role === 'impostor'; // Intern tham vọng cũng biết mặt Nội gián
-      v.tag.setColor(imposterMate ? '#ff5d73' : '#ffffff');
+      v.tag.setColor(imposterMate ? '#6be07a' : '#ffffff');
     }
+    this.spreadTags(world);
 
     // Ghế trống (xác)
     while (this.bodyViews.length < world.bodies.length) this.bodyViews.push(this.add.image(0, 0, 'chair').setOrigin(0.5, 0.85));
@@ -442,7 +502,7 @@ export class GameScene extends Phaser.Scene {
       t.setScale(far ? 0.78 : 1);
       t.setAlpha((p.role === 'impostor' && !isFix ? 0.55 : 1) * (far ? 0.55 : 1));
     }
-    // Dấu chỗ trốn: Nội gián luôn thấy; Engineer và Intern tham vọng thấy xanh khi dùng được, xám kèm số giây khi đang hồi chiêu
+    // Dấu chỗ trốn: Rắn độc luôn thấy; Engineer và Intern tham vọng thấy xanh khi dùng được, xám kèm số giây khi đang hồi chiêu
     const hideUser = p.alive && world.phase === 'play' && world.canHide(p);
     const engCd = p.role === 'crew' && p.dept === 'engineer' && p.hidden === null ? p.engCd : 0;
     const myLv = levelAt(p.x, p.y);
@@ -605,7 +665,7 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // Loa của Sound Engineer: mũi tên có hình loa phát sóng âm chỉ tới ghế trống (ai còn sống cũng thấy, kể cả Nội gián)
+    // Loa của Sound Engineer: mũi tên có hình loa phát sóng âm chỉ tới ghế trống (ai còn sống cũng thấy, kể cả Rắn độc)
     if (!this.noiseIcons.length) for (let i = 0; i < 3; i++) this.noiseIcons.push(this.add.text(0, 0, '🔊', { fontSize: '30px' }).setOrigin(0.5).setDepth(60001).setVisible(false));
     this.noiseIcons.forEach(t => t.setVisible(false));
     if (world.phase === 'play' && pAlive) {
@@ -807,6 +867,23 @@ export class GameScene extends Phaser.Scene {
 
   private texKey(a: Agent) { return 'ch_' + lookKey(a.look).replace(/[^a-z0-9]/gi, ''); }
 
+  /** Dọn bộ texture ngoại hình không còn ai mặc: mỗi ván bot đổi đồ, giữ mãi thì bộ nhớ đồ họa tăng dần khi chơi nhiều ván liền.
+   *  Chỉ xóa texture "ch_..." không có đối tượng nào ở bất kỳ cảnh nào đang dùng (sảnh tự vẽ lại khi cần). */
+  private pruneLookTextures() {
+    const inUse = new Set<string>();
+    const walk = (list: Phaser.GameObjects.GameObject[]) => {
+      for (const o of list) {
+        const k = (o as { texture?: { key?: string } }).texture?.key;
+        if (k) inUse.add(k);
+        const sub = (o as { list?: Phaser.GameObjects.GameObject[] }).list;
+        if (Array.isArray(sub)) walk(sub);
+      }
+    };
+    for (const sc of this.game.scene.getScenes(false)) if (sc.children) walk(sc.children.list);
+    for (const a of session.world?.agents ?? []) { const key = this.texKey(a); for (const f of [0, 1, 2]) inUse.add(`${key}_${f}`); }
+    for (const k of this.textures.getTextureKeys()) if (k.startsWith('ch_') && !inUse.has(k)) this.textures.remove(k);
+  }
+
   private resetViews() {
     const world = session.world!;
     this.gameId = session.newGameId;
@@ -828,6 +905,7 @@ export class GameScene extends Phaser.Scene {
       }).setOrigin(0.5, 1);
       this.views.set(a.id, { sprite, shadow, tag });
     }
+    this.pruneLookTextures();
     // Mã số nhân viên hiện trên màn hình máy tính ở bàn của từng người (Open Space)
     this.deskLabels.forEach(t => t.destroy());
     this.deskLabels = world.agents.map(a => {

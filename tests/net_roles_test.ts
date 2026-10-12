@@ -112,15 +112,15 @@ async function main() {
 
   console.log('Intern tham vọng · gài bẫy');
   { const c = await setup(25, 'climber'); c.a.killCd = 0; near(c.w, c.a, c.w.agents[3]); await c.run(0.3);
-    ok(c.A.replica!.agents.filter(o => o.role === 'impostor').length >= 1, 'máy A biết mặt Nội gián');
+    ok(c.A.replica!.agents.filter(o => o.role === 'impostor').length >= 1, 'máy A biết mặt Rắn độc');
     await actA(c, 'kill', 3);
     ok(!c.w.agents[3].alive && c.w.agents[1].killCd > 0, 'Intern tham vọng gài được, hồi chiêu đặt lại'); }
 
-  console.log('Nội gián · gài bẫy, phá hoại');
+  console.log('Rắn độc · gài bẫy, phá hoại');
   { const c = await setup(26, 'impostor'); c.a.killCd = 0; near(c.w, c.a, c.w.agents[3]); await c.run(0.3);
-    await actA(c, 'kill', 3); ok(!c.w.agents[3].alive, 'Nội gián (máy khác) gài được');
+    await actA(c, 'kill', 3); ok(!c.w.agents[3].alive, 'Rắn độc (máy khác) gài được');
     c.w.sabCd = 0; const err = await actA(c, 'sabotage', 'power');
-    ok(err === null && c.w.sabotage?.kind === 'power', 'Nội gián gây cúp điện');
+    ok(err === null && c.w.sabotage?.kind === 'power', 'Rắn độc gây cúp điện');
     await c.run(0.4);
     ok(c.B.replica!.sabotage?.kind === 'power' && (c.B.replica!.sabotage as { by?: number }).by === -1, 'B thấy cúp điện nhưng không biết ai gây'); }
 

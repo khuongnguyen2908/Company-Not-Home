@@ -21,4 +21,4 @@ for (let g = 0; g < N; g++) {
   total += w.time;
 }
 const n = N - stuck, pct = (x: number) => `${Math.round(x / Math.max(1, n) * 100)}%`.padStart(4);
-console.log(`${players} người · việc ngắn ${shortN} · hồi chiêu ${cd || 'mặc định'} | Nội gián ${pct(imp)} | KPI ${pct(kpi)} vote ${pct(vote)} | ván TB ${Math.round(total / Math.max(1, n))}s | họp TB ${(meetings / Math.max(1, n)).toFixed(1)} | kẹt ${stuck}`);
+console.log(`${players} người · việc ngắn ${shortN} · hồi chiêu ${cd || 'mặc định'} | Rắn độc ${pct(imp)} | KPI ${pct(kpi)} vote ${pct(vote)} | ván TB ${Math.round(total / Math.max(1, n))}s | họp TB ${(meetings / Math.max(1, n)).toFixed(1)} | kẹt ${stuck}`);

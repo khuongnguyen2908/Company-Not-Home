@@ -3,6 +3,9 @@
 // không thấy quầy thì tự nhận làm quầy (người giữ quầy thoát thì người khác nhận thay, các phòng báo danh lại).
 // Người tìm phòng hỏi quầy để lấy danh sách. Kênh nội bộ (BroadcastChannel): các tab cùng trình duyệt / màn chia ô thấy nhau.
 import type { PeerCtor, PeerLike, ConnLike } from './peer';
+import { iceConfig } from './ice';
+/** tùy chọn PeerJS: có máy chuyển tiếp TURN thì dùng (danh sách Phòng Public đọc được cả từ mạng khác) */
+const peerOpts = () => { const ice = iceConfig(); return ice ? { debug: 0, config: ice } : { debug: 0 }; };
 
 export interface RoomEntry {
   code: string; name: string; host: string;
@@ -118,7 +121,7 @@ export class DirectoryAnnouncer {
   /** Một kết nối riêng cho việc báo danh, đăng ký trình xử lý đúng một lần */
   private ensurePeer() {
     if (this.peer) return;
-    const p = new this.opts.p2p!(undefined, { debug: 0 });
+    const p = new this.opts.p2p!(undefined, peerOpts());
     this.peer = p;
     p.on('open', () => { this.peerOpen = true; if (this.busy && !this.node) this.tryConnect(); });
     p.on('error', (err) => {
@@ -135,7 +138,7 @@ export class DirectoryAnnouncer {
   }
   private claim() {
     const Ctor = this.opts.p2p!;
-    const np = new Ctor(DIR_ID, { debug: 0 });
+    const np = new Ctor(DIR_ID, peerOpts());
     np.on('open', () => {
       if (this.stopped) { np.destroy(); return; }
       this.node = new DirNode(np, this.clock); this.busy = false;
@@ -168,7 +171,7 @@ export function fetchRooms(opts: DirOpts & { timeoutMs?: number } = {}): Promise
     const Ctor = opts.p2p;
     waits.push(new Promise(res => {
       let done = false;
-      const p = new Ctor(undefined, { debug: 0 });
+      const p = new Ctor(undefined, peerOpts());
       const finish = () => { if (done) return; done = true; globalThis.setTimeout(() => p.destroy(), 50); res(); };
       p.on('error', () => finish()); // không có quầy (chưa có phòng Public nào) hoặc lỗi mạng
       p.on('open', () => {

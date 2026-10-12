@@ -1,5 +1,5 @@
 // Kiểm tra nhiều người chơi trên mạng giả (độ trễ + mất gói), không cần trình duyệt.
-// 1 chủ phòng + 2 người vào phòng + bot. "Người chơi giả" tự đi làm việc, gài bẫy (nếu là Nội gián), bỏ phiếu, chọn nơi bắt đầu.
+// 1 chủ phòng + 2 người vào phòng + bot. "Người chơi giả" tự đi làm việc, gài bẫy (nếu là Rắn độc), bỏ phiếu, chọn nơi bắt đầu.
 // Kiểm tra: không lộ bí mật trong bất kỳ tin nhắn nào; bản sao khớp chủ phòng; ván kết thúc đúng trên mọi máy.
 // Cách dùng: npx tsx tests/net_test.ts [số ván] [độ trễ tối thiểu ms] [độ trễ tối đa ms] [tỉ lệ mất gói vị trí]
 import { World, type Agent } from '../src/game/sim';
@@ -50,7 +50,7 @@ for (let g = Number(process.env.G0 ?? 0); g < GAMES; g++) {
       const o = hw.agents[id];
       const allowed = o.ejected || hw.meeting?.result?.ejected === id || hw.phase === 'ended' || (o.role === 'impostor' && (real.role === 'impostor' || real.dept === 'climber'));
       if (j.role !== 'crew' && !allowed) fail(`ván ${g}: lộ vai của #${id} cho ${peerIds[k]}`);
-      if (j.role === 'crew' && o.role === 'impostor' && allowed && !o.ejected && hw.phase !== 'ended' && real.role === 'impostor') fail(`ván ${g}: Nội gián không thấy đồng bọn`);
+      if (j.role === 'crew' && o.role === 'impostor' && allowed && !o.ejected && hw.phase !== 'ended' && real.role === 'impostor') fail(`ván ${g}: Rắn độc không thấy đồng bọn`);
       // trường riêng tư: hoặc không gửi, hoặc là giá trị trống
       if (Array.isArray(j.tasks) && (j.tasks as unknown[]).length) fail(`ván ${g}: lộ việc của #${id}`);
       if (j.killCd !== undefined && j.killCd !== 0 && !(real.role === 'impostor' && o.role === 'impostor')) fail(`ván ${g}: lộ hồi chiêu của #${id}`); // đồng bọn được thấy hồi chiêu của nhau
@@ -82,7 +82,7 @@ for (let g = Number(process.env.G0 ?? 0); g < GAMES; g++) {
   for (; now <= 1000; now += 20) hub.tick(now);
   if (started !== 2) fail(`ván ${g}: chỉ ${started}/2 máy nhận được lệnh bắt đầu`);
 
-  // --- người chơi giả trên mỗi máy (kể cả chủ phòng): đi làm việc, Nội gián thì gài bẫy, họp thì bỏ phiếu
+  // --- người chơi giả trên mỗi máy (kể cả chủ phòng): đi làm việc, Rắn độc thì gài bẫy, họp thì bỏ phiếu
   const brains = new Map<number, { path: { x: number; y: number }[]; repath: number }>();
   const drive = (r: World, me: Agent, send: (x: number, y: number) => void, act: (n: string, ...a: unknown[]) => void, dt: number) => {
     if (r.phase === 'meeting') {
@@ -97,7 +97,7 @@ for (let g = Number(process.env.G0 ?? 0); g < GAMES; g++) {
     const b = brains.get(me.id) ?? { path: [], repath: 0 };
     brains.set(me.id, b);
     b.repath -= dt;
-    // Nội gián (còn sống): đi tìm Nhân viên gần nhất để gài
+    // Rắn độc (còn sống): đi tìm Nhân viên gần nhất để gài
     if (me.role === 'impostor' && me.alive) {
       const prey = r.agents.filter(o => o.id !== me.id && o.alive && o.role !== 'impostor' && levelAt(o.x, o.y) === levelAt(me.x, me.y))
         .sort((p, q) => Math.hypot(p.x - me.x, p.y - me.y) - Math.hypot(q.x - me.x, q.y - me.y))[0];

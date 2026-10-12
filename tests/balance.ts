@@ -1,5 +1,5 @@
 // Cân bằng theo cỡ ván: chạy N ván bot với bộ vai mặc định, in tỉ lệ thắng từng phe
-// Cách dùng: npx tsx tests/balance.ts <số người> <số Nội gián> <N> [seed]
+// Cách dùng: npx tsx tests/balance.ts <số người> <số Rắn độc> <N> [seed]
 import { World } from '../src/game/sim';
 import { randomLook } from '../src/game/look';
 import { SPECIAL_ROLES } from '../src/game/data';
@@ -26,4 +26,4 @@ for (let g = 0; g < N; g++) {
 }
 const pct = (n = 0) => `${Math.round(n / N * 100)}%`.padStart(4);
 const imp = win.impostor ?? 0, crew = (win['crew-kpi'] ?? 0) + (win['crew-vote'] ?? 0);
-console.log(`${String(players).padStart(2)} người ${imps} NG${cdArg ? ' cd' + cdArg : ''} | Nội gián ${pct(imp)} | Nhân viên ${pct(crew)} (KPI ${pct(win['crew-kpi'])}, vote ${pct(win['crew-vote'])}) | phe 3 ${pct((win.gd ?? 0) + (win.climber ?? 0))} | ván TB ${Math.round(total / Math.max(1, N - stuck))}s | vụ đầu ${Math.round(firstKill / N)}s | kẹt ${stuck}`);
+console.log(`${String(players).padStart(2)} người ${imps} NG${cdArg ? ' cd' + cdArg : ''} | Rắn độc ${pct(imp)} | Nhân viên ${pct(crew)} (KPI ${pct(win['crew-kpi'])}, vote ${pct(win['crew-vote'])}) | phe 3 ${pct((win.gd ?? 0) + (win.climber ?? 0))} | ván TB ${Math.round(total / Math.max(1, N - stuck))}s | vụ đầu ${Math.round(firstKill / N)}s | kẹt ${stuck}`);
