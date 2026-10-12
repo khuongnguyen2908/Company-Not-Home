@@ -83,9 +83,9 @@ export const TEXT: Record<string, string> = {
   'ui.floor.sub.3': 'Lãnh đạo và kỹ thuật',
   'ui.floor.sub.4': 'Ngoài trời, vắng người',
   // ----- Màn hình chính -----
-  'ui.title.line1': 'Văn Phòng',
-  'ui.title.line2': 'Hạnh Phúc',
-  'ui.title.snake': 'có rắn',
+  'ui.title.line1': "Who's the",
+  'ui.title.line2': 'Snake?',
+  'ui.title.motto': 'Đồng nghiệp tôi là rắn.',
   'ui.title.tagline': 'Có Rắn độc trà trộn trong công ty. Làm KPI, họp, và lôi rắn ra ánh sáng.',
   'ui.title.tower': 'THE COMPANY',
 };

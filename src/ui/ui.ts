@@ -191,7 +191,7 @@ export class UI {
     (el.querySelector('.nm-copy') as HTMLButtonElement).onclick = () => {
       const c = net.client, h = net.host;
       const head = [
-        `Văn Phòng Hạnh Phúc · nhật ký mạng · ${new Date().toLocaleString('vi-VN')}`,
+        `Who's the Snake? · nhật ký mạng · ${new Date().toLocaleString('vi-VN')}`,
         `Vai trò: ${net.role}${h ? ` · phòng ${h.code} · ${h.players.length} người` : c ? ` · phòng ${c.code}` : ''} · ${navigator.userAgent}`,
         `Hiện tại: ${txt.textContent}`,
         h ? `Chủ phòng: gói đầy đủ ${h.stats.kf}, bỏ lượt vì nghẽn ${h.stats.skipBusy}` : c ? `Người vào phòng: gói đầy đủ ${c.stats.kf}, lỡ gói ${c.stats.miss}` : '',
@@ -249,7 +249,8 @@ export class UI {
       ${titleBackdrop()}
       <div class="ts-crowd">${crowd.map((l, i) => `<img src="${avatarURL(l)}" alt="" style="--i:${i}">`).join('')}</div>
       <div class="ts-content">
-        <h1 class="ts-title">${esc(fmt('ui.title.line1'))}<br>${esc(fmt('ui.title.line2'))} <span class="ts-snake">${esc(fmt('ui.title.snake'))}</span></h1>
+        <h1 class="ts-title">${esc(fmt('ui.title.line1'))}<br>${esc(fmt('ui.title.line2'))}</h1>
+        <p class="ts-motto">${esc(fmt('ui.title.motto'))}</p>
         <p class="ts-tag">${esc(fmt('ui.title.tagline'))}</p>
         <div class="mm-factions ts-fac" aria-label="Hai phe"><span class="crew">💼 Nhân viên</span><span class="vs">vs</span><span class="snake">🐍 Rắn độc</span></div>
         ${session.contentTest ? `<p class="ts-test">🧪 Đang chạy nội dung thử (${session.contentTest} mục) · <a href="?content">Mở công cụ nội dung</a></p>` : ''}
@@ -806,7 +807,7 @@ export class UI {
       const two = $('#f-imps', m).querySelector('button[data-v="2"]') as HTMLButtonElement;
       two.disabled = players <= 6;
       if (players <= 6 && d.imps === 2) { d.imps = 1; $('#f-imps', m).querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === '1')); }
-      if (players <= 6) t.textContent = 'Ván 6 người trở xuống chỉ có 1 Rắn độc (như Among Us). Hồi chiêu gài bẫy tự chỉnh theo số người.';
+      if (players <= 6) t.textContent = 'Ván 6 người trở xuống chỉ có 1 Rắn độc. Hồi chiêu gài bẫy tự chỉnh theo số người.';
       else if (d.imps === 1 && players >= 9) t.textContent = `Ván ${players} người với 1 Rắn độc hơi dễ cho Nhân viên. Muốn kịch tính hơn thì chọn 2 Rắn độc.`;
       else t.textContent = 'Hồi chiêu gài bẫy tự chỉnh theo số người và số Rắn độc để hai phe cân bằng.';
     };

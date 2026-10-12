@@ -1,4 +1,4 @@
-/*! Văn Phòng Hạnh Phúc (có rắn) — © 2026 Khuongnguyen2908. All rights reserved. Không được sao chép, chỉnh sửa hay đăng lại khi chưa được phép. */
+/*! Who's the Snake? — © 2026 Khuongnguyen2908. All rights reserved. Không được sao chép, chỉnh sửa hay đăng lại khi chưa được phép. */
 import Phaser from 'phaser';
 import './style.css';
 import { GameScene } from './scenes/GameScene';

@@ -122,7 +122,7 @@ export function openContentTool(root: HTMLElement) {
     const X = await loadXlsx();
     const wb = X.utils.book_new();
     const guide = [
-      ['Văn Phòng Hạnh Phúc (có rắn) · File nội dung'],
+      ["Who's the Snake? · File nội dung"],
       [''],
       ['Cách dùng'],
       ['1. Sửa cột "Nội dung" ở các trang tính. Không sửa cột "Mã".'],

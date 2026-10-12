@@ -898,8 +898,6 @@ input[type=range] { width: 100%; accent-color: var(--lanyard); }
 .lc-people small { color: var(--muted); }
 /* Avatar nhỏ không còn nền (đã có mã số để phân biệt) */
 .msg img, .voters img, .skipvoters img, .lc-people img, .lc-faces img, .go-roles img, .fid-p img { background: none !important; border: 0 !important; }
-/* "có rắn" viết nhỏ xíu, nghiêng, kiểu thì thầm mỉa mai */
-.ts-snake { font-size: .26em; font-style: italic; font-weight: 700; color: #fff; text-shadow: 1px 1px 0 var(--ink); letter-spacing: .5px; vertical-align: baseline; margin-left: 4px; opacity: .9; }
 
 /* ---------- Vai mới ---------- */
 .dept-rules { margin: 6px 0 0; padding-left: 18px; font-size: .82rem; text-align: left; color: var(--muted); }
@@ -2271,3 +2269,10 @@ body.mt-mode { overflow: hidden; }
 @media (max-width: 400px) { .lobby-card .lc-factions .lbl { display: none; } }
 /* thẻ việc luôn nằm trên vùng chạm của cần điều khiển (vùng này phủ nửa trái màn từ 96px xuống) để chạm vào thẻ không bị cần điều khiển "nuốt" */
 .hud .tasks { z-index: 2; }
+/* dòng phụ dưới tên game: câu "Đồng nghiệp tôi là rắn." nghiêng, màu xanh rắn, như lời thì thầm */
+.ts-motto { margin: -6px 0 10px; font-family: var(--display); font-weight: 800; font-style: italic; font-size: 1.35rem; color: var(--snake-hi); text-shadow: 0 2px 0 var(--ink), 2px 0 0 var(--ink), -2px 0 0 var(--ink), 0 -2px 0 var(--ink); letter-spacing: .3px; }
+@media (max-width: 760px) { .ts-motto { text-align: center; font-size: 1.05rem; margin: -4px 0 6px; } }
+@media (max-height: 560px) { .ts-motto { font-size: .95rem; margin: -4px 0 4px; } }
+/* màn thấp (laptop 768px trở xuống): dòng phụ "Đồng nghiệp tôi là rắn." + chip hai phe đã đủ ý, ẩn câu giới thiệu dài để bảng chọn không bị cắt đáy */
+@media (max-height: 800px) and (min-width: 761px) { .ts-tag { display: none; } .ts-motto { margin-bottom: 8px; } .ts-fac { margin-top: 0; } }
+@media (max-height: 700px) { .ts-tag { display: none; } }
